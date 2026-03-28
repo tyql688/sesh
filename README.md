@@ -67,7 +67,16 @@ Each provider parses: messages, tool calls (with input/output), thinking/reasoni
 | `⌘F` | Find in session |
 | `?` | Show shortcuts |
 
-## Build
+## Install
+
+Download the latest DMG from [Releases](https://github.com/tyql688/cc-session/releases).
+
+> **macOS Gatekeeper:** The app is not code-signed. On first launch macOS may show *"CC Session is damaged and can't be opened"*. Fix with:
+> ```bash
+> xattr -cr /Applications/CC Session.app
+> ```
+
+## Build from Source
 
 Requires [Rust](https://rustup.rs/) and [Node.js](https://nodejs.org/) 18+.
 
