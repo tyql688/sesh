@@ -10,48 +10,60 @@
 </pre>
 
 <p align="center">
-  Browse, search, and manage AI coding sessions.<br>
-  Claude Code · Codex · Gemini · Cursor · OpenCode
+  Browse, search and resume your AI coding sessions in one desktop app.<br>
+  Claude Code · Codex · Gemini CLI · Cursor · OpenCode
 </p>
 
 <p align="center">
-  <img alt="Tauri 2.0" src="https://img.shields.io/badge/Tauri-2.0-blue?logo=tauri">
-  <img alt="Solid.js" src="https://img.shields.io/badge/Solid.js-TypeScript-2c4f7c?logo=solid">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-Backend-dea584?logo=rust">
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-green">
+  <a href="https://github.com/tyql688/cc-session/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/tyql688/cc-session?style=flat-square&color=blue"></a>
+  <a href="https://github.com/tyql688/cc-session/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/tyql688/cc-session/total?style=flat-square&color=green"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/tyql688/cc-session?style=flat-square"></a>
 </p>
 
 ---
 
-## What It Does
+## Why CC Session?
 
-CC Session reads session data from your AI coding tools and presents them in a unified, searchable interface. Think of it as a session browser — you can view full conversation histories, search across all sessions, export them, or resume directly in your terminal.
+AI coding tools like Claude Code, Codex, and Gemini CLI store session data locally, but there's no easy way to browse, search, or revisit past conversations. CC Session brings all your sessions together in one unified interface — view full conversation histories, search across all providers with full-text search, export records, and resume any session directly in your terminal.
+
+## Features
+
+- **Unified view** — All your AI coding sessions from 5 providers in one place
+- **Full-text search** — Search across all session content with SQLite FTS5 (`⌘K`)
+- **Resume sessions** — Jump back into any session in Terminal, iTerm2, Ghostty, Kitty, Warp, WezTerm, or Alacritty (`⇧⌘R`)
+- **Live watch** — Auto-refreshes when active sessions update (`⌘L`)
+- **Rich rendering** — Markdown, syntax highlighting, Mermaid diagrams, KaTeX math, inline images, structured tool call diffs
+- **Token usage** — Per-message and session-level token counts with cache hit/write breakdown
+- **Export** — JSON, Markdown, or self-contained HTML (dark mode, collapsible tools & thinking blocks)
+- **Session management** — Rename, trash/restore, favorites, batch operations
+- **Auto-update** — Built-in updater checks for new releases automatically
+- **Keyboard-driven** — Full keyboard navigation (`?` to see all shortcuts)
+- **i18n** — English / Chinese
+- **Blocked folders** — Hide sessions from specific project directories
 
 ## Supported Providers
 
 | Provider    | Data Source                              | Format   | Live Watch |
 |-------------|------------------------------------------|----------|------------|
 | Claude Code | `~/.claude/projects/**/*.jsonl`          | JSONL    | FS events  |
-| Codex       | `~/.codex/sessions/**/*.jsonl`           | JSONL    | FS events  |
+| Codex CLI   | `~/.codex/sessions/**/*.jsonl`           | JSONL    | FS events  |
 | Gemini CLI  | `~/.gemini/tmp/*/chats/*.json`           | JSON     | FS events  |
 | Cursor      | `~/.cursor/chats/**/store.db`            | SQLite   | Polling    |
 | OpenCode    | `~/.local/share/opencode/opencode.db`    | SQLite   | Polling    |
 
 Each provider parses: messages, tool calls (with input/output), thinking/reasoning blocks, token usage, and inline images.
 
-## Features
+## Install
 
-- **Full-text search** across all session content (SQLite FTS5)
-- **Live watch** — auto-refreshes when sessions update (`⌘L` to toggle)
-- **Message rendering** — Markdown, syntax highlighting, Mermaid diagrams, KaTeX math, inline images, structured tool call diffs
-- **Token usage** — per-message and session-level token counts with cache hit/write breakdown
-- **Export** — JSON, Markdown, HTML (dark mode, collapsible tools, thinking blocks)
-- **Session management** — rename, trash/restore, favorites, batch delete/export
-- **Resume** — open any session in Terminal, iTerm2, Ghostty, Kitty, Warp, WezTerm, or Alacritty
-- **Keyboard-driven** — `⌘K` search, `⌘1-9` tabs, `⌘B` favorite, `⌘L` watch, `?` shortcuts overlay
-- **i18n** — English / Chinese
+Download the latest `.dmg` from [Releases](https://github.com/tyql688/cc-session/releases).
 
-## Shortcuts
+> **macOS Gatekeeper:** The app is not code-signed. On first launch, macOS may block it. Fix with:
+> ```bash
+> xattr -cr /Applications/CC Session.app
+> ```
+
+## Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -65,16 +77,7 @@ Each provider parses: messages, tool calls (with input/output), thinking/reasoni
 | `⌘L` | Toggle live watch |
 | `⌘⌫` | Delete session |
 | `⌘F` | Find in session |
-| `?` | Show shortcuts |
-
-## Install
-
-Download the latest DMG from [Releases](https://github.com/tyql688/cc-session/releases).
-
-> **macOS Gatekeeper:** The app is not code-signed. On first launch macOS may show *"CC Session is damaged and can't be opened"*. Fix with:
-> ```bash
-> xattr -cr /Applications/CC Session.app
-> ```
+| `?` | Show all shortcuts |
 
 ## Build from Source
 
@@ -84,38 +87,21 @@ Requires [Rust](https://rustup.rs/) and [Node.js](https://nodejs.org/) 18+.
 git clone https://github.com/tyql688/cc-session.git
 cd cc-session
 npm install
-npm run tauri build          # Production build
-npx tauri build --bundles dmg  # DMG only
+npm run tauri build              # Production build
+npx tauri build --bundles dmg    # DMG only
 ```
 
 ## Development
 
 ```bash
-npm run tauri dev             # Dev with hot reload
-npx tsc --noEmit              # Type-check frontend
-cd src-tauri && cargo clippy  # Lint Rust
+npm run tauri dev                # Dev with hot reload
+npx tsc --noEmit                 # Type-check frontend
+cd src-tauri && cargo clippy     # Lint Rust
 ```
 
-## Architecture
+## Built With
 
-```
-src/                     # Solid.js frontend
-  components/            # UI components
-  stores/                # Reactive state (toast, search, theme, settings, favorites)
-  i18n/                  # en.json, zh.json
-  styles/                # CSS variables, layout, messages
-  lib/                   # Types, Tauri IPC wrappers
-src-tauri/               # Rust backend
-  src/providers/         # Session parsers (claude, codex, gemini, cursor, opencode)
-  src/commands/          # Tauri IPC handlers
-  src/exporter/          # JSON, Markdown, HTML export
-  src/db.rs              # SQLite + FTS5 index
-  src/indexer.rs         # Parallel scan with batch transactions
-  src/watcher.rs         # File system watcher
-  src/terminal.rs        # Terminal launch (7 terminals)
-```
-
-Adding a new provider: implement `SessionProvider` trait in Rust → done. No frontend changes needed.
+[Tauri 2.0](https://v2.tauri.app/) · [Solid.js](https://www.solidjs.com/) · Rust · SQLite FTS5
 
 ## License
 
