@@ -87,7 +87,14 @@
     "providerDisabled": "已禁用",
     "clearIndexConfirm": "清除整个索引？下次重建时将重新扫描会话。",
     "timeGrouping": "按时间分组",
-    "timeGroupingDesc": "将会话按今天、本周、本月和更早分组"
+    "timeGroupingDesc": "将会话按今天、本周、本月和更早分组",
+    "checkUpdate": "检查更新",
+    "updateAvailable": "发现新版本",
+    "updateConfirm": "立即下载并安装？",
+    "updating": "更新中...",
+    "updateReady": "可更新",
+    "upToDate": "已是最新",
+    "updateFailed": "检查失败"
   },
   "trash": {
     "title": "回收站",

@@ -26,7 +26,7 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/.claude/**", "$HOME/.codex/**", "$HOME/.gemini/**"]
+        "scope": ["$HOME/.claude/**", "$HOME/.codex/**", "$HOME/.gemini/**", "$HOME/.cursor/**", "$HOME/.local/share/opencode/**"]
       }
     }
   },
@@ -43,6 +43,12 @@
   "plugins": {
     "shell": {
       "open": "^(https?://|/)"
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5RjBEOERCRTgwQjg1RTIKUldUaWhRdm8yOWp3bVNjUlViUGFORTNyNGN5Z2p3ckduZlNMWTc3bW41ZTdwQ1MvVmVFTkloZU8K",
+      "endpoints": [
+        "https://github.com/tyql688/cc-session/releases/latest/download/latest.json"
+      ]
     }
   }
 }

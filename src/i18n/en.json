@@ -87,7 +87,14 @@
     "providerDisabled": "Disabled",
     "clearIndexConfirm": "Clear the entire index? Sessions will be re-scanned on next rebuild.",
     "timeGrouping": "Group by Time",
-    "timeGroupingDesc": "Group sessions by today, this week, this month, and older"
+    "timeGroupingDesc": "Group sessions by today, this week, this month, and older",
+    "checkUpdate": "Check for Updates",
+    "updateAvailable": "Update available",
+    "updateConfirm": "Download and install now?",
+    "updating": "Updating...",
+    "updateReady": "available",
+    "upToDate": "Up to date",
+    "updateFailed": "Check failed"
   },
   "trash": {
     "title": "Trash",

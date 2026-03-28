@@ -8,6 +8,8 @@ import { theme, setTheme } from "../stores/theme";
 import type { Theme } from "../stores/theme";
 import { terminalApp, setTerminalApp, disabledProviders, toggleProvider, timeGrouping, setTimeGrouping } from "../stores/settings";
 import type { TerminalApp } from "../stores/settings";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 type SettingsCategory = "general" | "dataSources" | "index" | "keyboard" | "about";
 
@@ -18,6 +20,35 @@ export function SettingsPanel() {
   const [activeCategory, setActiveCategory] = createSignal<SettingsCategory>("general");
   const [isRebuilding, setIsRebuilding] = createSignal(false);
   const [version, setVersion] = createSignal("0.1.0");
+  const [updateChecking, setUpdateChecking] = createSignal(false);
+  const [updateStatus, setUpdateStatus] = createSignal<string | null>(null);
+
+  async function handleCheckUpdate() {
+    setUpdateChecking(true);
+    setUpdateStatus(null);
+    try {
+      const update = await check();
+      if (update) {
+        const yes = confirm(`${t("settings.updateAvailable")}: v${update.version}\n\n${t("settings.updateConfirm")}`);
+        if (yes) {
+          setUpdateStatus(t("settings.updating"));
+          await update.downloadAndInstall();
+          await relaunch();
+        } else {
+          setUpdateStatus(`v${update.version} ${t("settings.updateReady")}`);
+        }
+      } else {
+        setUpdateStatus(t("settings.upToDate"));
+        setTimeout(() => setUpdateStatus(null), 3000);
+      }
+    } catch (e) {
+      setUpdateStatus(t("settings.updateFailed"));
+      console.warn("Update check failed:", e);
+      setTimeout(() => setUpdateStatus(null), 3000);
+    } finally {
+      setUpdateChecking(false);
+    }
+  }
 
   onMount(async () => {
     try {
@@ -322,7 +353,16 @@ export function SettingsPanel() {
 
             <div class="settings-row">
               <div class="settings-label">{t("settings.version")}</div>
-              <span class="settings-stat">{version()}</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="settings-stat">{version()}</span>
+                <button
+                  class="settings-btn"
+                  disabled={updateChecking()}
+                  onClick={handleCheckUpdate}
+                >
+                  {updateChecking() ? "..." : updateStatus() || t("settings.checkUpdate")}
+                </button>
+              </div>
             </div>
 
             <div class="settings-row">
