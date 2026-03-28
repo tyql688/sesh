@@ -1,8 +1,12 @@
+mod parser;
+
+use parser::{capitalize_tool, extract_tokens, ms_to_rfc3339};
+
 use std::path::PathBuf;
 
 use rusqlite::{params, Connection};
 
-use crate::models::{Message, MessageRole, Provider, SessionMeta, TokenUsage};
+use crate::models::{Message, MessageRole, Provider, SessionMeta};
 use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 use crate::provider_utils::{session_title, truncate_to_bytes, FTS_CONTENT_LIMIT};
 
@@ -41,34 +45,6 @@ impl OpenCodeProvider {
         let _ = conn.pragma_update(None, "journal_mode", "wal");
         Ok(conn)
     }
-}
-
-/// Extract token usage from an assistant message's `data.tokens` JSON.
-fn extract_tokens(msg_json: &serde_json::Value) -> Option<TokenUsage> {
-    let tokens = msg_json.get("tokens")?;
-    let input = tokens.get("input")?.as_u64()? as u32;
-    let output = tokens.get("output")?.as_u64()? as u32;
-    let cache = tokens.get("cache");
-    let cache_read = cache
-        .and_then(|c| c.get("read"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    let cache_write = cache
-        .and_then(|c| c.get("write"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    Some(TokenUsage {
-        input_tokens: input,
-        output_tokens: output,
-        cache_read_input_tokens: cache_read,
-        cache_creation_input_tokens: cache_write,
-    })
-}
-
-/// Convert epoch milliseconds to RFC3339 timestamp string.
-fn ms_to_rfc3339(ms: i64) -> Option<String> {
-    chrono::DateTime::from_timestamp(ms / 1000, ((ms % 1000) * 1_000_000) as u32)
-        .map(|dt| dt.to_rfc3339())
 }
 
 impl SessionProvider for OpenCodeProvider {
@@ -430,14 +406,5 @@ impl SessionProvider for OpenCodeProvider {
         }
 
         Ok(messages)
-    }
-}
-
-/// Capitalize tool names to match our display convention (bash → Bash, read → Read, etc.)
-fn capitalize_tool(name: &str) -> String {
-    let mut chars = name.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }
