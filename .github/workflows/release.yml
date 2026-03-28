@@ -16,10 +16,8 @@ jobs:
         include:
           - platform: macos-latest
             target: aarch64-apple-darwin
-            arch: aarch64
           - platform: macos-latest
             target: x86_64-apple-darwin
-            arch: x86_64
 
     runs-on: ${{ matrix.platform }}
 
@@ -46,15 +44,14 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'CC Session ${{ github.ref_name }}'
           releaseBody: 'See the [changelog](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md) for details.'
           releaseDraft: true
           prerelease: false
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --bundles dmg
+          includeUpdaterJson: false
 
   build-universal:
     needs: build
@@ -83,11 +80,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'CC Session ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false
-          args: --target universal-apple-darwin
+          args: --target universal-apple-darwin --bundles dmg
+          includeUpdaterJson: false
