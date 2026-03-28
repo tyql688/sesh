@@ -1,0 +1,14 @@
+node_modules/
+target/
+dist/
+.superpowers/
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+coverage/
+.env.local
+.reference/
+docs/
+.claude

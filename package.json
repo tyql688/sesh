@@ -1,0 +1,31 @@
+{
+  "name": "cc-session",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@solid-primitives/i18n": "^2.2.1",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@tauri-apps/plugin-shell": "^2.3.5",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.44",
+    "mermaid": "^11.13.0",
+    "solid-js": "^1.9.12"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "@types/katex": "^0.16.8",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vite-plugin-solid": "^2.11.11",
+    "vitest": "^3.2.4"
+  }
+}
