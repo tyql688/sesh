@@ -26,6 +26,15 @@ function StarIcon() {
 }
 
 
+function BlockedIcon() {
+  return (
+    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
@@ -49,6 +58,7 @@ export function ActivityBar(props: { activeView: string; onViewChange: (v: strin
   const items: ActivityItem[] = [
     { id: "explorer", label: t("explorer.title"), icon: HomeIcon },
     { id: "favorites", label: t("favorites.title"), icon: StarIcon },
+    { id: "blocked", label: t("settings.blockedFolders"), icon: BlockedIcon },
     { id: "trash", label: t("trash.title"), icon: TrashIcon },
     { id: "settings", label: t("settings.title"), icon: SettingsIcon, position: "bottom" },
   ];

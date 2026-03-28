@@ -101,6 +101,7 @@
     "noBlockedFolders": "无屏蔽文件夹",
     "unblock": "取消屏蔽"
   },
+  "blocked": { "hint": "右键项目文件夹，选择「屏蔽此文件夹」" },
   "trash": {
     "title": "回收站",
     "empty": "回收站为空",

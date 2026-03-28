@@ -101,6 +101,7 @@
     "noBlockedFolders": "No blocked folders",
     "unblock": "Unblock"
   },
+  "blocked": { "hint": "Right-click a project folder and select \"Block This Folder\"" },
   "trash": {
     "title": "Trash",
     "empty": "Trash is empty",

@@ -10,6 +10,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { TrashView } from "./components/TrashView";
 
 import { FavoritesView } from "./components/FavoritesView";
+import { BlockedView } from "./components/BlockedView";
 import { KeyboardOverlay } from "./components/KeyboardOverlay";
 import { ToastContainer } from "./components/ToastContainer";
 import { reindex, syncSources, getTree, getSessionCount, trashSession } from "./lib/tauri";
@@ -336,11 +337,11 @@ export default function App() {
   );
   const showExplorer = createMemo(() => {
     const v = activeView();
-    return v !== "settings" && v !== "trash";
+    return v !== "settings" && v !== "trash" && v !== "blocked";
   });
   const showExplorerTree = createMemo(() => {
     const v = activeView();
-    return v !== "settings" && v !== "trash" && v !== "favorites";
+    return v !== "settings" && v !== "trash" && v !== "favorites" && v !== "blocked";
   });
 
   return (
@@ -393,6 +394,9 @@ export default function App() {
         </Show>
         <Show when={activeView() === "favorites"}>
           <FavoritesView onOpenSession={openSession} />
+        </Show>
+        <Show when={activeView() === "blocked"}>
+          <BlockedView onRefreshTree={refreshTree} />
         </Show>
         <Show when={showExplorer()}>
           <EditorArea
