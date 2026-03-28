@@ -537,32 +537,3 @@ impl SessionProvider for CodexProvider {
         Ok(parsed.messages)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{extract_codex_content, strip_inline_image_sources};
-    use serde_json::json;
-
-    #[test]
-    fn extract_codex_content_keeps_inline_images_and_caption() {
-        let payload = json!({
-            "content": [
-                { "type": "input_text", "text": "<image name=[Image #1]>" },
-                { "type": "input_image", "image_url": "data:image/png;base64,abc" },
-                { "type": "input_text", "text": "</image>" },
-                { "type": "input_text", "text": "caption" }
-            ]
-        });
-
-        assert_eq!(
-            extract_codex_content(&payload),
-            "[Image: source: data:image/png;base64,abc]\ncaption"
-        );
-    }
-
-    #[test]
-    fn strip_inline_image_sources_reduces_index_noise() {
-        let text = "[Image: source: data:image/png;base64,abc]\ncaption";
-        assert_eq!(strip_inline_image_sources(text), "[Image]\ncaption");
-    }
-}

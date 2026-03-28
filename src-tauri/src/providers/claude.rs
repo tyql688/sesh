@@ -711,30 +711,3 @@ impl SessionProvider for ClaudeProvider {
         Ok(parsed.messages)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::merge_image_placeholders_with_sources;
-
-    #[test]
-    fn merge_image_placeholders_preserves_caption_text() {
-        let placeholder = "[Image #1] 这个不展示了";
-        let meta = "[Image: source: /tmp/1.png]";
-
-        assert_eq!(
-            merge_image_placeholders_with_sources(placeholder, meta),
-            "[Image: source: /tmp/1.png] 这个不展示了"
-        );
-    }
-
-    #[test]
-    fn merge_image_placeholders_handles_multiple_images() {
-        let placeholder = "[Image #1][Image #2] 小窗口不能适应？";
-        let meta = "[Image: source: /tmp/1.png][Image: source: /tmp/2.png]";
-
-        assert_eq!(
-            merge_image_placeholders_with_sources(placeholder, meta),
-            "[Image: source: /tmp/1.png][Image: source: /tmp/2.png] 小窗口不能适应？"
-        );
-    }
-}

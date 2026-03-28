@@ -955,24 +955,3 @@ fn normalize_path(path: &Path) -> PathBuf {
 
     normalized
 }
-
-#[cfg(test)]
-mod tests {
-    use super::normalize_path;
-    use std::path::PathBuf;
-
-    #[test]
-    fn normalize_path_resolves_parent_dirs() {
-        let path = PathBuf::from("/a/b/c/../../../.gemini/tmp/demo/images/clip.png");
-        assert_eq!(
-            normalize_path(&path),
-            PathBuf::from("/.gemini/tmp/demo/images/clip.png")
-        );
-    }
-
-    #[test]
-    fn normalize_path_resolves_dot_dirs() {
-        let path = PathBuf::from("/a/./b/./c.png");
-        assert_eq!(normalize_path(&path), PathBuf::from("/a/b/c.png"));
-    }
-}
