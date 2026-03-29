@@ -62,9 +62,9 @@ export function MermaidBlock(props: { code: string }) {
         {/* Security: innerHTML is used here to render Mermaid SVG output.
             Mermaid's "strict" securityLevel sanitizes the SVG (removes scripts,
             foreign objects, and event handlers), so this is considered safe. */}
-        {/* eslint-disable-next-line solid/no-innerhtml */}
         <Show
           when={showSource()}
+          // eslint-disable-next-line solid/no-innerhtml -- Mermaid strict securityLevel sanitizes SVG
           fallback={<div class="mermaid-diagram" innerHTML={html() || ""} />}
         >
           <CodeBlock code={props.code} language="mermaid" />

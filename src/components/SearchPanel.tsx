@@ -171,9 +171,9 @@ export function SearchPanel(props: {
                   <span class="search-result-title">
                     {result.session.title}
                   </span>
-                  {/* eslint-disable-next-line solid/no-innerhtml */}
                   <span
                     class="search-result-snippet"
+                    // eslint-disable-next-line solid/no-innerhtml -- sanitizeSnippet escapes then restores <mark> only
                     innerHTML={sanitizeSnippet(result.snippet)}
                   />
                 </div>
