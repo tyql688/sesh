@@ -10,6 +10,8 @@ npm run tauri build           # Production build
 npx tauri build --bundles dmg # DMG only
 cd src-tauri && cargo clippy  # Rust lint
 npx tsc --noEmit              # TS type check
+npm run lint                  # ESLint
+npm run format:check          # Prettier check
 ./scripts/release.sh 0.2.0   # Bump, commit, tag, push → triggers CI release
 ```
 
@@ -120,6 +122,7 @@ Tool names are mapped to canonical names per provider (e.g. Codex `exec_command`
 ## Conventions
 
 - Rust: `cargo fmt` + `cargo clippy` before commit
+- TypeScript: `npx eslint src/` + `npx prettier --check "src/**/*.{ts,tsx,css}"` before commit
 - TypeScript: strict mode, no `any`
 - Commits: conventional commits (`feat:`, `fix:`, `refactor:`)
 - i18n: all user-facing strings via `t()`, never hardcoded
