@@ -1,0 +1,8 @@
+{"type":"session_meta","timestamp":"2026-01-01T10:00:00.000Z","payload":{"id":"codex-session-abc123","cwd":"/home/user/my-project"}}
+{"type":"response_item","timestamp":"2026-01-01T10:00:01.000Z","payload":{"type":"message","role":"user","content":[{"type":"text","text":"Write a hello world program"}]}}
+{"type":"response_item","timestamp":"2026-01-01T10:00:05.000Z","payload":{"type":"message","role":"assistant","content":[{"type":"text","text":"I'll create a hello world program for you."}]}}
+{"type":"event_msg","timestamp":"2026-01-01T10:00:05.500Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":50,"output_tokens":15,"cached_input_tokens":0}}}}
+{"type":"response_item","timestamp":"2026-01-01T10:00:06.000Z","payload":{"type":"function_call","name":"exec_command","call_id":"call_001","arguments":"{\"cmd\":\"cat hello.py\"}"}}
+{"type":"response_item","timestamp":"2026-01-01T10:00:07.000Z","payload":{"type":"function_call_output","call_id":"call_001","output":"print('Hello, World!')"}}
+{"type":"response_item","timestamp":"2026-01-01T10:00:08.000Z","payload":{"type":"message","role":"assistant","content":[{"type":"text","text":"The hello world program is ready. Run it with `python hello.py`."}]}}
+{"type":"event_msg","timestamp":"2026-01-01T10:00:08.500Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":120,"output_tokens":25,"cached_input_tokens":10}}}}

@@ -1,5 +1,5 @@
 mod images;
-mod parser;
+pub mod parser;
 
 use std::fs;
 use std::path::PathBuf;

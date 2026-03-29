@@ -1,0 +1,6 @@
+{"timestamp":1735725600.0,"message":{"type":"TurnBegin","payload":{"user_input":[{"type":"text","text":"List files in the current directory"}]}}}
+{"timestamp":1735725601.5,"message":{"type":"ContentPart","payload":{"type":"think","think":"The user wants to list files. I should use the Shell tool."}}}
+{"timestamp":1735725602.0,"message":{"type":"ToolCall","payload":{"id":"call_kimi_001","function":{"name":"Shell","arguments":"{\"command\":\"ls -la\"}"}}}}
+{"timestamp":1735725603.0,"message":{"type":"ToolResult","payload":{"tool_call_id":"call_kimi_001","return_value":{"output":"total 16\ndrwxr-xr-x 2 user user 4096 Jan  1 10:00 .\ndrwxr-xr-x 5 user user 4096 Jan  1 09:00 ..\n-rw-r--r-- 1 user user  128 Jan  1 10:00 main.rs"}}}}
+{"timestamp":1735725604.0,"message":{"type":"ContentPart","payload":{"type":"text","text":"Here are the files in your directory:\n- main.rs"}}}
+{"timestamp":1735725605.0,"message":{"type":"StatusUpdate","payload":{"token_usage":{"input_other":80,"output":35,"input_cache_read":10,"input_cache_creation":5}}}}

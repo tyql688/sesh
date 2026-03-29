@@ -24,7 +24,7 @@ struct CodexLine {
 }
 
 impl CodexProvider {
-    pub(super) fn parse_session_file(&self, path: &PathBuf) -> Option<ParsedSession> {
+    pub fn parse_session_file(&self, path: &PathBuf) -> Option<ParsedSession> {
         let file = File::open(path).ok()?;
         let metadata = fs::metadata(path).ok()?;
         let file_size = metadata.len();

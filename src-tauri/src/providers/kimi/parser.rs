@@ -15,7 +15,7 @@ use super::tools::*;
 use super::KimiProvider;
 
 impl KimiProvider {
-    pub(super) fn parse_session_file(
+    pub fn parse_session_file(
         &self,
         path: &PathBuf,
         project_map: &HashMap<String, String>,
