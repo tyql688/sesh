@@ -85,7 +85,7 @@ impl Indexer {
         let mut tree = Vec::new();
 
         for (provider_key, projects) in &provider_map {
-            let provider_enum = match Provider::from_str(provider_key) {
+            let provider_enum = match Provider::parse(provider_key) {
                 Some(p) => p,
                 None => continue,
             };

@@ -35,7 +35,7 @@ impl Provider {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Provider> {
+    pub fn parse(s: &str) -> Option<Provider> {
         match s {
             "claude" => Some(Provider::Claude),
             "codex" => Some(Provider::Codex),

@@ -324,7 +324,7 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
 }
 
 fn sync_source(provider_str: &str, source_path: &str, state: &AppState) -> Result<(), String> {
-    let provider = crate::models::Provider::from_str(provider_str)
+    let provider = crate::models::Provider::parse(provider_str)
         .ok_or_else(|| format!("unsupported provider: {provider_str}"))?;
     sync_source_for_provider(provider, source_path, &state.db)
 }

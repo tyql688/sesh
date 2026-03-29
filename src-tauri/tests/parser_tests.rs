@@ -122,8 +122,7 @@ fn claude_token_usage_attached_to_last_assistant_message() {
     let last_assistant = session
         .messages
         .iter()
-        .filter(|m| m.role == MessageRole::Assistant)
-        .last()
+        .rfind(|m| m.role == MessageRole::Assistant)
         .expect("expected at least one assistant message");
 
     let usage = last_assistant
@@ -283,8 +282,7 @@ fn codex_token_usage_attached_to_assistant_message() {
     let last_assistant = session
         .messages
         .iter()
-        .filter(|m| m.role == MessageRole::Assistant)
-        .last()
+        .rfind(|m| m.role == MessageRole::Assistant)
         .expect("expected at least one assistant message");
 
     let usage = last_assistant

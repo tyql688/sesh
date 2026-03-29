@@ -308,7 +308,7 @@ fn build_fallback_meta(
 }
 
 fn str_to_provider(s: &str) -> Provider {
-    Provider::from_str(s).unwrap_or(Provider::Claude)
+    Provider::parse(s).unwrap_or(Provider::Claude)
 }
 
 #[tauri::command]
