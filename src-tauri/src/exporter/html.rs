@@ -1,6 +1,9 @@
 use std::fs;
 use std::path::Path;
 
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
+
 use crate::models::{MessageRole, Provider, SessionDetail};
 
 /// Truncate a string at a char boundary, avoiding panic on multi-byte UTF-8.
@@ -23,6 +26,27 @@ fn html_escape(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+fn inline_image(path: &str) -> String {
+    let Ok(data) = std::fs::read(path) else {
+        return format!(
+            r#"<div class="msg-image"><em>[Image not found: {}]</em></div>"#,
+            html_escape(path)
+        );
+    };
+    let ext = path.rsplit('.').next().unwrap_or("png").to_lowercase();
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        _ => "image/png",
+    };
+    let b64 = BASE64.encode(&data);
+    format!(
+        r#"<div class="msg-image"><img src="data:{mime};base64,{b64}" alt="User image" style="max-width:100%;max-height:500px;border-radius:8px;border:1px solid #e5e7eb"></div>"#
+    )
+}
+
 /// Convert markdown-style code fences to styled `<pre><code>` blocks,
 /// render image references as `<img>` tags, and escape HTML outside of code blocks.
 fn render_content(raw: &str) -> String {
@@ -43,11 +67,16 @@ fn render_content(raw: &str) -> String {
                 let trimmed = line.trim();
                 if trimmed.starts_with("[Image") && trimmed.ends_with(']') {
                     if let Some(path_start) = trimmed.find("source: ") {
-                        let path = &trimmed[path_start + 8..trimmed.len() - 1].trim();
-                        out.push_str(&format!(
-                            r#"<div class="msg-image"><img src="file://{}" alt="User image" style="max-width:100%;max-height:500px;border-radius:8px;border:1px solid #e5e7eb"></div>"#,
-                            html_escape(path)
-                        ));
+                        let path = trimmed[path_start + 8..trimmed.len() - 1].trim();
+                        if path.starts_with("data:") {
+                            // Already base64 data URI — use directly
+                            out.push_str(&format!(
+                                r#"<div class="msg-image"><img src="{}" alt="User image" style="max-width:100%;max-height:500px;border-radius:8px;border:1px solid #e5e7eb"></div>"#,
+                                html_escape(path)
+                            ));
+                        } else {
+                            out.push_str(&inline_image(path));
+                        }
                         continue;
                     }
                 }
