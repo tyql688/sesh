@@ -9,6 +9,7 @@ pub enum Provider {
     Cursor,
     #[serde(rename = "opencode")]
     OpenCode,
+    Kimi,
 }
 
 impl Provider {
@@ -19,6 +20,7 @@ impl Provider {
             Provider::Gemini => "Gemini",
             Provider::Cursor => "Cursor",
             Provider::OpenCode => "OpenCode",
+            Provider::Kimi => "Kimi CLI",
         }
     }
 
@@ -29,6 +31,7 @@ impl Provider {
             Provider::Gemini => "gemini",
             Provider::Cursor => "cursor",
             Provider::OpenCode => "opencode",
+            Provider::Kimi => "kimi",
         }
     }
 
@@ -39,6 +42,7 @@ impl Provider {
             "gemini" => Some(Provider::Gemini),
             "cursor" => Some(Provider::Cursor),
             "opencode" => Some(Provider::OpenCode),
+            "kimi" => Some(Provider::Kimi),
             _ => None,
         }
     }
@@ -50,6 +54,7 @@ impl Provider {
             Provider::Gemini => "#f59e0b",
             Provider::Cursor => "#3b82f6",
             Provider::OpenCode => "#06b6d4",
+            Provider::Kimi => "#6366f1",
         }
     }
 
@@ -60,6 +65,7 @@ impl Provider {
             Provider::Gemini => format!("gemini --resume {session_id}"),
             Provider::Cursor => format!("agent --resume={session_id}"),
             Provider::OpenCode => format!("opencode -s {session_id}"),
+            Provider::Kimi => format!("kimi --session {session_id}"),
         }
     }
 
@@ -71,6 +77,7 @@ impl Provider {
             Provider::Gemini,
             Provider::Cursor,
             Provider::OpenCode,
+            Provider::Kimi,
         ]
     }
 }

@@ -26,6 +26,7 @@ notify = "7"
 memmap2 = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
+md5 = "0.7"
 walkdir = "2"
 thiserror = "2"
 base64 = "0.22"

@@ -32,6 +32,12 @@ export function ProviderIcon(props: { provider: Provider }) {
           <path fill-rule="evenodd" clip-rule="evenodd" d="M18 19.5H6V4.5H18V19.5ZM15 7.5H9V16.5H15V7.5Z" />
         </svg>
       );
+    case "kimi":
+      return (
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15.5v-3.07c-1.22-.23-2.31-.78-3.19-1.55l1.42-1.42c.73.62 1.64 1.01 2.63 1.09V9.07c-1.85-.3-3.35-1.53-3.35-3.32C8.51 3.94 9.97 2.5 12 2.5s3.49 1.44 3.49 3.25c0 .76-.28 1.47-.74 2.02l-1.43-1.43c.22-.33.35-.73.35-1.15 0-.89-.67-1.62-1.67-1.65v3.38c1.85.3 3.35 1.53 3.35 3.32 0 1.81-1.46 3.25-3.49 3.25-.16 0-.31-.01-.46-.03V17.5H11z" />
+        </svg>
+      );
     default:
       return <span>A</span>;
   }
@@ -50,6 +56,8 @@ export function ProviderDot(props: { provider: Provider }) {
         return "var(--cursor)";
       case "opencode":
         return "var(--opencode)";
+      case "kimi":
+        return "var(--kimi)";
     }
   };
   return (

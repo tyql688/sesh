@@ -13,6 +13,7 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
   gemini: { key: "gemini", label: "Gemini", color: "gemini", resumePrefix: "gemini --resume" },
   cursor: { key: "cursor", label: "Cursor", color: "cursor", resumePrefix: "cursor --resume" },
   opencode: { key: "opencode", label: "OpenCode", color: "opencode", resumePrefix: "opencode --resume" },
+  kimi: { key: "kimi", label: "Kimi CLI", color: "kimi", resumePrefix: "kimi --session" },
 };
 
 export function getProviderLabel(provider: Provider): string {

@@ -27,6 +27,7 @@ const ALLOWED_CMD_PREFIXES: &[&str] = &[
     "cursor ",
     "agent ",
     "opencode ",
+    "kimi ",
 ];
 
 #[tauri::command]

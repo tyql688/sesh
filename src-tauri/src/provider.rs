@@ -29,6 +29,7 @@ pub fn make_provider(provider: &Provider) -> Box<dyn SessionProvider> {
         Provider::Gemini => Box::new(crate::providers::gemini::GeminiProvider::new()),
         Provider::Cursor => Box::new(crate::providers::cursor::CursorProvider::new()),
         Provider::OpenCode => Box::new(crate::providers::opencode::OpenCodeProvider::new()),
+        Provider::Kimi => Box::new(crate::providers::kimi::KimiProvider::new()),
     }
 }
 
