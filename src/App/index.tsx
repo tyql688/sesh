@@ -14,6 +14,7 @@ import { BlockedView } from "../components/BlockedView";
 import { KeyboardOverlay } from "../components/KeyboardOverlay";
 import { ToastContainer } from "../components/ToastContainer";
 import { trashSession } from "../lib/tauri";
+import { isMac } from "../lib/platform";
 import { disabledProviders } from "../stores/settings";
 import type { TreeNode, SessionMeta } from "../lib/types";
 import { createKeyboardHandler } from "./KeyboardShortcuts";
@@ -114,6 +115,10 @@ export default function App() {
   });
 
   onMount(async () => {
+    if (isMac) {
+      document.documentElement.style.setProperty("--titlebar-inset", "78px");
+    }
+
     void sync.coldStart();
 
     document.addEventListener("keydown", handleGlobalKeyDown);

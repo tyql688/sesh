@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/tyql688/cc-session/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/tyql688/cc-session?style=flat-square&color=blue"></a>
 
-  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/tyql688/cc-session?style=flat-square"></a>
 </p>
 
@@ -53,7 +53,10 @@ Each provider parses: messages, tool calls (with input/output), thinking/reasoni
 
 ## Install
 
-Download the latest `.dmg` from [Releases](https://github.com/tyql688/cc-session/releases).
+Download the latest release from [Releases](https://github.com/tyql688/cc-session/releases):
+
+- **macOS** — `.dmg`
+- **Windows** — `.exe` (NSIS installer)
 
 > **macOS Gatekeeper:** The app is not code-signed. On first launch, macOS may block it. Fix with:
 > ```bash

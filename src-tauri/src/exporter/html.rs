@@ -258,8 +258,17 @@ fn tool_summary(name: &str, input: &str) -> String {
             .and_then(|l| l.split(':').nth(1))
             .map(|s| {
                 let p = s.trim();
-                let parts: Vec<&str> = p.split('/').collect();
-                parts[parts.len().saturating_sub(2)..].join("/")
+                let path = Path::new(p);
+                let components: Vec<&str> = path
+                    .iter()
+                    .rev()
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|c| c.to_str().unwrap_or(""))
+                    .collect();
+                components.join("/")
             })
             .unwrap_or_default();
     }
@@ -274,8 +283,17 @@ fn tool_summary(name: &str, input: &str) -> String {
             .get("file_path")
             .and_then(|v| v.as_str())
             .map(|p| {
-                let parts: Vec<&str> = p.split('/').collect();
-                parts[parts.len().saturating_sub(2)..].join("/")
+                let path = Path::new(p);
+                let components: Vec<&str> = path
+                    .iter()
+                    .rev()
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|c| c.to_str().unwrap_or(""))
+                    .collect();
+                components.join("/")
             })
             .unwrap_or_default(),
         "Bash" => obj

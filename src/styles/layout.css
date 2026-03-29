@@ -26,13 +26,13 @@ body {
   overflow: hidden;
 }
 
-/* Titlebar — uses macOS native overlay mode */
+/* Titlebar — uses native overlay mode (macOS traffic lights need extra left padding) */
 .titlebar {
   height: 52px;
   display: flex;
   align-items: center;
   padding: 0 16px;
-  padding-left: 78px; /* space for native macOS traffic lights */
+  padding-left: var(--titlebar-inset, 16px);
   background: var(--bg-window);
   border-bottom: 0.5px solid var(--border);
   position: relative;

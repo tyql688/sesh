@@ -64,11 +64,10 @@ impl CursorProvider {
         }
 
         let title = session_title(first_user_message.as_deref());
-        let project_name = project_path
-            .split('/')
-            .next_back()
-            .unwrap_or("")
-            .to_string();
+        let project_name = Path::new(&project_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
         let file_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
 
         // Session ID from directory name (UUID)

@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/tyql688/cc-session/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/tyql688/cc-session?style=flat-square&color=blue"></a>
 
-  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/tyql688/cc-session?style=flat-square"></a>
 </p>
 
@@ -53,7 +53,10 @@ Claude Code、Codex、Gemini CLI 等 AI 编程工具会在本地存储会话数�
 
 ## 安装
 
-从 [Releases](https://github.com/tyql688/cc-session/releases) 下载最新 `.dmg`。
+从 [Releases](https://github.com/tyql688/cc-session/releases) 下载最新版本：
+
+- **macOS** — `.dmg`
+- **Windows** — `.exe`（NSIS 安装包）
 
 > **macOS Gatekeeper：** 应用未经代码签名。首次打开时 macOS 可能会阻止运行，执行以下命令修复：
 >

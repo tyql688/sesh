@@ -22,7 +22,8 @@ impl OpenCodeProvider {
             .unwrap_or_else(|_| {
                 dirs::home_dir()
                     .unwrap_or_else(|| PathBuf::from("/tmp"))
-                    .join(".local/share")
+                    .join(".local")
+                    .join("share")
             })
             .join("opencode");
         Self {
@@ -172,11 +173,10 @@ impl SessionProvider for OpenCodeProvider {
                             title: display_title,
                             project_path: project_path.clone(),
                             project_name: project_name.unwrap_or_else(|| {
-                                project_path
-                                    .split('/')
-                                    .next_back()
-                                    .unwrap_or("")
-                                    .to_string()
+                                std::path::Path::new(&project_path)
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_default()
                             }),
                             created_at: time_created / 1000,
                             updated_at: time_updated / 1000,

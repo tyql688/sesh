@@ -46,7 +46,10 @@ pub fn resolve_gemini_image_path(raw: &str, project_path: &str) -> Option<String
     } else if project_path != NO_PROJECT {
         normalize_path(&PathBuf::from(project_path).join(&candidate_path))
     } else if let Some(home_dir) = dirs::home_dir() {
-        if let Some(index) = candidate.find(".gemini/") {
+        if let Some(index) = candidate
+            .find(".gemini/")
+            .or_else(|| candidate.find(".gemini\\"))
+        {
             normalize_path(&home_dir.join(&candidate[index..]))
         } else {
             normalize_path(&home_dir.join(&candidate_path))
@@ -61,10 +64,22 @@ pub fn resolve_gemini_image_path(raw: &str, project_path: &str) -> Option<String
     let path_str = final_path.to_string_lossy();
     if let Some(home) = dirs::home_dir() {
         let home_str = home.to_string_lossy();
+        #[cfg(not(target_os = "windows"))]
         let allowed = path_str.starts_with(&*home_str)
             || path_str.starts_with("/tmp/")
             || path_str.starts_with("/private/tmp/")
             || path_str.starts_with("/var/folders/");
+        #[cfg(target_os = "windows")]
+        let allowed = {
+            let mut a = path_str.starts_with(&*home_str);
+            if let Ok(temp) = std::env::var("TEMP") {
+                a = a || path_str.starts_with(&temp);
+            }
+            if let Ok(tmp) = std::env::var("TMP") {
+                a = a || path_str.starts_with(&tmp);
+            }
+            a
+        };
         if !allowed {
             return None;
         }
