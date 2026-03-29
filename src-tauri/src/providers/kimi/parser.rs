@@ -95,8 +95,11 @@ impl KimiProvider {
                                 "text" => {
                                     let text =
                                         part.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                                    // Skip <image path="..."> markers when inline image data exists
-                                    if has_image && text.contains("<image path=") {
+                                    // Skip <image path="..."> and </image> markers when inline image data exists
+                                    if has_image
+                                        && (text.contains("<image path=")
+                                            || text.trim() == "</image>")
+                                    {
                                         continue;
                                     }
                                     if !text.is_empty() {
