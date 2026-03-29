@@ -30,20 +30,35 @@ impl Database {
             }
         }
 
+        let current_count = self.count_sessions_for_provider(&provider_key)?;
+        let scan_count = sessions.len() as u64;
+        let should_delete = scan_count == 0
+            || current_count <= 10
+            || (scan_count as f64 / current_count as f64) > 0.5;
+
+        if !should_delete {
+            eprintln!(
+                "warning: provider {:?} scan returned {} sessions but DB has {}, skipping destructive sync",
+                provider, scan_count, current_count
+            );
+        }
+
         self.with_transaction(|conn| {
             for parsed in sessions {
                 upsert_session_on(conn, &parsed.meta, &parsed.content_text)?;
             }
 
-            for (source_path, ids) in &ids_by_source {
-                delete_missing_sessions_for_source(conn, &provider_key, source_path, ids)?;
-            }
+            if should_delete {
+                for (source_path, ids) in &ids_by_source {
+                    delete_missing_sessions_for_source(conn, &provider_key, source_path, ids)?;
+                }
 
-            delete_missing_sources_for_provider(conn, &provider_key, &source_paths)?;
-            conn.execute(
-                "DELETE FROM favorites WHERE session_id NOT IN (SELECT id FROM sessions)",
-                [],
-            )?;
+                delete_missing_sources_for_provider(conn, &provider_key, &source_paths)?;
+                conn.execute(
+                    "DELETE FROM favorites WHERE session_id NOT IN (SELECT id FROM sessions)",
+                    [],
+                )?;
+            }
             Ok(())
         })
     }
@@ -60,16 +75,31 @@ impl Database {
             .map(|parsed| parsed.meta.id.clone())
             .collect();
 
+        let current_count = self.count_sessions_for_source(&provider_key, source_path)?;
+        let scan_count = sessions.len() as u64;
+        let should_delete = scan_count == 0
+            || current_count <= 10
+            || (scan_count as f64 / current_count as f64) > 0.5;
+
+        if !should_delete {
+            eprintln!(
+                "warning: provider {:?} source {:?} scan returned {} sessions but DB has {}, skipping destructive sync",
+                provider, source_path, scan_count, current_count
+            );
+        }
+
         self.with_transaction(|conn| {
             for parsed in sessions {
                 upsert_session_on(conn, &parsed.meta, &parsed.content_text)?;
             }
 
-            delete_missing_sessions_for_source(conn, &provider_key, source_path, &ids)?;
-            conn.execute(
-                "DELETE FROM favorites WHERE session_id NOT IN (SELECT id FROM sessions)",
-                [],
-            )?;
+            if should_delete {
+                delete_missing_sessions_for_source(conn, &provider_key, source_path, &ids)?;
+                conn.execute(
+                    "DELETE FROM favorites WHERE session_id NOT IN (SELECT id FROM sessions)",
+                    [],
+                )?;
+            }
             Ok(())
         })
     }

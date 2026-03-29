@@ -42,9 +42,6 @@ impl Indexer {
             .set_meta("last_index_time", &now_millis.to_string())
             .map_err(|e| format!("failed to store last_index_time: {e}"))?;
 
-        // Reclaim space from stale rows removed during sync
-        let _ = self.db.vacuum();
-
         let elapsed = start.elapsed();
         println!(
             "Reindex complete: {} sessions indexed in {:.2}s",

@@ -62,6 +62,28 @@ impl Database {
         conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
     }
 
+    pub fn count_sessions_for_provider(&self, provider_key: &str) -> Result<u64, rusqlite::Error> {
+        let conn = self.lock_conn()?;
+        conn.query_row(
+            "SELECT COUNT(*) FROM sessions WHERE provider = ?1",
+            params![provider_key],
+            |row| row.get(0),
+        )
+    }
+
+    pub fn count_sessions_for_source(
+        &self,
+        provider_key: &str,
+        source_path: &str,
+    ) -> Result<u64, rusqlite::Error> {
+        let conn = self.lock_conn()?;
+        conn.query_row(
+            "SELECT COUNT(*) FROM sessions WHERE provider = ?1 AND source_path = ?2",
+            params![provider_key, source_path],
+            |row| row.get(0),
+        )
+    }
+
     pub fn get_meta(&self, key: &str) -> Result<Option<String>, rusqlite::Error> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare("SELECT value FROM meta WHERE key = ?1")?;
