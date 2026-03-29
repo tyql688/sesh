@@ -22,7 +22,7 @@ import {
 import type { TerminalApp } from "../stores/settings";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { isMac } from "../lib/platform";
+import { isMac, isWindows } from "../lib/platform";
 import { formatFileSize } from "../lib/formatters";
 
 type SettingsCategory =
@@ -116,7 +116,9 @@ export function SettingsPanel() {
   const validThemes: Theme[] = ["light", "dark", "system"];
   const validTerminals: TerminalApp[] = isMac
     ? ["terminal", "iterm2", "ghostty", "kitty", "warp", "wezterm", "alacritty"]
-    : ["windows-terminal", "powershell", "cmd"];
+    : isWindows
+      ? ["windows-terminal", "powershell", "cmd"]
+      : ["alacritty", "kitty", "wezterm", "gnome-terminal", "konsole", "xterm"];
 
   function handleThemeChange(value: string) {
     if (validThemes.includes(value as Theme)) setTheme(value as Theme);

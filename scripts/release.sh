@@ -28,14 +28,23 @@ fi
 
 echo "Bumping version to $VERSION..."
 
+# Cross-platform sed in-place (BSD vs GNU)
+sedi() {
+  if [[ "$OSTYPE" == darwin* ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
 # Update package.json
-sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+sedi "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
 
 # Update Cargo.toml
-sed -i '' "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+sedi "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 
 # Update tauri.conf.json
-sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+sedi "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
 
 # Update Cargo.lock
 (cd src-tauri && cargo check --quiet 2>/dev/null || true)

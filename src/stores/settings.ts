@@ -12,7 +12,10 @@ export type TerminalApp =
   | "alacritty" // macOS
   | "windows-terminal"
   | "powershell"
-  | "cmd"; // Windows
+  | "cmd" // Windows
+  | "gnome-terminal"
+  | "konsole"
+  | "xterm"; // Linux
 
 const storedTerminal = localStorage.getItem(
   "cc-session-terminal",
@@ -37,6 +40,9 @@ if (!storedTerminal) {
         "windows-terminal",
         "powershell",
         "cmd",
+        "gnome-terminal",
+        "konsole",
+        "xterm",
       ];
       if (valid.includes(detected as TerminalApp)) {
         setTerminalAppSignal(detected as TerminalApp);

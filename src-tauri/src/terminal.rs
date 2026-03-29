@@ -1,7 +1,5 @@
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::process::Command;
 
-#[allow(unused_variables)]
 pub fn launch_terminal(target: &str, command: &str, cwd: Option<&str>) -> Result<(), String> {
     if command.trim().is_empty() {
         return Err("Command is empty".to_string());
@@ -30,7 +28,20 @@ pub fn launch_terminal(target: &str, command: &str, cwd: Option<&str>) -> Result
         }
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    {
+        match target {
+            "gnome-terminal" => launch_linux_gnome_terminal(command, cwd),
+            "konsole" => launch_linux_konsole(command, cwd),
+            "xterm" => launch_linux_xterm(command, cwd),
+            "alacritty" => launch_linux_alacritty(command, cwd),
+            "kitty" => launch_linux_kitty(command, cwd),
+            "wezterm" => launch_linux_wezterm(command, cwd),
+            _ => launch_linux_default(command, cwd),
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         Err("Terminal launch is not supported on this platform".to_string())
     }
@@ -334,4 +345,117 @@ fn build_windows_command(command: &str, cwd: Option<&str>) -> String {
         }
         _ => command.to_string(),
     }
+}
+
+// --- Linux terminal launchers ---
+
+#[cfg(target_os = "linux")]
+fn linux_shell_command(command: &str, cwd: Option<&str>) -> String {
+    match cwd {
+        Some(dir) if !dir.trim().is_empty() => {
+            let escaped = dir.replace('\'', "'\\''");
+            format!("cd '{}' && {}", escaped, command)
+        }
+        _ => command.to_string(),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn launch_linux_gnome_terminal(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    let full = linux_shell_command(command, cwd);
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    Command::new("gnome-terminal")
+        .args(["--", &shell, "-c", &full])
+        .spawn()
+        .map_err(|e| format!("failed to launch gnome-terminal: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn launch_linux_konsole(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    let full = linux_shell_command(command, cwd);
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    Command::new("konsole")
+        .args(["-e", &shell, "-c", &full])
+        .spawn()
+        .map_err(|e| format!("failed to launch konsole: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn launch_linux_xterm(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    let full = linux_shell_command(command, cwd);
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    Command::new("xterm")
+        .args(["-e", &shell, "-c", &full])
+        .spawn()
+        .map_err(|e| format!("failed to launch xterm: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn launch_linux_alacritty(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    let full = linux_shell_command(command, None);
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    let mut cmd = Command::new("alacritty");
+    if let Some(dir) = cwd {
+        if !dir.trim().is_empty() {
+            cmd.arg("--working-directory").arg(dir);
+        }
+    }
+    cmd.args(["-e", &shell, "-c", &full]);
+    cmd.spawn()
+        .map_err(|e| format!("failed to launch alacritty: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn launch_linux_kitty(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    let mut cmd = Command::new("kitty");
+    if let Some(dir) = cwd {
+        if !dir.trim().is_empty() {
+            cmd.arg("--directory").arg(dir);
+        }
+    }
+    cmd.args(["-e", &shell, "-c", command]);
+    cmd.spawn()
+        .map_err(|e| format!("failed to launch kitty: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn launch_linux_wezterm(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    let full = linux_shell_command(command, None);
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    let mut cmd = Command::new("wezterm");
+    cmd.arg("start");
+    if let Some(dir) = cwd {
+        if !dir.trim().is_empty() {
+            cmd.arg("--cwd").arg(dir);
+        }
+    }
+    cmd.args(["--", &shell, "-c", &full]);
+    cmd.spawn()
+        .map_err(|e| format!("failed to launch wezterm: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn launch_linux_default(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    // Try common terminals in order of popularity
+    let terminals = ["gnome-terminal", "konsole", "xfce4-terminal", "xterm"];
+    let full = linux_shell_command(command, cwd);
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+
+    for term in &terminals {
+        let result = Command::new(term)
+            .args(["--", &shell, "-c", &full])
+            .spawn();
+        if result.is_ok() {
+            return Ok(());
+        }
+    }
+
+    Err("no supported terminal emulator found; install gnome-terminal, konsole, or xterm".to_string())
 }

@@ -321,9 +321,23 @@ pub fn read_image_base64(path: String) -> Result<String, String> {
     if let Ok(canonical) = p.canonicalize() {
         let s = canonical.to_string_lossy();
         let home_ok = dirs::home_dir().is_some_and(|h| s.starts_with(&*h.to_string_lossy()));
-        let tmp_ok = s.starts_with("/tmp/")
-            || s.starts_with("/private/tmp/")
-            || s.starts_with("/var/folders/");
+        let tmp_ok = {
+            #[cfg(not(target_os = "windows"))]
+            {
+                s.starts_with("/tmp/")
+                    || s.starts_with("/private/tmp/")
+                    || s.starts_with("/var/folders/")
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::env::var("TEMP")
+                    .map(|t| s.starts_with(&t))
+                    .unwrap_or(false)
+                    || std::env::var("TMP")
+                        .map(|t| s.starts_with(&t))
+                        .unwrap_or(false)
+            }
+        };
         if !home_ok && !tmp_ok {
             return Err(format!("image path not allowed: {path}"));
         }
