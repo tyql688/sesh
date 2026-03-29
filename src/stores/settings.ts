@@ -22,7 +22,7 @@ const [terminalApp, setTerminalAppSignal] = createSignal<TerminalApp>(storedTerm
 if (!storedTerminal) {
   detectTerminal()
     .then((detected) => {
-      const valid: TerminalApp[] = ["terminal", "iterm2", "ghostty", "kitty", "warp", "wezterm", "alacritty"];
+      const valid: TerminalApp[] = ["terminal", "iterm2", "ghostty", "kitty", "warp", "wezterm", "alacritty", "windows-terminal", "powershell", "cmd"];
       if (valid.includes(detected as TerminalApp)) {
         setTerminalAppSignal(detected as TerminalApp);
         localStorage.setItem("cc-session-terminal", detected);
@@ -40,7 +40,13 @@ export { terminalApp };
 
 // Provider toggle: store disabled providers in localStorage
 const [disabledProviders, setDisabledProvidersSignal] = createSignal<Provider[]>(
-  JSON.parse(localStorage.getItem("cc-session-disabled-providers") || "[]") as Provider[],
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem("cc-session-disabled-providers") || "[]") as Provider[];
+    } catch {
+      return [] as Provider[];
+    }
+  })(),
 );
 
 export function toggleProvider(id: Provider) {
@@ -67,7 +73,13 @@ export { timeGrouping };
 
 // Blocked folders: sessions from these project paths are hidden
 const [blockedFolders, setBlockedFoldersSignal] = createSignal<string[]>(
-  JSON.parse(localStorage.getItem("cc-session-blocked-folders") || "[]") as string[],
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem("cc-session-blocked-folders") || "[]") as string[];
+    } catch {
+      return [] as string[];
+    }
+  })(),
 );
 
 export function addBlockedFolder(path: string) {
