@@ -35,6 +35,7 @@ src-tauri/src/
     claude/                # mod.rs, parser.rs, images.rs
     codex/                 # mod.rs, parser.rs, tools.rs
     gemini/                # mod.rs, logs_parser.rs, chat_parser.rs, orphan.rs, images.rs, tools.rs
+    kimi/                  # mod.rs, parser.rs, tools.rs
     cursor/                # mod.rs, parser.rs, tools.rs
     opencode/              # mod.rs, parser.rs
   commands/                # sessions.rs, settings.rs, trash.rs, terminal.rs
@@ -54,10 +55,10 @@ All providers implement `SessionProvider` trait:
 - `load_messages(session_id, source_path)` → `Vec<Message>` (on-demand)
 - `watch_paths()` → directories for file system watcher
 
-File-based (Claude, Codex, Gemini): FS event watching via `notify` crate.
+File-based (Claude, Codex, Gemini, Kimi CLI): FS event watching via `notify` crate.
 SQLite-based (Cursor CLI, OpenCode): 2s polling in frontend when live watch enabled. Opened with `SQLITE_OPEN_READ_WRITE` to read WAL data.
 
-Tool names are mapped to canonical names per provider (e.g. Codex `exec_command` → `Bash`, Cursor CLI `StrReplace` → `Edit`) so the frontend has one consistent display path.
+Tool names are mapped to canonical names per provider (e.g. Codex `exec_command` → `Bash`, Cursor CLI `StrReplace` → `Edit`, Kimi CLI `WriteFile` → `Write`) so the frontend has one consistent display path.
 
 ## Data Sources
 
@@ -66,6 +67,7 @@ Tool names are mapped to canonical names per provider (e.g. Codex `exec_command`
 | Claude Code | `~/.claude/projects/**/*.jsonl`        | JSONL  |
 | Codex       | `~/.codex/sessions/**/*.jsonl`         | JSONL  |
 | Gemini      | `~/.gemini/tmp/*/chats/*.json`         | JSON   |
+| Kimi CLI    | `~/.kimi/sessions/**/*.jsonl`          | JSONL  |
 | Cursor CLI  | `~/.cursor/chats/**/store.db`          | SQLite |
 | OpenCode    | `~/.local/share/opencode/opencode.db`  | SQLite |
 
@@ -115,7 +117,7 @@ Tool names are mapped to canonical names per provider (e.g. Codex `exec_command`
 ### General
 
 - **Provider isolation.** Changes to one provider's parser must not affect others. The boundary is the canonical tool name mapping — each provider maps its tool names to {Bash, Edit, Read, Write, Glob, Grep, Agent, Plan} and the frontend only handles these.
-- **Resume commands vary per provider.** Claude: `claude --resume ID`, Codex: `codex resume ID`, Gemini: `gemini --resume ID`, Cursor CLI: `agent --resume=ID`, OpenCode: `opencode -s ID`.
+- **Resume commands vary per provider.** Claude: `claude --resume ID`, Codex: `codex resume ID`, Gemini: `gemini --resume ID`, Kimi CLI: `kimi --session ID`, Cursor CLI: `agent --resume=ID`, OpenCode: `opencode -s ID`.
 - **FTS content is intentionally truncated** to 2000 bytes via `truncate_to_bytes`. This is for index size, not display. Display content is never truncated.
 - **Timestamps.** Claude/Codex/Gemini have per-message timestamps. Cursor CLI has none (use file metadata). OpenCode uses epoch milliseconds (convert with `ms / 1000`).
 - **Cursor CLI has no token usage data.** store.db blobs only contain `role`, `content`, `id` — no usage/token fields. Token billing is tracked server-side only.
@@ -127,4 +129,4 @@ Tool names are mapped to canonical names per provider (e.g. Codex `exec_command`
 - TypeScript: strict mode, no `any`
 - Commits: conventional commits (`feat:`, `fix:`, `refactor:`)
 - i18n: all user-facing strings via `t()`, never hardcoded
-- CSS: variables in `variables.css`. Provider colors: Claude `#8b5cf6`, Codex `#10b981`, Gemini `#f59e0b`, Cursor CLI `#3b82f6`, OpenCode `#06b6d4`
+- CSS: variables in `variables.css`. Provider colors: Claude `#8b5cf6`, Codex `#10b981`, Gemini `#f59e0b`, Kimi CLI `#6366f1`, Cursor CLI `#3b82f6`, OpenCode `#06b6d4`
