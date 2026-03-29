@@ -60,7 +60,11 @@ export function SessionSearch(props: {
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
-            if (e.shiftKey) { navigateSearchMatch(-1); } else { navigateSearchMatch(1); }
+            if (e.shiftKey) {
+              navigateSearchMatch(-1);
+            } else {
+              navigateSearchMatch(1);
+            }
           }
           if (e.key === "Escape") {
             props.setSearchBarOpen(false);
