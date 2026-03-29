@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-03-30
+
+### Added
+
+- **Linux platform support** — terminal launchers (GNOME Terminal, Konsole, xterm, Alacritty, Kitty, WezTerm) with auto-fallback detection
+- **Linux release builds** — `.deb` and `.AppImage` packages in CI release workflow
+- **Rust parser golden tests** — 21 integration tests for Claude, Codex, and Kimi parsers with fixture files
+- **DB read/write separation** — separate SQLite connections for concurrent reads during reindex
+- **Async heavy commands** — `reindex`, `sync_sources`, `delete_sessions_batch`, `export_sessions_batch` no longer block the main thread (tokio `spawn_blocking`)
+- **HTML export image inlining** — images embedded as base64 data URIs instead of `file://` paths (self-contained, no path leakage)
+- Linux CI checks (ubuntu-latest) alongside macOS and Windows
+- Rust dependency caching (`Swatinem/rust-cache`) in CI
+- ESLint and Prettier checks enforced in CI
+- `isWindows` / `isLinux` platform detection in frontend
+
+### Fixed
+
+- **Kimi incremental sync** — `provider_from_source_path` now detects `/.kimi/sessions/` paths
+- **Windows terminal detection** — frontend valid list includes `windows-terminal`, `powershell`, `cmd`
+- **Windows temp path validation** — `read_image_base64` uses `TEMP`/`TMP` env vars instead of hardcoded Unix paths
+- **Linux terminal UI** — `SettingsPanel` shows correct terminal options per platform
+- **Linux terminal detection** — probes gnome-terminal, konsole, alacritty, kitty, wezterm, xfce4-terminal, xterm via `which`
+- Provider constructors return `Option<Self>` instead of panicking with `.expect()` when HOME is unavailable
+- `release.sh` sed syntax works on both BSD (macOS) and GNU (Linux)
+- `localStorage` JSON.parse wrapped in try/catch to prevent crash on corrupted data
+- `Provider::from_str` renamed to `Provider::parse` to satisfy clippy
+- eslint-disable directives moved to correct lines for innerHTML usage
+- `.prettierrc` with `endOfLine: lf` and `.gitattributes` for consistent line endings across platforms
+
+### Changed
+
+- Project renamed from Sesh to CC Session (full git history rewrite)
+- All Tauri commands using `State<AppState>` now work with `Clone`-able `AppState` and `Indexer`
+
 ## [0.1.2] - 2026-03-29
 
 ### Added
