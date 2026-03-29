@@ -2,12 +2,11 @@ import { createSignal, For } from "solid-js";
 import type { SessionMeta, Provider } from "../lib/types";
 import { useI18n } from "../i18n/index";
 import { ContextMenu, type MenuItemDef } from "./ContextMenu";
+import { isMac } from "../lib/platform";
 
 function providerColor(provider: Provider): string {
   return `var(--${provider})`;
 }
-
-const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
 export function TabBar(props: {
   tabs: SessionMeta[];

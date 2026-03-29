@@ -2,7 +2,8 @@ import { createSignal, Show, For, onCleanup } from "solid-js";
 import type { SessionMeta } from "../lib/types";
 import { query, results, isSearching, search, clearSearch } from "../stores/search";
 import { useI18n } from "../i18n/index";
-import { ProviderIcon } from "./MessageBubble";
+import { ProviderIcon } from "../lib/icons";
+import { isMac } from "../lib/platform";
 
 function sanitizeSnippet(html: string): string {
   // Escape all HTML first, then restore only <mark> and </mark> from FTS5 snippet
@@ -22,7 +23,6 @@ export function SearchPanel(props: { onOpenSession: (session: SessionMeta) => vo
   const [selectedIndex, setSelectedIndex] = createSignal(-1);
   let inputRef: HTMLInputElement | undefined;
 
-  const isMac = navigator.platform.includes("Mac");
   let blurTimer: ReturnType<typeof setTimeout> | undefined;
 
   function handleInput(e: InputEvent) {

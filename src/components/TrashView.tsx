@@ -1,9 +1,10 @@
 import { createSignal, createMemo, createResource, For, Show, onMount } from "solid-js";
 import type { TrashMeta } from "../lib/types";
-import type { TreeNode, Provider } from "../lib/types";
+import type { TreeNode } from "../lib/types";
 import { listTrash, restoreSession, emptyTrash, permanentDeleteTrash } from "../lib/tauri";
-import { getProviderLabel } from "../lib/providers";
-import { ProviderDot } from "./TreeNode";
+import { ProviderDot } from "../lib/icons";
+import { collectSessionIds } from "../lib/tree-utils";
+import { buildTrashTree } from "../lib/tree-builders";
 import { useI18n } from "../i18n/index";
 import { toast, toastError } from "../stores/toast";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -12,62 +13,6 @@ function formatTrashDate(epoch: number): string {
   if (!epoch) return "-";
   const d = new Date(epoch * 1000);
   return d.toLocaleString();
-}
-
-function buildTrashTree(items: TrashMeta[]): TreeNode[] {
-  const providerMap = new Map<string, Map<string, TrashMeta[]>>();
-
-  for (const item of items) {
-    const provider = item.provider || "claude";
-    // Derive project from original_path
-    const parts = item.original_path.split("/");
-    let project = "(Unknown)";
-    if (parts.length >= 2) {
-      project = parts[parts.length - 2];
-    }
-    if (!providerMap.has(provider)) {
-      providerMap.set(provider, new Map());
-    }
-    const projectMap = providerMap.get(provider)!;
-    if (!projectMap.has(project)) {
-      projectMap.set(project, []);
-    }
-    projectMap.get(project)!.push(item);
-  }
-
-
-  const tree: TreeNode[] = [];
-  for (const [provider, projectMap] of providerMap) {
-    const projectNodes: TreeNode[] = [];
-    for (const [project, sessions] of projectMap) {
-      const sessionNodes: TreeNode[] = sessions.map((s) => ({
-        id: s.id,
-        label: s.title || "(untitled)",
-        node_type: "session" as const,
-        children: [],
-        count: 0,
-        provider: provider as Provider,
-      }));
-      projectNodes.push({
-        id: `trash-${provider}-${project}`,
-        label: project,
-        node_type: "project" as const,
-        children: sessionNodes,
-        count: sessionNodes.length,
-        provider: null,
-      });
-    }
-    tree.push({
-      id: `trash-${provider}`,
-      label: getProviderLabel(provider as Provider),
-      node_type: "provider" as const,
-      children: projectNodes,
-      count: items.filter((i) => i.provider === provider).length,
-      provider: provider as Provider,
-    });
-  }
-
-  return tree;
 }
 
 export function TrashView(props: { onRefreshTree: () => void }) {
@@ -137,15 +82,8 @@ export function TrashView(props: { onRefreshTree: () => void }) {
     }
   }
 
-  function collectLeafIds(node: TreeNode): string[] {
-    if (node.node_type === "session") return [node.id];
-    const ids: string[] = [];
-    for (const child of node.children) ids.push(...collectLeafIds(child));
-    return ids;
-  }
-
   async function handleRestoreAll(node: TreeNode) {
-    const ids = collectLeafIds(node);
+    const ids = collectSessionIds(node);
     let failed = 0;
     for (const id of ids) {
       try { await restoreSession(id); } catch { failed++; }
@@ -156,7 +94,7 @@ export function TrashView(props: { onRefreshTree: () => void }) {
   }
 
   async function handleDeleteAll(node: TreeNode) {
-    const ids = collectLeafIds(node);
+    const ids = collectSessionIds(node);
     for (const id of ids) {
       try { await permanentDeleteTrash(id); } catch { /* skip */ }
     }

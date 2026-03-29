@@ -1,7 +1,6 @@
 import { For, Show } from "solid-js";
 import { useI18n } from "../i18n/index";
-
-const isMac = navigator.platform.includes("Mac");
+import { isMac } from "../lib/platform";
 const mod = isMac ? "\u2318" : "Ctrl+";
 const shift = isMac ? "\u21E7" : "Shift+";
 

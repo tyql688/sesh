@@ -10,10 +10,10 @@ import { terminalApp, setTerminalApp, disabledProviders, toggleProvider, timeGro
 import type { TerminalApp } from "../stores/settings";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { isMac } from "../lib/platform";
+import { formatFileSize } from "../lib/formatters";
 
 type SettingsCategory = "general" | "dataSources" | "index" | "keyboard" | "about";
-
-const isMac = navigator.platform.includes("Mac");
 
 export function SettingsPanel() {
   const { t, locale } = useI18n();
@@ -82,7 +82,6 @@ export function SettingsPanel() {
   ];
 
   const validThemes: Theme[] = ["light", "dark", "system"];
-  const isMac = navigator.platform.includes("Mac");
   const validTerminals: TerminalApp[] = isMac
     ? ["terminal", "iterm2", "ghostty", "kitty", "warp", "wezterm", "alacritty"]
     : ["windows-terminal", "powershell", "cmd"];
@@ -111,12 +110,6 @@ export function SettingsPanel() {
     } finally {
       setIsRebuilding(false);
     }
-  }
-
-  function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   return (
@@ -281,7 +274,7 @@ export function SettingsPanel() {
 
             <div class="settings-row">
               <div class="settings-label">{t("settings.dbSize")}</div>
-              <span class="settings-stat">{formatBytes(indexStats()?.db_size_bytes ?? 0)}</span>
+              <span class="settings-stat">{formatFileSize(indexStats()?.db_size_bytes ?? 0)}</span>
             </div>
 
             <div class="settings-row settings-row-spaced">

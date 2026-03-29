@@ -6,7 +6,8 @@ import { useI18n } from "../i18n/index";
 import { isPathBlocked } from "../stores/settings";
 import { TabBar } from "./TabBar";
 import { SessionView } from "./SessionView";
-import { ProviderIcon } from "./MessageBubble";
+import { ProviderIcon } from "../lib/icons";
+import { isMac } from "../lib/platform";
 
 export function EditorArea(props: {
   tabs: SessionMeta[];
@@ -37,7 +38,6 @@ export function EditorArea(props: {
     onCleanup(() => unlisten?.());
   });
 
-  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const modKey = isMac ? "\u2318" : "Ctrl+";
 
   return (
