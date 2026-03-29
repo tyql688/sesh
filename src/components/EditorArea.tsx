@@ -33,7 +33,13 @@ export function EditorArea(props: {
   );
 
   // Refresh recent sessions when tree changes (covers coldStart, syncFromDisk, manual refresh, all providers)
-  createEffect(on(() => props.tree, () => setRecentVersion((v) => v + 1), { defer: true }));
+  createEffect(
+    on(
+      () => props.tree,
+      () => setRecentVersion((v) => v + 1),
+      { defer: true },
+    ),
+  );
 
   onMount(() => {
     let unlisten: UnlistenFn | undefined;

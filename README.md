@@ -2,16 +2,17 @@
   <a href="README.md">English</a> | <a href="README.zh-CN.md">中文</a>
 </p>
 
-<h1 align="center">CC Session</h1>
+<p align="center">
+  <img src="assets/logo-text.svg" alt="CC Session" width="240">
+</p>
 
 <p align="center">
-  Browse, search and resume your AI coding sessions in one desktop app.<br>
-  Claude Code · Codex · Gemini CLI · Kimi CLI · Cursor CLI · OpenCode
+  Browse, search, resume and manage your AI coding sessions in one desktop app.
 </p>
 
 <p align="center">
   <a href="https://github.com/tyql688/cc-session/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/tyql688/cc-session?style=flat-square&color=blue"></a>
-  <a href="https://github.com/tyql688/cc-session/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/tyql688/cc-session/total?style=flat-square&color=green"></a>
+
   <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/tyql688/cc-session?style=flat-square"></a>
 </p>
@@ -24,7 +25,7 @@ AI coding tools like Claude Code, Codex, and Gemini CLI store session data local
 
 ## Features
 
-- **Unified view** — All your AI coding sessions from 6 providers in one place
+- **Unified view** — All your AI coding sessions from multiple providers in one place
 - **Full-text search** — Search across all session content with SQLite FTS5 (`⌘K`)
 - **Resume sessions** — Jump back into any session in Terminal, iTerm2, Ghostty, Kitty, Warp, WezTerm, or Alacritty (`⇧⌘R`)
 - **Live watch** — Auto-refreshes when active sessions update (`⌘L`)
@@ -39,14 +40,14 @@ AI coding tools like Claude Code, Codex, and Gemini CLI store session data local
 
 ## Supported Providers
 
-| Provider    | Data Source                              | Format   | Live Watch |
-|-------------|------------------------------------------|----------|------------|
-| Claude Code | `~/.claude/projects/**/*.jsonl`          | JSONL    | FS events  |
-| Codex CLI   | `~/.codex/sessions/**/*.jsonl`           | JSONL    | FS events  |
-| Gemini CLI  | `~/.gemini/tmp/*/chats/*.json`           | JSON     | FS events  |
-| Kimi CLI    | `~/.kimi/sessions/**/*.jsonl`            | JSONL    | FS events  |
-| Cursor CLI  | `~/.cursor/chats/**/store.db`            | SQLite   | Polling    |
-| OpenCode    | `~/.local/share/opencode/opencode.db`    | SQLite   | Polling    |
+| Provider | Data Source | Format | Live Watch |
+|:---|:---|:---:|:---:|
+| Claude Code | `~/.claude/projects/**/*.jsonl` | JSONL | FS events |
+| Codex CLI | `~/.codex/sessions/**/*.jsonl` | JSONL | FS events |
+| Gemini CLI | `~/.gemini/tmp/*/chats/*.json` | JSON | FS events |
+| Kimi CLI | `~/.kimi/sessions/**/*.jsonl` | JSONL | FS events |
+| Cursor CLI | `~/.cursor/chats/**/store.db` | SQLite | Polling |
+| OpenCode | `~/.local/share/opencode/opencode.db` | SQLite | Polling |
 
 Each provider parses: messages, tool calls (with input/output), thinking/reasoning blocks, token usage, and inline images.
 
@@ -62,7 +63,7 @@ Download the latest `.dmg` from [Releases](https://github.com/tyql688/cc-session
 ## Keyboard Shortcuts
 
 | Key | Action |
-|-----|--------|
+|:---|:---|
 | `⌘K` | Search |
 | `⌘1-9` | Switch tab |
 | `⌘W` / `⇧⌘W` | Close tab / Close all |

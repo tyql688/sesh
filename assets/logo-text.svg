@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+  <defs>
+    <linearGradient id="tg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2d3436"/>
+      <stop offset="100%" stop-color="#636e72"/>
+    </linearGradient>
+    <linearGradient id="ul" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e17055"/>
+      <stop offset="100%" stop-color="#fdcb6e"/>
+    </linearGradient>
+  </defs>
+  <!-- Main text -->
+  <text x="200" y="85" text-anchor="middle"
+        font-family="'Georgia', 'Palatino Linotype', 'Book Antiqua', 'Palatino', serif"
+        font-size="90" font-weight="bold" font-style="italic" letter-spacing="6"
+        fill="url(#tg)">CC Session</text>
+  <!-- Warm accent underline -->
+  <line x1="68" y1="98" x2="332" y2="98" stroke="url(#ul)" stroke-width="3" stroke-linecap="round"/>
+</svg>
