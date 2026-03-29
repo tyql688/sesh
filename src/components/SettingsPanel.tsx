@@ -22,7 +22,7 @@ import {
 import type { TerminalApp } from "../stores/settings";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { isMac } from "../lib/platform";
+import { isMac, isWindows } from "../lib/platform";
 import { formatFileSize } from "../lib/formatters";
 
 type SettingsCategory =
@@ -116,7 +116,9 @@ export function SettingsPanel() {
   const validThemes: Theme[] = ["light", "dark", "system"];
   const validTerminals: TerminalApp[] = isMac
     ? ["terminal", "iterm2", "ghostty", "kitty", "warp", "wezterm", "alacritty"]
-    : ["windows-terminal", "powershell", "cmd"];
+    : isWindows
+      ? ["windows-terminal", "powershell", "cmd"]
+      : ["alacritty", "kitty", "wezterm", "gnome-terminal", "konsole", "xterm"];
 
   function handleThemeChange(value: string) {
     if (validThemes.includes(value as Theme)) setTheme(value as Theme);
@@ -214,11 +216,20 @@ export function SettingsPanel() {
                     <option value="wezterm">WezTerm</option>
                     <option value="alacritty">Alacritty</option>
                   </>
-                ) : (
+                ) : isWindows ? (
                   <>
                     <option value="windows-terminal">Windows Terminal</option>
                     <option value="powershell">PowerShell</option>
                     <option value="cmd">Command Prompt</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="alacritty">Alacritty</option>
+                    <option value="kitty">Kitty</option>
+                    <option value="wezterm">WezTerm</option>
+                    <option value="gnome-terminal">GNOME Terminal</option>
+                    <option value="konsole">Konsole</option>
+                    <option value="xterm">xterm</option>
                   </>
                 )}
               </select>

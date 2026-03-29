@@ -79,7 +79,7 @@ pub fn resume_session(
 
 #[tauri::command]
 pub fn detect_terminal() -> String {
-    // macOS: check $TERM_PROGRAM
+    // Check $TERM_PROGRAM (set by macOS terminals and some Linux terminals)
     if let Ok(term) = std::env::var("TERM_PROGRAM") {
         match term.to_lowercase().as_str() {
             "iterm.app" => return "iterm2".to_string(),
@@ -102,6 +102,40 @@ pub fn detect_terminal() -> String {
         "powershell".to_string()
     }
 
-    #[cfg(not(target_os = "windows"))]
+    // Linux: check common terminal indicators
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("GNOME_TERMINAL_SERVICE").is_ok()
+            || std::env::var("GNOME_TERMINAL_SCREEN").is_ok()
+        {
+            return "gnome-terminal".to_string();
+        }
+        if std::env::var("KONSOLE_VERSION").is_ok() {
+            return "konsole".to_string();
+        }
+        // Fallback: probe common terminals in order
+        let candidates = [
+            "gnome-terminal",
+            "konsole",
+            "alacritty",
+            "kitty",
+            "wezterm",
+            "xfce4-terminal",
+            "xterm",
+        ];
+        for term in &candidates {
+            if std::process::Command::new("which")
+                .arg(term)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return term.to_string();
+            }
+        }
+        "xterm".to_string()
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     "terminal".to_string()
 }
