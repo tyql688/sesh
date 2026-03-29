@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::db::Database;
 use crate::indexer::Indexer;
 
+#[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
     pub indexer: Indexer,

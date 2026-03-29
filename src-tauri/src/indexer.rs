@@ -6,14 +6,18 @@ use crate::db::Database;
 use crate::models::{Provider, TreeNode, TreeNodeType};
 use crate::provider::SessionProvider;
 
+#[derive(Clone)]
 pub struct Indexer {
     db: Arc<Database>,
-    providers: Vec<Box<dyn SessionProvider>>,
+    providers: Arc<Vec<Box<dyn SessionProvider>>>,
 }
 
 impl Indexer {
     pub fn new(db: Arc<Database>, providers: Vec<Box<dyn SessionProvider>>) -> Self {
-        Self { db, providers }
+        Self {
+            db,
+            providers: Arc::new(providers),
+        }
     }
 
     pub fn reindex(&self) -> Result<usize, String> {
@@ -25,7 +29,7 @@ impl Indexer {
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
 
-        for provider in &self.providers {
+        for provider in self.providers.iter() {
             let provider_kind = provider.provider();
             let sessions = provider
                 .scan_all()

@@ -7,25 +7,36 @@ use crate::provider::SessionProvider;
 use super::AppState;
 
 #[tauri::command]
-pub fn reindex(state: State<AppState>) -> Result<usize, String> {
-    state.indexer.reindex()
+pub async fn reindex(state: State<'_, AppState>) -> Result<usize, String> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || state.indexer.reindex())
+        .await
+        .map_err(|e| format!("task join error: {e}"))?
 }
 
 #[tauri::command]
-pub fn sync_sources(paths: Vec<String>, state: State<AppState>) -> Result<usize, String> {
-    let mut unique_paths = std::collections::HashSet::new();
-    let mut synced = 0;
+pub async fn sync_sources(
+    paths: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let mut unique_paths = std::collections::HashSet::new();
+        let mut synced = 0;
 
-    for path in paths {
-        if path.is_empty() || !unique_paths.insert(path.clone()) {
-            continue;
+        for path in paths {
+            if path.is_empty() || !unique_paths.insert(path.clone()) {
+                continue;
+            }
+            if sync_source_from_path(&path, &state)? {
+                synced += 1;
+            }
         }
-        if sync_source_from_path(&path, &state)? {
-            synced += 1;
-        }
-    }
 
-    Ok(synced)
+        Ok(synced)
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -64,24 +75,29 @@ pub fn delete_session(
 }
 
 #[tauri::command]
-pub fn delete_sessions_batch(
+pub async fn delete_sessions_batch(
     items: Vec<(String, String)>,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> Result<u32, String> {
-    let mut deleted: u32 = 0;
-    for (session_id, source_path) in &items {
-        let path = std::path::Path::new(source_path);
-        if path.exists() {
-            std::fs::remove_file(path)
-                .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let mut deleted: u32 = 0;
+        for (session_id, source_path) in &items {
+            let path = std::path::Path::new(source_path);
+            if path.exists() {
+                std::fs::remove_file(path)
+                    .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;
+            }
+            state
+                .db
+                .delete_session(session_id)
+                .map_err(|e| format!("failed to delete session {session_id} from db: {e}"))?;
+            deleted += 1;
         }
-        state
-            .db
-            .delete_session(session_id)
-            .map_err(|e| format!("failed to delete session {session_id} from db: {e}"))?;
-        deleted += 1;
-    }
-    Ok(deleted)
+        Ok(deleted)
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
 }
 
 #[tauri::command]

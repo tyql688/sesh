@@ -88,60 +88,65 @@ pub fn export_session(
 }
 
 #[tauri::command]
-pub fn export_sessions_batch(
+pub async fn export_sessions_batch(
     items: Vec<(String, String, String)>,
     format: String,
     output_path: String,
-    state: State<AppState>,
+    state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    use std::io::{BufWriter, Write};
-    use tauri::Emitter;
-    let file = std::fs::File::create(&output_path)
-        .map_err(|e| format!("failed to create zip file: {e}"))?;
-    let mut zip = zip::ZipWriter::new(BufWriter::new(file));
-    let options = zip::write::SimpleFileOptions::default();
-    let total = items.len();
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        use std::io::{BufWriter, Write};
+        use tauri::Emitter;
+        let file = std::fs::File::create(&output_path)
+            .map_err(|e| format!("failed to create zip file: {e}"))?;
+        let mut zip = zip::ZipWriter::new(BufWriter::new(file));
+        let options = zip::write::SimpleFileOptions::default();
+        let total = items.len();
 
-    for (idx, (session_id, source_path, provider)) in items.iter().enumerate() {
-        let _ = app.emit(
-            "export-progress",
-            serde_json::json!({ "current": idx + 1, "total": total }),
-        );
-        let detail = load_detail(session_id, source_path, provider, &state.db)?;
-        let ext = match format.as_str() {
-            "json" => "json",
-            "markdown" => "md",
-            "html" => "html",
-            _ => "txt",
-        };
-        // Append short session ID suffix to prevent filename collisions
-        let id_suffix = if session_id.len() > 8 {
-            &session_id[..8]
-        } else {
-            session_id.as_str()
-        };
-        let filename = format!(
-            "{}_{}.{}",
-            sanitize_filename(&detail.meta.title),
-            id_suffix,
-            ext
-        );
-        let content = match format.as_str() {
-            "json" => serde_json::to_string_pretty(&detail)
-                .map_err(|e| format!("failed to serialize session: {e}"))?,
-            "markdown" => crate::exporter::markdown::render(&detail),
-            "html" => crate::exporter::html::render(&detail),
-            _ => String::new(),
-        };
-        zip.start_file(&filename, options)
-            .map_err(|e| format!("failed to write zip entry: {e}"))?;
-        zip.write_all(content.as_bytes())
-            .map_err(|e| format!("failed to write zip content: {e}"))?;
-    }
-    zip.finish()
-        .map_err(|e| format!("failed to finish zip: {e}"))?;
-    Ok(())
+        for (idx, (session_id, source_path, provider)) in items.iter().enumerate() {
+            let _ = app.emit(
+                "export-progress",
+                serde_json::json!({ "current": idx + 1, "total": total }),
+            );
+            let detail = load_detail(session_id, source_path, provider, &state.db)?;
+            let ext = match format.as_str() {
+                "json" => "json",
+                "markdown" => "md",
+                "html" => "html",
+                _ => "txt",
+            };
+            // Append short session ID suffix to prevent filename collisions
+            let id_suffix = if session_id.len() > 8 {
+                &session_id[..8]
+            } else {
+                session_id.as_str()
+            };
+            let filename = format!(
+                "{}_{}.{}",
+                sanitize_filename(&detail.meta.title),
+                id_suffix,
+                ext
+            );
+            let content = match format.as_str() {
+                "json" => serde_json::to_string_pretty(&detail)
+                    .map_err(|e| format!("failed to serialize session: {e}"))?,
+                "markdown" => crate::exporter::markdown::render(&detail),
+                "html" => crate::exporter::html::render(&detail),
+                _ => String::new(),
+            };
+            zip.start_file(&filename, options)
+                .map_err(|e| format!("failed to write zip entry: {e}"))?;
+            zip.write_all(content.as_bytes())
+                .map_err(|e| format!("failed to write zip content: {e}"))?;
+        }
+        zip.finish()
+            .map_err(|e| format!("failed to finish zip: {e}"))?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
 }
 
 fn sanitize_filename(name: &str) -> String {
