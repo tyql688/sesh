@@ -383,3 +383,68 @@ pub fn open_in_folder(path: String) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_claude_from_path() {
+        let path = "/home/user/.claude/projects/myapp/abc123.jsonl";
+        assert_eq!(provider_from_source_path(path), Some(Provider::Claude));
+    }
+
+    #[test]
+    fn detect_codex_from_path() {
+        let path = "/home/user/.codex/sessions/abc/session.jsonl";
+        assert_eq!(provider_from_source_path(path), Some(Provider::Codex));
+    }
+
+    #[test]
+    fn detect_gemini_from_path() {
+        let path = "/home/user/.gemini/tmp/abc/chats/chat.json";
+        assert_eq!(provider_from_source_path(path), Some(Provider::Gemini));
+    }
+
+    #[test]
+    fn detect_kimi_from_path() {
+        let path = "/home/user/.kimi/sessions/abc/wire.jsonl";
+        assert_eq!(provider_from_source_path(path), Some(Provider::Kimi));
+    }
+
+    #[test]
+    fn detect_cursor_from_path() {
+        let path = "/home/user/.cursor/chats/workspace/store.db";
+        assert_eq!(provider_from_source_path(path), Some(Provider::Cursor));
+    }
+
+    #[test]
+    fn detect_opencode_from_path() {
+        let path = "/home/user/.local/share/opencode/opencode.db";
+        assert_eq!(provider_from_source_path(path), Some(Provider::OpenCode));
+    }
+
+    #[test]
+    fn detect_cc_mirror_from_path() {
+        let path = "/home/user/.cc-mirror/variant1/config/projects/myapp/session.jsonl";
+        assert_eq!(provider_from_source_path(path), Some(Provider::CcMirror));
+    }
+
+    #[test]
+    fn cc_mirror_wins_over_claude() {
+        let path = "/home/user/.cc-mirror/v1/config/projects/app/s.jsonl";
+        assert_eq!(provider_from_source_path(path), Some(Provider::CcMirror));
+    }
+
+    #[test]
+    fn unknown_path_returns_none() {
+        let path = "/home/user/random/file.txt";
+        assert_eq!(provider_from_source_path(path), None);
+    }
+
+    #[test]
+    fn windows_backslash_paths() {
+        let path = "C:\\Users\\user\\.claude\\projects\\myapp\\abc.jsonl";
+        assert_eq!(provider_from_source_path(path), Some(Provider::Claude));
+    }
+}
