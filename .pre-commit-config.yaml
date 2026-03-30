@@ -1,15 +1,3 @@
-ci:
-  autofix_commit_msg: "style: auto-fix by pre-commit.ci"
-  autofix_prs: true
-  autoupdate_branch: master
-  autoupdate_schedule: monthly
-  autoupdate_commit_msg: "chore: auto-update pre-commit hooks"
-  skip:
-    - eslint
-    - tsc
-    - cargo-fmt
-    - cargo-clippy
-
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -19,14 +7,14 @@ repos:
       - id: trailing-whitespace
         exclude: ^src-tauri/gen/
 
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
-    hooks:
-      - id: prettier
-        types_or: [ts, tsx, css]
-
   - repo: local
     hooks:
+      - id: prettier
+        name: prettier
+        entry: npx prettier --write --ignore-unknown
+        language: system
+        types_or: [ts, tsx, css]
+
       - id: eslint
         name: eslint
         entry: npx eslint

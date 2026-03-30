@@ -29,6 +29,15 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint src/
+
+      - name: Format check
+        run: npx prettier --check "src/**/*.{ts,tsx,css}"
+
       - name: Frontend tests
         run: npm test
 
