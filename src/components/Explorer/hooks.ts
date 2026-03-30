@@ -7,10 +7,7 @@ export function filterBlockedFolders(tree: TreeNode[]): TreeNode[] {
     .map((provider) => ({
       ...provider,
       children: provider.children.filter((project) => {
-        // project id format: "provider:/path/to/project"
-        const path = project.id.includes(":")
-          ? project.id.slice(project.id.indexOf(":") + 1)
-          : "";
+        const path = project.project_path ?? "";
         return !path || !isPathBlocked(path);
       }),
     }))

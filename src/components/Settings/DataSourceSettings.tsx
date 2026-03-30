@@ -3,6 +3,7 @@ import { useI18n } from "../../i18n/index";
 import type { ProviderInfo } from "../../lib/types";
 import { getProviderPaths } from "../../lib/tauri";
 import { disabledProviders, toggleProvider } from "../../stores/settings";
+import { toastError } from "../../stores/toast";
 
 export function createProviderPathsResource() {
   return createResource<ProviderInfo[]>(async () => {
@@ -40,7 +41,7 @@ export function DataSourceSettings(props: {
                             await import("@tauri-apps/plugin-shell");
                           await open(info.path);
                         } catch (e) {
-                          console.warn("failed to open folder:", info.path, e);
+                          toastError(String(e));
                         }
                       }}
                     >

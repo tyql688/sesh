@@ -51,10 +51,10 @@ sedi "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 sedi "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
 
 # Update Cargo.lock
-(cd src-tauri && cargo check --quiet 2>/dev/null || true)
+(cd src-tauri && cargo check --quiet) || { echo "ERROR: cargo check failed"; exit 1; }
 
 # Update package-lock.json
-npm install --package-lock-only --ignore-scripts --silent 2>/dev/null || true
+npm install --package-lock-only --ignore-scripts --silent || { echo "ERROR: npm install failed"; exit 1; }
 
 echo "Committing..."
 git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json

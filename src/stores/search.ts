@@ -1,12 +1,14 @@
 import { createSignal } from "solid-js";
 import { searchSessions } from "../lib/tauri";
 import type { SearchResult, SearchFilters } from "../lib/types";
+import { toastError } from "./toast";
 
 const [query, setQuery] = createSignal("");
 const [results, setResults] = createSignal<SearchResult[]>([]);
 const [isSearching, setIsSearching] = createSignal(false);
 
 let debounceTimer: ReturnType<typeof setTimeout>;
+let searchVersion = 0;
 
 function parseSearchQuery(raw: string): SearchFilters {
   let remaining = raw;
@@ -60,16 +62,21 @@ function search(q: string) {
     return;
   }
   setIsSearching(true);
+  const version = ++searchVersion;
   debounceTimer = setTimeout(async () => {
     try {
       const filters = parseSearchQuery(q);
       const r = await searchSessions(filters);
+      if (version !== searchVersion) return; // stale response, discard
       setResults(r);
     } catch (e) {
-      console.warn("search failed:", e);
+      if (version !== searchVersion) return;
+      toastError(String(e));
       setResults([]);
     } finally {
-      setIsSearching(false);
+      if (version === searchVersion) {
+        setIsSearching(false);
+      }
     }
   }, 150);
 }

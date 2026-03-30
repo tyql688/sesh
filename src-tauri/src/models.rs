@@ -159,6 +159,8 @@ pub struct TreeNode {
     pub updated_at: Option<i64>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub is_sidechain: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

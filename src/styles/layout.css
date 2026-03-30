@@ -37,6 +37,7 @@ body {
   border-bottom: 0.5px solid var(--border);
   position: relative;
   flex-shrink: 0;
+  -webkit-app-region: drag;
 }
 
 .titlebar-center {
@@ -407,6 +408,44 @@ body {
   margin-left: auto;
   display: flex;
   align-items: center;
+}
+
+/* Windows custom window controls */
+.win-controls {
+  display: flex;
+  height: 100%;
+  margin-left: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.win-ctrl-btn {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.win-ctrl-btn svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
+.win-ctrl-btn:hover {
+  background: var(--bg-tab-hover);
+  color: var(--fg);
+}
+
+.win-ctrl-btn.close:hover {
+  background: #e81123;
+  color: white;
 }
 
 /* Settings Panel */

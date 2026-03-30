@@ -89,6 +89,12 @@ pub fn run() {
             commands::open_in_folder,
         ])
         .setup(|app| {
+            // On Windows, hide native decorations so the custom titlebar is the only one.
+            #[cfg(target_os = "windows")]
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_decorations(false);
+            }
+
             // Provider instances are lightweight (just PathBuf); create a separate
             // set for the watcher since Indexer consumed the first set.
             let watcher_providers = provider::all_providers();

@@ -394,7 +394,7 @@
 /* Search Panel */
 .search-panel {
   position: relative;
-  /* excluded from titlebar drag via .closest() check in App.tsx */
+  -webkit-app-region: no-drag;
 }
 
 .search-input-wrapper {

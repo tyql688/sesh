@@ -165,10 +165,7 @@ export function buildNodeMenuItems(ctx: NodeMenuContext): MenuItemDef[] {
       },
     ];
   }
-  // project — extract path from node.id format "provider:/path/to/project"
-  const projectPath = node.id.includes(":")
-    ? node.id.slice(node.id.indexOf(":") + 1)
-    : "";
+  const projectPath = node.project_path ?? "";
   const hasPath = projectPath.length > 0;
   return [
     ...(hasPath

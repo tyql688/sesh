@@ -21,9 +21,10 @@ import { BlockedView } from "../components/BlockedView";
 import { KeyboardOverlay } from "../components/KeyboardOverlay";
 import { ToastContainer } from "../components/ToastContainer";
 import { trashSession } from "../lib/tauri";
-import { isMac } from "../lib/platform";
+import { isMac, isWindows } from "../lib/platform";
 import { disabledProviders } from "../stores/settings";
-import type { TreeNode, SessionMeta } from "../lib/types";
+import { toastError } from "../stores/toast";
+import type { TreeNode, SessionMeta, Provider } from "../lib/types";
 import { useI18n } from "../i18n";
 import { createKeyboardHandler } from "./KeyboardShortcuts";
 import { createSyncManager } from "./SyncManager";
@@ -155,10 +156,7 @@ export default function App() {
   });
 
   const filteredTree = createMemo(() =>
-    tree().filter(
-      (node) =>
-        !disabledProviders().includes(node.id as "claude" | "codex" | "gemini"),
-    ),
+    tree().filter((node) => !disabledProviders().includes(node.id as Provider)),
   );
   const showExplorer = createMemo(() => {
     const v = activeView();
@@ -235,6 +233,57 @@ export default function App() {
           <div class="titlebar-right">
             <SearchPanel onOpenSession={openSession} />
           </div>
+          <Show when={isWindows}>
+            <div class="win-controls">
+              <button
+                class="win-ctrl-btn"
+                onClick={() => getCurrentWindow().minimize()}
+              >
+                <svg viewBox="0 0 10 1">
+                  <rect width="10" height="1" />
+                </svg>
+              </button>
+              <button
+                class="win-ctrl-btn"
+                onClick={() => getCurrentWindow().toggleMaximize()}
+              >
+                <svg viewBox="0 0 10 10">
+                  <rect
+                    x="0.5"
+                    y="0.5"
+                    width="9"
+                    height="9"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1"
+                  />
+                </svg>
+              </button>
+              <button
+                class="win-ctrl-btn close"
+                onClick={() => getCurrentWindow().close()}
+              >
+                <svg viewBox="0 0 10 10">
+                  <line
+                    x1="0"
+                    y1="0"
+                    x2="10"
+                    y2="10"
+                    stroke="currentColor"
+                    stroke-width="1.2"
+                  />
+                  <line
+                    x1="10"
+                    y1="0"
+                    x2="0"
+                    y2="10"
+                    stroke="currentColor"
+                    stroke-width="1.2"
+                  />
+                </svg>
+              </button>
+            </div>
+          </Show>
         </div>
         <div class="main-layout">
           <ActivityBar activeView={activeView()} onViewChange={setActiveView} />
@@ -251,7 +300,7 @@ export default function App() {
                   closeTab(id);
                   await sync.refreshTree();
                 } catch (e) {
-                  console.warn("Failed to trash session:", e);
+                  toastError(String(e));
                 }
               }}
             />

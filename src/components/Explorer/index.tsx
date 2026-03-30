@@ -250,12 +250,7 @@ export function Explorer(props: {
             node.node_type === "project" && !providerHint
               ? ""
               : node.node_type === "project" && providerHint && !projectHint
-                ? (() => {
-                    const prefix = nextDisplayKey + ":";
-                    return node.id.startsWith(prefix)
-                      ? node.id.slice(prefix.length)
-                      : "";
-                  })()
+                ? (node.project_path ?? "")
                 : projectHint;
           const result = search(
             node.children,

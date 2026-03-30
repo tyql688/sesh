@@ -56,6 +56,7 @@ export interface TreeNode {
   provider: Provider | null;
   updated_at?: number;
   is_sidechain?: boolean;
+  project_path?: string;
 }
 
 export interface SearchResult {

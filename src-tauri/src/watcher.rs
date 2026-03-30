@@ -43,6 +43,6 @@ pub fn start_watcher(
             .map_err(|e| format!("failed to watch {}: {}", path.display(), e))?;
     }
 
-    println!("Watching {} directories for changes", watch_paths.len());
+    log::info!("Watching {} directories for changes", watch_paths.len());
     Ok(watcher)
 }

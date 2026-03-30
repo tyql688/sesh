@@ -47,7 +47,7 @@ impl Indexer {
             .map_err(|e| format!("failed to store last_index_time: {e}"))?;
 
         let elapsed = start.elapsed();
-        println!(
+        log::info!(
             "Reindex complete: {} sessions indexed in {:.2}s",
             total,
             elapsed.as_secs_f64(),
@@ -139,6 +139,7 @@ impl Indexer {
                         provider: Some(provider_enum.clone()),
                         updated_at: Some(s.updated_at),
                         is_sidechain: s.is_sidechain,
+                        project_path: None,
                     })
                     .collect();
 
@@ -154,6 +155,7 @@ impl Indexer {
                     provider: Some(provider_enum.clone()),
                     updated_at: None,
                     is_sidechain: false,
+                    project_path: Some(project_path.to_string()),
                 });
             }
 
@@ -166,6 +168,7 @@ impl Indexer {
                 provider: Some(provider_enum),
                 updated_at: None,
                 is_sidechain: false,
+                project_path: None,
             });
         }
 

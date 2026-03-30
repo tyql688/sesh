@@ -58,7 +58,7 @@ pub fn render(detail: &SessionDetail) -> String {
 }
 
 pub fn export_markdown(detail: &SessionDetail, output_path: &Path) -> Result<(), String> {
-    let out = render(detail);
+    let out = super::redact_home_path(&render(detail));
     fs::write(output_path, out).map_err(|e| format!("failed to write file: {e}"))?;
     Ok(())
 }

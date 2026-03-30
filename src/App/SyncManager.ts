@@ -1,5 +1,6 @@
 import type { TreeNode } from "../lib/types";
 import { reindex, syncSources, getTree, getSessionCount } from "../lib/tauri";
+import { toastError } from "../stores/toast";
 
 export interface SyncCallbacks {
   setTree: (tree: TreeNode[]) => void;
@@ -51,7 +52,7 @@ export function createSyncManager(callbacks: SyncCallbacks) {
       }
       await refreshTree();
     } catch (e) {
-      console.warn("Failed to synchronize sessions:", e);
+      toastError(String(e));
     } finally {
       syncInFlight = false;
       if (showSpinner) {
@@ -84,7 +85,7 @@ export function createSyncManager(callbacks: SyncCallbacks) {
       await reindex();
       await refreshTree();
     } catch (e) {
-      console.warn("Background reindex failed:", e);
+      toastError(String(e));
     }
   }
 
