@@ -30,22 +30,21 @@ fn is_allowed_image_path(path: &str) -> bool {
     let Ok(canonical) = std::fs::canonicalize(path) else {
         return false;
     };
-    let s = canonical.to_string_lossy();
-    let home_ok = dirs::home_dir().is_some_and(|h| s.starts_with(&*h.to_string_lossy()));
+    let home_ok = dirs::home_dir().is_some_and(|h| canonical.starts_with(&h));
     let tmp_ok = {
         #[cfg(not(target_os = "windows"))]
         {
-            s.starts_with("/tmp/")
-                || s.starts_with("/private/tmp/")
-                || s.starts_with("/var/folders/")
+            canonical.starts_with("/tmp")
+                || canonical.starts_with("/private/tmp")
+                || canonical.starts_with("/var/folders")
         }
         #[cfg(target_os = "windows")]
         {
             std::env::var("TEMP")
-                .map(|t| s.starts_with(&t))
+                .map(|t| canonical.starts_with(&t))
                 .unwrap_or(false)
                 || std::env::var("TMP")
-                    .map(|t| s.starts_with(&t))
+                    .map(|t| canonical.starts_with(&t))
                     .unwrap_or(false)
         }
     };

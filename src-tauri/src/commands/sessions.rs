@@ -369,8 +369,7 @@ pub fn open_in_folder(path: String) -> Result<(), String> {
     let canonical = p
         .canonicalize()
         .map_err(|e| format!("failed to resolve path '{path}': {e}"))?;
-    let s = canonical.to_string_lossy();
-    let home_ok = dirs::home_dir().is_some_and(|h| s.starts_with(&*h.to_string_lossy()));
+    let home_ok = dirs::home_dir().is_some_and(|h| canonical.starts_with(&h));
     if !home_ok {
         return Err(format!("path not allowed: {path}"));
     }
