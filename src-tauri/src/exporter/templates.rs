@@ -36,9 +36,9 @@ body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helveti
 .msg-user {{ flex-direction: row-reverse; }}
 .msg-tool {{ padding-left: 44px; }}
 .msg-system {{ justify-content: center; }}
-.avatar {{ width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8em; font-weight: 700; color: #fff; flex-shrink: 0; margin-top: 4px; }}
-.avatar-user {{ background: linear-gradient(135deg, #007aff, #5856d6); }}
-.avatar-assistant {{ background: linear-gradient(135deg, {provider_clr}, {provider_clr}cc); }}
+.avatar {{ width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 4px; }}
+.avatar-user {{ color: #007aff; }}
+.avatar-assistant {{ color: {provider_clr}; }}
 .bubble {{ max-width: 85%; padding: 12px 16px; border-radius: 16px; word-wrap: break-word; overflow-wrap: break-word; }}
 .bubble-user {{ background: #007aff; color: #fff; border-bottom-right-radius: 4px; }}
 .bubble-user .ts, .bubble-user .role-label {{ color: rgba(255,255,255,0.7); }}
