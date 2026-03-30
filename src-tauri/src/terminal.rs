@@ -301,47 +301,68 @@ fn escape_osascript(value: &str) -> String {
 }
 
 // --- Windows terminal launchers ---
+// Approach inspired by cc-switch: use `cmd /C start` with CREATE_NO_WINDOW to
+// launch terminals cleanly, and generate platform-correct command syntax for
+// each shell (PowerShell vs CMD).
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[cfg(target_os = "windows")]
 fn launch_windows_terminal(command: &str, cwd: Option<&str>) -> Result<(), String> {
-    let mut cmd = Command::new("wt");
-    cmd.args(["new-tab", "--profile", "Windows PowerShell", "--"]);
-    cmd.arg("powershell");
-    cmd.args(["-NoExit", "-Command"]);
-    let full = build_windows_command(command, cwd);
-    cmd.arg(&full);
-    cmd.spawn()
-        .map_err(|e| format!("failed to launch Windows Terminal: {e}"))?;
-    Ok(())
+    // Windows Terminal: `wt cmd /K <bat_command>`
+    // Uses cmd as inner shell so it works regardless of WT default profile.
+    let bat_cmd = build_cmd_command(command, cwd);
+    run_windows_start(&["wt", "cmd", "/K", &bat_cmd], "Windows Terminal")
 }
 
 #[cfg(target_os = "windows")]
 fn launch_windows_powershell(command: &str, cwd: Option<&str>) -> Result<(), String> {
-    let mut cmd = Command::new("powershell");
-    cmd.args(["-NoExit", "-Command"]);
-    let full = build_windows_command(command, cwd);
-    cmd.arg(&full);
-    cmd.spawn()
-        .map_err(|e| format!("failed to launch PowerShell: {e}"))?;
-    Ok(())
+    let ps_cmd = build_powershell_command(command, cwd);
+    run_windows_start(
+        &["powershell", "-NoExit", "-Command", &ps_cmd],
+        "PowerShell",
+    )
 }
 
 #[cfg(target_os = "windows")]
 fn launch_windows_cmd(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    let bat_cmd = build_cmd_command(command, cwd);
+    run_windows_start(&["cmd", "/K", &bat_cmd], "Command Prompt")
+}
+
+/// Launch a Windows terminal via `cmd /C start` with CREATE_NO_WINDOW to avoid
+/// a flash of a console window from the parent process.
+#[cfg(target_os = "windows")]
+fn run_windows_start(args: &[&str], terminal_name: &str) -> Result<(), String> {
     let mut cmd = Command::new("cmd");
-    cmd.args(["/k"]);
-    let full = build_windows_command(command, cwd);
-    cmd.arg(&full);
+    cmd.arg("/C").arg("start").arg("").args(args);
+    cmd.creation_flags(CREATE_NO_WINDOW);
     cmd.spawn()
-        .map_err(|e| format!("failed to launch cmd: {e}"))?;
+        .map_err(|e| format!("failed to launch {terminal_name}: {e}"))?;
     Ok(())
 }
 
+/// Build a command string for PowerShell: `cd 'dir'; command`
 #[cfg(target_os = "windows")]
-fn build_windows_command(command: &str, cwd: Option<&str>) -> String {
+fn build_powershell_command(command: &str, cwd: Option<&str>) -> String {
     match cwd {
         Some(dir) if !dir.is_empty() => {
             format!("cd '{}'; {}", dir.replace('\'', "''"), command)
+        }
+        _ => command.to_string(),
+    }
+}
+
+/// Build a command string for CMD: `cd /d "dir" && command`
+#[cfg(target_os = "windows")]
+fn build_cmd_command(command: &str, cwd: Option<&str>) -> String {
+    match cwd {
+        Some(dir) if !dir.is_empty() => {
+            format!("cd /d \"{}\" && {}", dir.replace('"', "\"\""), command)
         }
         _ => command.to_string(),
     }
