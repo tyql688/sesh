@@ -6,9 +6,7 @@ import {
   exportSessionsBatch,
   toggleFavorite,
   renameSession,
-  openInFolder,
 } from "../../lib/tauri";
-import { getProviderConfig } from "../../lib/providers";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../../i18n/index";
 import {
@@ -16,7 +14,7 @@ import {
   timeGrouping,
   addBlockedFolder,
 } from "../../stores/settings";
-import { ContextMenu, type MenuItemDef } from "../ContextMenu";
+import { ContextMenu } from "../ContextMenu";
 import { InputDialog } from "../InputDialog";
 import { TreeNodeComponent, collectSessionNodes } from "../TreeNode";
 import {
@@ -27,12 +25,16 @@ import {
 } from "../../stores/selection";
 import { toast, toastError } from "../../stores/toast";
 import { errorMessage } from "../../lib/errors";
-import { bumpFavoriteVersion } from "../../stores/favorites";
 import {
   filterBlockedFolders,
   applyTimeGrouping,
   buildSessionMeta,
 } from "./hooks";
+import {
+  buildSessionMenuItems,
+  buildSelectionMenuItems,
+  buildNodeMenuItems,
+} from "./ContextMenus";
 
 function ExplorerSkeleton() {
   return (
@@ -316,192 +318,51 @@ export function Explorer(props: {
 
   // --- Menu item builders ---
 
-  function sessionMenuItems(): MenuItemDef[] {
+  function sessionMenuItems() {
     const m = sessionMenu();
     if (!m) return [];
-    const { node } = m;
-    const sessionInfo = findSessionInTree(node.id);
-    const sessionProjectPath = sessionInfo?.projectPath ?? "";
-    const items: MenuItemDef[] = [
-      {
-        label: t("contextMenu.copySessionId"),
-        onClick: () => {
-          void navigator.clipboard
-            .writeText(node.id)
-            .then(() => toast(t("toast.idCopied")));
-        },
-      },
-      {
-        label: t("contextMenu.copyResumeCommand"),
-        onClick: () => {
-          const provider = node.provider ?? "claude";
-          let cmd: string;
-          if (provider === "cc-mirror" && sessionInfo?.providerLabel) {
-            cmd = `${sessionInfo.providerLabel} --resume ${node.id}`;
-          } else {
-            const config = getProviderConfig(provider);
-            cmd = config.resumeCommand(node.id);
-          }
-          void navigator.clipboard
-            .writeText(cmd)
-            .then(() => toast(t("toast.cmdCopied")));
-        },
-      },
-      ...(sessionProjectPath
-        ? [
-            {
-              label: t("contextMenu.openInFinder"),
-              onClick: () => {
-                openInFolder(sessionProjectPath).catch(() => {});
-              },
-            },
-            {
-              label: t("contextMenu.copyPath"),
-              onClick: () => {
-                void navigator.clipboard
-                  .writeText(sessionProjectPath)
-                  .then(() => toast(t("toast.copied")));
-              },
-            },
-          ]
-        : []),
-      { label: "", separator: true, onClick: () => {} },
-      {
-        label: t("contextMenu.resumeSession"),
-        onClick: async () => {
-          const provider = node.provider ?? "claude";
-          await resumeSession(node.id, provider, terminalApp());
-        },
-      },
-      { label: "", separator: true, onClick: () => {} },
-      {
-        label: t("contextMenu.toggleFavorite"),
-        onClick: async () => {
-          try {
-            const newState = await toggleFavorite(node.id);
-            bumpFavoriteVersion();
-            toast(
-              t(newState ? "toast.favoriteAdded" : "toast.favoriteRemoved"),
-            );
-          } catch (_e) {
-            toastError(t("toast.favoriteFailed"));
-          }
-        },
-      },
-      {
-        label: t("contextMenu.rename"),
-        onClick: () => {
-          setRenameTarget({ id: node.id, label: node.label });
-        },
-      },
-      { label: "", separator: true, onClick: () => {} },
-    ];
-    if (props.onExportSession) {
-      items.push({
-        label: t("contextMenu.export"),
-        onClick: () => props.onExportSession?.(node.id),
-      });
-    }
-    if (props.onDeleteSession) {
-      items.push({
-        label: t("contextMenu.delete"),
-        onClick: () => props.onDeleteSession?.(node.id),
-      });
-    }
-    return items;
+    const sessionInfo = findSessionInTree(m.node.id);
+    return buildSessionMenuItems({
+      node: m.node,
+      sessionProjectPath: sessionInfo?.projectPath ?? "",
+      providerLabel: sessionInfo?.providerLabel,
+      t,
+      terminalApp: terminalApp(),
+      resumeSession,
+      toggleFavorite,
+      setRenameTarget,
+      onExportSession: props.onExportSession,
+      onDeleteSession: props.onDeleteSession,
+    });
   }
 
-  function selectionMenuItems(): MenuItemDef[] {
-    const items: MenuItemDef[] = [
-      {
-        label: () => `${t("contextMenu.deleteSelected")} (${selectionCount()})`,
-        onClick: trashSelected,
-      },
-      {
-        label: () => `${t("contextMenu.exportSelected")} (${selectionCount()})`,
-        onClick: exportSelectedBatch,
-      },
-    ];
-    return items;
+  function selectionMenuItems() {
+    return buildSelectionMenuItems({
+      t,
+      trashSelected,
+      exportSelectedBatch,
+    });
   }
 
-  function nodeMenuItems(): MenuItemDef[] {
+  function nodeMenuItems() {
     const m = nodeMenu();
     if (!m) return [];
-    const { node } = m;
-    if (node.node_type === "provider") {
-      return [
-        {
-          label: t("contextMenu.collapseAll"),
-          onClick: () => collapseAllChildren(node),
-        },
-        {
-          label: t("contextMenu.refresh"),
-          onClick: () => props.onRefreshTree?.(),
-        },
-        { label: "", separator: true, onClick: () => {} },
-        {
-          label: t("contextMenu.deleteAll"),
-          onClick: () => trashAllUnderNode(node),
-        },
-      ];
-    }
-    // project — extract path from node.id format "provider:/path/to/project"
-    const projectPath = node.id.includes(":")
-      ? node.id.slice(node.id.indexOf(":") + 1)
-      : "";
-    const hasPath = projectPath.length > 0;
-    return [
-      ...(hasPath
-        ? [
-            {
-              label: t("contextMenu.openInFinder"),
-              onClick: () => {
-                openInFolder(projectPath).catch(() => {});
-              },
-            },
-            {
-              label: t("contextMenu.copyPath"),
-              onClick: () => {
-                void navigator.clipboard
-                  .writeText(projectPath)
-                  .then(() => toast(t("toast.copied")));
-              },
-            },
-            { label: "", separator: true, onClick: () => {} },
-          ]
-        : []),
-      {
-        label: t("contextMenu.expandAll"),
-        onClick: () => expandAllChildren(node),
+    return buildNodeMenuItems({
+      node: m.node,
+      t,
+      collapseAllChildren,
+      expandAllChildren,
+      collapseNode: (nodeId: string) => {
+        setExpandedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(nodeId);
+          return next;
+        });
       },
-      {
-        label: t("contextMenu.collapseAll"),
-        onClick: () => {
-          setExpandedIds((prev) => {
-            const next = new Set(prev);
-            next.delete(node.id);
-            return next;
-          });
-        },
-      },
-      ...(hasPath
-        ? [
-            {
-              label: t("contextMenu.blockFolder"),
-              onClick: () => {
-                addBlockedFolder(projectPath);
-                props.onRefreshTree?.();
-              },
-            },
-          ]
-        : []),
-      { label: "", separator: true, onClick: () => {} },
-      {
-        label: t("contextMenu.deleteAll"),
-        onClick: () => trashAllUnderNode(node),
-      },
-    ];
+      trashAllUnderNode,
+      onRefreshTree: props.onRefreshTree,
+      addBlockedFolder,
+    });
   }
 
   function collapseAllChildren(node: TreeNode) {

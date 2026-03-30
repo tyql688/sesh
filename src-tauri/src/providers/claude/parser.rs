@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -17,24 +18,33 @@ use super::images::{
 };
 use crate::models::Provider;
 
+/// Shared mutable state threaded through the per-message-type handlers.
+struct ParseState {
+    messages: Vec<Message>,
+    content_parts: Vec<String>,
+    first_user_message: Option<String>,
+    pending_user_message: Option<(String, Option<String>)>,
+    tool_use_id_map: HashMap<String, usize>,
+}
+
 pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let file = File::open(path).ok()?;
     let metadata = fs::metadata(path).ok()?;
     let file_size = metadata.len();
 
     let reader = BufReader::new(file);
-    let mut messages = Vec::new();
-    let mut first_user_message: Option<String> = None;
+    let mut state = ParseState {
+        messages: Vec::new(),
+        content_parts: Vec::new(),
+        first_user_message: None,
+        pending_user_message: None,
+        tool_use_id_map: HashMap::new(),
+    };
     let mut summary_text: Option<String> = None;
     let mut first_timestamp: Option<String> = None;
     let mut last_timestamp: Option<String> = None;
-    let mut content_parts: Vec<String> = Vec::new();
     let mut cwd: Option<String> = None;
-    let mut pending_user_message: Option<(String, Option<String>)> = None;
     let mut is_sidechain = false;
-    // Map tool_use_id -> index in messages vec, for merging tool_result back
-    let mut tool_use_id_map: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
 
     for line in reader.lines() {
         let line = match line {
@@ -96,259 +106,26 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
 
         match line_type.as_str() {
             "user" => {
-                let msg = match entry.get("message") {
-                    Some(m) => m,
-                    None => continue,
-                };
-
-                // Check if this "user" entry is actually a tool_result
-                // (the Anthropic API sends tool results as user-role turns)
-                if is_tool_result_message(msg) {
-                    flush_pending_user_message(
-                        &mut pending_user_message,
-                        &mut messages,
-                        &mut content_parts,
-                        &mut first_user_message,
-                    );
-                    // Merge each tool_result into its matching tool_use message
-                    if let Some(Value::Array(arr)) = msg.get("content") {
-                        for result_item in arr {
-                            if result_item.get("type").and_then(|t| t.as_str())
-                                != Some("tool_result")
-                            {
-                                continue;
-                            }
-                            let result_text = extract_tool_result_content(result_item);
-                            if result_text.trim().is_empty() {
-                                continue;
-                            }
-                            content_parts.push(result_text.clone());
-                            let use_id = result_item.get("tool_use_id").and_then(|i| i.as_str());
-                            if let Some(idx) = use_id.and_then(|id| tool_use_id_map.get(id)) {
-                                // Merge result into the existing tool_use message
-                                messages[*idx].content = result_text;
-                            } else {
-                                // No matching tool_use found -- emit as standalone
-                                messages.push(Message {
-                                    role: MessageRole::Tool,
-                                    content: result_text,
-                                    timestamp: timestamp.clone(),
-                                    tool_name: use_id.map(std::string::ToString::to_string),
-                                    tool_input: None,
-                                    token_usage: None,
-                                });
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                let text = extract_message_content(msg);
-                if text.trim().is_empty() {
-                    continue;
-                }
-                let is_meta = entry
-                    .get("isMeta")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-
-                if let Some((pending_text, pending_timestamp)) = pending_user_message.take() {
-                    if is_meta
-                        && contains_image_placeholder_without_source(&pending_text)
-                        && contains_image_source(&text)
-                    {
-                        append_user_message(
-                            &mut messages,
-                            &mut content_parts,
-                            &mut first_user_message,
-                            merge_image_placeholders_with_sources(&pending_text, &text),
-                            pending_timestamp,
-                        );
-                        continue;
-                    }
-
-                    append_user_message(
-                        &mut messages,
-                        &mut content_parts,
-                        &mut first_user_message,
-                        pending_text,
-                        pending_timestamp,
-                    );
-                }
-
-                if contains_image_placeholder_without_source(&text) {
-                    pending_user_message = Some((text, timestamp));
-                    continue;
-                }
-
-                if !is_meta || contains_image_source(&text) {
-                    append_user_message(
-                        &mut messages,
-                        &mut content_parts,
-                        &mut first_user_message,
-                        text,
-                        timestamp,
-                    );
-                }
+                handle_user_message(&entry, &mut state, timestamp);
             }
             "assistant" => {
-                flush_pending_user_message(
-                    &mut pending_user_message,
-                    &mut messages,
-                    &mut content_parts,
-                    &mut first_user_message,
-                );
-                let msg = match entry.get("message") {
-                    Some(m) => m,
-                    None => continue,
-                };
-
-                // Extract token usage for this assistant turn
-                let turn_usage = extract_token_usage(msg);
-                let turn_start = messages.len();
-
-                // Split assistant messages: text parts as assistant, tool_use as tool
-                if let Some(Value::Array(arr)) = msg.get("content") {
-                    let mut text_parts = Vec::new();
-                    for item in arr {
-                        let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                        match item_type {
-                            "thinking" => {
-                                if let Some(t) = item.get("thinking").and_then(|t| t.as_str()) {
-                                    if !t.trim().is_empty() {
-                                        // Emit thinking as a separate assistant message with marker
-                                        messages.push(Message {
-                                            role: MessageRole::System,
-                                            content: format!("[thinking]\n{t}"),
-                                            timestamp: timestamp.clone(),
-                                            tool_name: None,
-                                            tool_input: None,
-                                            token_usage: None,
-                                        });
-                                    }
-                                }
-                            }
-                            "text" => {
-                                if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
-                                    if !t.trim().is_empty() {
-                                        text_parts.push(t.to_string());
-                                    }
-                                }
-                            }
-                            "tool_use" => {
-                                // Flush accumulated text as assistant message
-                                if !text_parts.is_empty() {
-                                    let text = text_parts.join("\n");
-                                    content_parts.push(text.clone());
-                                    messages.push(Message {
-                                        role: MessageRole::Assistant,
-                                        content: text,
-                                        timestamp: timestamp.clone(),
-                                        tool_name: None,
-                                        tool_input: None,
-                                        token_usage: None,
-                                    });
-                                    text_parts.clear();
-                                }
-                                // Emit tool_use as a Tool message
-                                let name =
-                                    item.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
-                                let input = item.get("input").map(std::string::ToString::to_string);
-                                let msg_idx = messages.len();
-                                messages.push(Message {
-                                    role: MessageRole::Tool,
-                                    content: String::new(),
-                                    timestamp: timestamp.clone(),
-                                    tool_name: Some(name.to_string()),
-                                    tool_input: input,
-                                    token_usage: None,
-                                });
-                                // Record tool_use_id for merging results later
-                                if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
-                                    tool_use_id_map.insert(id.to_string(), msg_idx);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    // Flush remaining text
-                    if !text_parts.is_empty() {
-                        let text = text_parts.join("\n");
-                        content_parts.push(text.clone());
-                        messages.push(Message {
-                            role: MessageRole::Assistant,
-                            content: text,
-                            timestamp,
-                            tool_name: None,
-                            tool_input: None,
-                            token_usage: None,
-                        });
-                    }
-                } else {
-                    // content is a plain string
-                    let text = extract_message_content(msg);
-                    if !text.trim().is_empty() {
-                        content_parts.push(text.clone());
-                        messages.push(Message {
-                            role: MessageRole::Assistant,
-                            content: text,
-                            timestamp,
-                            tool_name: None,
-                            tool_input: None,
-                            token_usage: None,
-                        });
-                    }
-                }
-
-                // Attach token usage to the last assistant/tool message of this turn
-                if let Some(usage) = turn_usage {
-                    // Find the last non-thinking message in this turn
-                    if let Some(last_msg) = messages[turn_start..]
-                        .iter_mut()
-                        .filter(|m| m.role != MessageRole::System)
-                        .last()
-                    {
-                        last_msg.token_usage = Some(usage);
-                    }
-                }
+                handle_assistant_message(&entry, &mut state, timestamp);
             }
             "summary" => {
-                if summary_text.is_none() {
-                    if let Some(s) = entry.get("summary").and_then(|s| s.as_str()) {
-                        if !s.trim().is_empty() {
-                            summary_text = Some(s.to_string());
-                        }
-                    }
-                }
-                flush_pending_user_message(
-                    &mut pending_user_message,
-                    &mut messages,
-                    &mut content_parts,
-                    &mut first_user_message,
-                );
+                handle_summary(&entry, &mut summary_text, &mut state);
                 continue;
             }
             // Skip all other types
             _ => {
-                flush_pending_user_message(
-                    &mut pending_user_message,
-                    &mut messages,
-                    &mut content_parts,
-                    &mut first_user_message,
-                );
+                flush_pending(&mut state);
                 continue;
             }
         }
     }
 
-    flush_pending_user_message(
-        &mut pending_user_message,
-        &mut messages,
-        &mut content_parts,
-        &mut first_user_message,
-    );
+    flush_pending(&mut state);
 
-    if messages.is_empty() {
+    if state.messages.is_empty() {
         return None;
     }
 
@@ -361,10 +138,15 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
 
     let updated_at = parse_rfc3339_timestamp(last_timestamp.as_deref());
 
-    let full_content = content_parts.join("\n");
+    let full_content = state.content_parts.join("\n");
     let content_text = truncate_to_bytes(&full_content, FTS_CONTENT_LIMIT);
 
-    let title = session_title(first_user_message.as_deref().or(summary_text.as_deref()));
+    let title = session_title(
+        state
+            .first_user_message
+            .as_deref()
+            .or(summary_text.as_deref()),
+    );
 
     let meta = crate::models::SessionMeta {
         id: session_id,
@@ -374,7 +156,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         project_name,
         created_at,
         updated_at,
-        message_count: messages.len() as u32,
+        message_count: state.messages.len() as u32,
         file_size_bytes: file_size,
         source_path: path.to_string_lossy().to_string(),
         is_sidechain,
@@ -383,9 +165,247 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
 
     Some(ParsedSession {
         meta,
-        messages,
+        messages: state.messages,
         content_text,
     })
+}
+
+/// Handle a "user" line, which may be a real user message or a tool_result turn.
+fn handle_user_message(entry: &Value, state: &mut ParseState, timestamp: Option<String>) {
+    let msg = match entry.get("message") {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Check if this "user" entry is actually a tool_result
+    // (the Anthropic API sends tool results as user-role turns)
+    if is_tool_result_message(msg) {
+        handle_tool_result(msg, state, &timestamp);
+        return;
+    }
+
+    let text = extract_message_content(msg);
+    if text.trim().is_empty() {
+        return;
+    }
+    let is_meta = entry
+        .get("isMeta")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
+    if let Some((pending_text, pending_timestamp)) = state.pending_user_message.take() {
+        if is_meta
+            && contains_image_placeholder_without_source(&pending_text)
+            && contains_image_source(&text)
+        {
+            append_user_message(
+                &mut state.messages,
+                &mut state.content_parts,
+                &mut state.first_user_message,
+                merge_image_placeholders_with_sources(&pending_text, &text),
+                pending_timestamp,
+            );
+            return;
+        }
+
+        append_user_message(
+            &mut state.messages,
+            &mut state.content_parts,
+            &mut state.first_user_message,
+            pending_text,
+            pending_timestamp,
+        );
+    }
+
+    if contains_image_placeholder_without_source(&text) {
+        state.pending_user_message = Some((text, timestamp));
+        return;
+    }
+
+    if !is_meta || contains_image_source(&text) {
+        append_user_message(
+            &mut state.messages,
+            &mut state.content_parts,
+            &mut state.first_user_message,
+            text,
+            timestamp,
+        );
+    }
+}
+
+/// Merge tool_result blocks from a user-role turn into their matching tool_use messages.
+fn handle_tool_result(msg: &Value, state: &mut ParseState, timestamp: &Option<String>) {
+    flush_pending(state);
+    // Merge each tool_result into its matching tool_use message
+    if let Some(Value::Array(arr)) = msg.get("content") {
+        for result_item in arr {
+            if result_item.get("type").and_then(|t| t.as_str()) != Some("tool_result") {
+                continue;
+            }
+            let result_text = extract_tool_result_content(result_item);
+            if result_text.trim().is_empty() {
+                continue;
+            }
+            state.content_parts.push(result_text.clone());
+            let use_id = result_item.get("tool_use_id").and_then(|i| i.as_str());
+            if let Some(idx) = use_id.and_then(|id| state.tool_use_id_map.get(id)) {
+                // Merge result into the existing tool_use message
+                state.messages[*idx].content = result_text;
+            } else {
+                // No matching tool_use found -- emit as standalone
+                state.messages.push(Message {
+                    role: MessageRole::Tool,
+                    content: result_text,
+                    timestamp: timestamp.clone(),
+                    tool_name: use_id.map(std::string::ToString::to_string),
+                    tool_input: None,
+                    token_usage: None,
+                });
+            }
+        }
+    }
+}
+
+/// Handle an "assistant" line: split content into text, thinking, and tool_use messages.
+fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Option<String>) {
+    flush_pending(state);
+    let msg = match entry.get("message") {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Extract token usage for this assistant turn
+    let turn_usage = extract_token_usage(msg);
+    let turn_start = state.messages.len();
+
+    // Split assistant messages: text parts as assistant, tool_use as tool
+    if let Some(Value::Array(arr)) = msg.get("content") {
+        let mut text_parts = Vec::new();
+        for item in arr {
+            let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+            match item_type {
+                "thinking" => {
+                    if let Some(t) = item.get("thinking").and_then(|t| t.as_str()) {
+                        if !t.trim().is_empty() {
+                            // Emit thinking as a separate assistant message with marker
+                            state.messages.push(Message {
+                                role: MessageRole::System,
+                                content: format!("[thinking]\n{t}"),
+                                timestamp: timestamp.clone(),
+                                tool_name: None,
+                                tool_input: None,
+                                token_usage: None,
+                            });
+                        }
+                    }
+                }
+                "text" => {
+                    if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
+                        if !t.trim().is_empty() {
+                            text_parts.push(t.to_string());
+                        }
+                    }
+                }
+                "tool_use" => {
+                    // Flush accumulated text as assistant message
+                    if !text_parts.is_empty() {
+                        let text = text_parts.join("\n");
+                        state.content_parts.push(text.clone());
+                        state.messages.push(Message {
+                            role: MessageRole::Assistant,
+                            content: text,
+                            timestamp: timestamp.clone(),
+                            tool_name: None,
+                            tool_input: None,
+                            token_usage: None,
+                        });
+                        text_parts.clear();
+                    }
+                    // Emit tool_use as a Tool message
+                    let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
+                    let input = item.get("input").map(std::string::ToString::to_string);
+                    let msg_idx = state.messages.len();
+                    state.messages.push(Message {
+                        role: MessageRole::Tool,
+                        content: String::new(),
+                        timestamp: timestamp.clone(),
+                        tool_name: Some(name.to_string()),
+                        tool_input: input,
+                        token_usage: None,
+                    });
+                    // Record tool_use_id for merging results later
+                    if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
+                        state.tool_use_id_map.insert(id.to_string(), msg_idx);
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Flush remaining text
+        if !text_parts.is_empty() {
+            let text = text_parts.join("\n");
+            state.content_parts.push(text.clone());
+            state.messages.push(Message {
+                role: MessageRole::Assistant,
+                content: text,
+                timestamp,
+                tool_name: None,
+                tool_input: None,
+                token_usage: None,
+            });
+        }
+    } else {
+        // content is a plain string
+        let text = extract_message_content(msg);
+        if !text.trim().is_empty() {
+            state.content_parts.push(text.clone());
+            state.messages.push(Message {
+                role: MessageRole::Assistant,
+                content: text,
+                timestamp,
+                tool_name: None,
+                tool_input: None,
+                token_usage: None,
+            });
+        }
+    }
+
+    // Attach token usage to the last assistant/tool message of this turn
+    if let Some(usage) = turn_usage {
+        // Find the last non-thinking message in this turn
+        if let Some(last_msg) = state.messages[turn_start..]
+            .iter_mut()
+            .filter(|m| m.role != MessageRole::System)
+            .last()
+        {
+            last_msg.token_usage = Some(usage);
+        }
+    }
+}
+
+/// Handle a "summary" line: capture the first non-empty summary text.
+fn handle_summary(entry: &Value, summary_text: &mut Option<String>, state: &mut ParseState) {
+    if summary_text.is_none() {
+        if let Some(s) = entry.get("summary").and_then(|s| s.as_str()) {
+            if !s.trim().is_empty() {
+                *summary_text = Some(s.to_string());
+            }
+        }
+    }
+    flush_pending(state);
+}
+
+/// Flush any pending user message that was waiting for an image-source merge.
+fn flush_pending(state: &mut ParseState) {
+    if let Some((text, timestamp)) = state.pending_user_message.take() {
+        append_user_message(
+            &mut state.messages,
+            &mut state.content_parts,
+            &mut state.first_user_message,
+            text,
+            timestamp,
+        );
+    }
 }
 
 fn append_user_message(
@@ -417,17 +437,6 @@ fn append_user_message(
         tool_input: None,
         token_usage: None,
     });
-}
-
-fn flush_pending_user_message(
-    pending_user_message: &mut Option<(String, Option<String>)>,
-    messages: &mut Vec<Message>,
-    content_parts: &mut Vec<String>,
-    first_user_message: &mut Option<String>,
-) {
-    if let Some((text, timestamp)) = pending_user_message.take() {
-        append_user_message(messages, content_parts, first_user_message, text, timestamp);
-    }
 }
 
 /// Extract token usage from a message's `usage` field.

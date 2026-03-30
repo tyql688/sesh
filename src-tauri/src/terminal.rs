@@ -395,36 +395,50 @@ fn linux_shell_command(command: &str, cwd: Option<&str>) -> String {
 }
 
 #[cfg(target_os = "linux")]
-fn launch_linux_gnome_terminal(command: &str, cwd: Option<&str>) -> Result<(), String> {
+fn launch_linux_generic(
+    terminal: &str,
+    args_builder: impl FnOnce(&str, &str) -> Vec<String>,
+    command: &str,
+    cwd: Option<&str>,
+) -> Result<(), String> {
     let full = linux_shell_command(command, cwd);
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-    Command::new("gnome-terminal")
-        .args(["--", &shell, "-c", &full])
+    let args = args_builder(&shell, &full);
+    Command::new(terminal)
+        .args(&args)
         .spawn()
-        .map_err(|e| format!("failed to launch gnome-terminal: {e}"))?;
+        .map_err(|e| format!("failed to launch {terminal}: {e}"))?;
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn launch_linux_gnome_terminal(command: &str, cwd: Option<&str>) -> Result<(), String> {
+    launch_linux_generic(
+        "gnome-terminal",
+        |shell, full| vec!["--".into(), shell.into(), "-c".into(), full.into()],
+        command,
+        cwd,
+    )
 }
 
 #[cfg(target_os = "linux")]
 fn launch_linux_konsole(command: &str, cwd: Option<&str>) -> Result<(), String> {
-    let full = linux_shell_command(command, cwd);
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-    Command::new("konsole")
-        .args(["-e", &shell, "-c", &full])
-        .spawn()
-        .map_err(|e| format!("failed to launch konsole: {e}"))?;
-    Ok(())
+    launch_linux_generic(
+        "konsole",
+        |shell, full| vec!["-e".into(), shell.into(), "-c".into(), full.into()],
+        command,
+        cwd,
+    )
 }
 
 #[cfg(target_os = "linux")]
 fn launch_linux_xterm(command: &str, cwd: Option<&str>) -> Result<(), String> {
-    let full = linux_shell_command(command, cwd);
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-    Command::new("xterm")
-        .args(["-e", &shell, "-c", &full])
-        .spawn()
-        .map_err(|e| format!("failed to launch xterm: {e}"))?;
-    Ok(())
+    launch_linux_generic(
+        "xterm",
+        |shell, full| vec!["-e".into(), shell.into(), "-c".into(), full.into()],
+        command,
+        cwd,
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -479,11 +493,14 @@ fn launch_linux_wezterm(command: &str, cwd: Option<&str>) -> Result<(), String> 
 fn launch_linux_default(command: &str, cwd: Option<&str>) -> Result<(), String> {
     // Try common terminals in order of popularity
     let terminals = ["gnome-terminal", "konsole", "xfce4-terminal", "xterm"];
-    let full = linux_shell_command(command, cwd);
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
 
     for term in &terminals {
-        let result = Command::new(term).args(["--", &shell, "-c", &full]).spawn();
+        let result = launch_linux_generic(
+            term,
+            |shell, full| vec!["--".into(), shell.into(), "-c".into(), full.into()],
+            command,
+            cwd,
+        );
         if result.is_ok() {
             return Ok(());
         }
