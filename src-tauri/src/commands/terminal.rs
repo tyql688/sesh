@@ -9,7 +9,10 @@ use super::AppState;
 pub fn get_resume_command(session_id: String, provider: String) -> Result<String, String> {
     let safe_id = sanitize_session_id(&session_id);
     let p = Provider::parse(&provider).unwrap_or_else(|| {
-        eprintln!("warning: unknown provider '{}', falling back to Claude", provider);
+        eprintln!(
+            "warning: unknown provider '{}', falling back to Claude",
+            provider
+        );
         Provider::Claude
     });
     Ok(p.resume_command(&safe_id))
@@ -23,7 +26,9 @@ fn sanitize_session_id(id: &str) -> String {
 }
 
 /// Shell metacharacters that must never appear in a terminal command.
-const SHELL_META: &[char] = &['&', ';', '|', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r'];
+const SHELL_META: &[char] = &[
+    '&', ';', '|', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r',
+];
 
 #[tauri::command]
 pub fn open_in_terminal(
@@ -67,7 +72,10 @@ pub fn resume_session(
 ) -> Result<(), String> {
     let safe_id = sanitize_session_id(&session_id);
     let p = Provider::parse(&provider).unwrap_or_else(|| {
-        eprintln!("warning: unknown provider '{}', falling back to Claude", provider);
+        eprintln!(
+            "warning: unknown provider '{}', falling back to Claude",
+            provider
+        );
         Provider::Claude
     });
     let cmd = p.resume_command(&safe_id);
