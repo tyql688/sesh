@@ -8,10 +8,11 @@ use std::path::Path;
 use crate::models::SessionDetail;
 
 /// Replace the user's home directory path with `~` for privacy in exports.
+/// Uses trailing separator to avoid partial-word matches (e.g. `/Users/john` vs `/Users/johnson`).
 pub(crate) fn redact_home_path(content: &str) -> String {
     if let Some(home) = dirs::home_dir() {
-        let home_str = home.to_string_lossy();
-        content.replace(home_str.as_ref(), "~")
+        let home_with_sep = format!("{}/", home.display());
+        content.replace(home_with_sep.as_str(), "~/")
     } else {
         content.to_string()
     }

@@ -100,7 +100,6 @@ fn render_content(raw: &str) -> String {
                     if !out.is_empty() {
                         out.push_str("<br>");
                     }
-                    let mut remaining = line.as_bytes();
                     let line_str = line;
                     let mut pos = 0;
                     while pos < line_str.len() {
@@ -125,14 +124,12 @@ fn render_content(raw: &str) -> String {
                                         out.push_str(&inline_image(path));
                                     }
                                     pos = abs_end + 1; // skip past ']'
-                                    remaining = &line.as_bytes()[pos..];
                                     continue;
                                 }
                             }
                             // Malformed marker — emit as text
                             out.push_str(&html_escape(&line_str[pos..pos + start + 6]));
                             pos += start + 6;
-                            remaining = &line.as_bytes()[pos..];
                         } else {
                             break;
                         }
@@ -141,7 +138,6 @@ fn render_content(raw: &str) -> String {
                     if pos < line_str.len() {
                         out.push_str(&html_escape(&line_str[pos..]));
                     }
-                    let _ = remaining; // suppress unused warning
                     continue;
                 }
 
