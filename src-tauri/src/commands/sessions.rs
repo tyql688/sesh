@@ -59,6 +59,13 @@ pub fn delete_session(
 ) -> Result<(), String> {
     let path = std::path::Path::new(&source_path);
     if path.exists() {
+        // Only allow deleting files that belong to a known provider directory
+        if provider_from_source_path(&source_path).is_none() {
+            return Err(format!(
+                "refused to delete '{}': not inside a known provider directory",
+                source_path
+            ));
+        }
         std::fs::remove_file(path)
             .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
     }
@@ -82,6 +89,12 @@ pub async fn delete_sessions_batch(
         for (session_id, source_path) in &items {
             let path = std::path::Path::new(source_path);
             if path.exists() {
+                if provider_from_source_path(source_path).is_none() {
+                    return Err(format!(
+                        "refused to delete '{}': not inside a known provider directory",
+                        source_path
+                    ));
+                }
                 std::fs::remove_file(path)
                     .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;
             }

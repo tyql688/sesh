@@ -28,6 +28,11 @@ impl OpenCodeProvider {
         })
     }
 
+    /// Construct a provider pointing at an explicit DB path. Used in tests.
+    pub fn with_db_path(db_path: PathBuf) -> Self {
+        Self { db_path }
+    }
+
     fn open_db(&self) -> Result<Connection, ProviderError> {
         if !self.db_path.exists() {
             return Err(ProviderError::Io(std::io::Error::new(
