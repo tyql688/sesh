@@ -24,6 +24,7 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { ExportDialog } from "../ExportDialog";
 import { terminalApp } from "../../stores/settings";
 import { toast, toastError } from "../../stores/toast";
+import { errorMessage } from "../../lib/errors";
 import { favoriteVersion, bumpFavoriteVersion } from "../../stores/favorites";
 import { processMessages } from "./hooks";
 import { SessionToolbar } from "./SessionToolbar";
@@ -109,7 +110,7 @@ export function SessionView(props: {
           setMessages(detail.messages);
         } catch (e) {
           if (version !== loadVersion) return;
-          setError(String(e));
+          setError(errorMessage(e));
         } finally {
           if (version === loadVersion) setLoading(false);
         }

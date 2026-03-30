@@ -2,7 +2,6 @@ use tauri::State;
 
 use crate::db::Database;
 use crate::models::{Message, MessageRole, Provider, SessionDetail, SessionMeta};
-use crate::provider::SessionProvider;
 
 use super::AppState;
 
@@ -213,7 +212,7 @@ pub(crate) fn sync_source_for_provider(
     source_path: &str,
     db: &Database,
 ) -> Result<(), String> {
-    let provider_impl = make_provider(&provider)
+    let provider_impl = crate::provider::make_provider(&provider)
         .ok_or_else(|| "cannot resolve HOME directory — provider unavailable".to_string())?;
 
     let sessions = provider_impl
@@ -235,41 +234,12 @@ pub(crate) fn sync_source_from_path(source_path: &str, state: &AppState) -> Resu
 
 fn provider_from_source_path(source_path: &str) -> Option<Provider> {
     let normalized = source_path.replace('\\', "/");
-
-    // cc-mirror check BEFORE claude — cc-mirror paths also contain /projects/
-    if normalized.contains("/.cc-mirror/") && normalized.contains("/config/projects/") {
-        return Some(Provider::CcMirror);
-    }
-
-    if normalized.contains("/.claude/projects/") {
-        return Some(Provider::Claude);
-    }
-
-    if normalized.contains("/.codex/sessions/") {
-        return Some(Provider::Codex);
-    }
-
-    if normalized.contains("/.gemini/tmp/") {
-        return Some(Provider::Gemini);
-    }
-
-    if normalized.contains("/.kimi/sessions/") {
-        return Some(Provider::Kimi);
-    }
-
-    if normalized.contains("/.cursor/chats/") {
-        return Some(Provider::Cursor);
-    }
-
-    if normalized.contains("/opencode/opencode.db") {
-        return Some(Provider::OpenCode);
-    }
-
-    None
-}
-
-fn make_provider(provider: &Provider) -> Option<Box<dyn SessionProvider>> {
-    crate::provider::make_provider(provider)
+    crate::provider_utils::PROVIDER_PATH_PATTERNS
+        .iter()
+        .find(|(primary, secondary, _)| {
+            normalized.contains(primary) && secondary.is_none_or(|s| normalized.contains(s))
+        })
+        .map(|(_, _, provider)| provider.clone())
 }
 
 fn load_messages_from_provider(
@@ -277,7 +247,7 @@ fn load_messages_from_provider(
     session_id: &str,
     source_path: &str,
 ) -> Result<Vec<Message>, String> {
-    make_provider(provider)
+    crate::provider::make_provider(provider)
         .ok_or_else(|| "cannot resolve HOME directory — provider unavailable".to_string())?
         .load_messages(session_id, source_path)
         .map_err(|e| format!("failed to load messages: {e}"))

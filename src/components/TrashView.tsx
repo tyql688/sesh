@@ -19,13 +19,9 @@ import { collectSessionIds } from "../lib/tree-utils";
 import { buildTrashTree } from "../lib/tree-builders";
 import { useI18n } from "../i18n/index";
 import { toast, toastError } from "../stores/toast";
+import { errorMessage } from "../lib/errors";
+import { formatTimestamp } from "../lib/formatters";
 import { ConfirmDialog } from "./ConfirmDialog";
-
-function formatTrashDate(epoch: number): string {
-  if (!epoch) return "-";
-  const d = new Date(epoch * 1000);
-  return d.toLocaleString();
-}
 
 export function TrashView(props: { onRefreshTree: () => void }) {
   const { t } = useI18n();
@@ -73,7 +69,7 @@ export function TrashView(props: { onRefreshTree: () => void }) {
       toast(t("trash.restoreOk"));
     } catch (e) {
       await refetch();
-      toastError(`${t("trash.restore")}: ${String(e)}`);
+      toastError(`${t("trash.restore")}: ${errorMessage(e)}`);
     }
   }
 
@@ -82,7 +78,7 @@ export function TrashView(props: { onRefreshTree: () => void }) {
       await permanentDeleteTrash(id);
       refetch();
     } catch (e) {
-      toastError(String(e));
+      toastError(errorMessage(e));
     }
   }
 
@@ -92,7 +88,7 @@ export function TrashView(props: { onRefreshTree: () => void }) {
       setShowEmptyConfirm(false);
       refetch();
     } catch (e) {
-      toastError(String(e));
+      toastError(errorMessage(e));
       setShowEmptyConfirm(false);
     }
   }
@@ -258,7 +254,7 @@ export function TrashView(props: { onRefreshTree: () => void }) {
 
           <Show when={isLeaf() && trashItem()}>
             <span class="trash-tree-date">
-              {formatTrashDate(trashItem()!.trashed_at)}
+              {formatTimestamp(trashItem()!.trashed_at)}
             </span>
             <div class="trash-tree-actions">
               <button

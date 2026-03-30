@@ -9,6 +9,7 @@ import {
   getProviderPaths,
 } from "../lib/tauri";
 import { toast, toastError } from "../stores/toast";
+import { errorMessage } from "../lib/errors";
 import { theme, setTheme } from "../stores/theme";
 import type { Theme } from "../stores/theme";
 import {
@@ -362,7 +363,7 @@ export function SettingsPanel() {
                     refetchStats();
                     refetchProviderPaths();
                   } catch (e) {
-                    toastError(String(e));
+                    toastError(errorMessage(e));
                   }
                 }}
               >

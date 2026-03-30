@@ -2,6 +2,8 @@ use std::path::Path;
 
 use chrono::DateTime;
 
+use crate::models::Provider;
+
 pub const NO_PROJECT: &str = "(No Project)";
 pub const FTS_CONTENT_LIMIT: usize = 2000;
 
@@ -94,3 +96,20 @@ pub fn truncate_to_bytes(input: &str, max_bytes: usize) -> String {
         input.to_string()
     }
 }
+
+/// Path fragments used to detect which provider owns a source file.
+/// Each entry: (primary pattern, optional secondary pattern, provider).
+/// Order matters — cc-mirror must come before claude since both contain "projects".
+pub const PROVIDER_PATH_PATTERNS: &[(&str, Option<&str>, Provider)] = &[
+    (
+        "/.cc-mirror/",
+        Some("/config/projects/"),
+        Provider::CcMirror,
+    ),
+    ("/.claude/projects/", None, Provider::Claude),
+    ("/.codex/sessions/", None, Provider::Codex),
+    ("/.gemini/tmp/", None, Provider::Gemini),
+    ("/.kimi/sessions/", None, Provider::Kimi),
+    ("/.cursor/chats/", None, Provider::Cursor),
+    ("/opencode/opencode.db", None, Provider::OpenCode),
+];

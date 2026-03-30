@@ -26,6 +26,7 @@ import {
   selectionCount,
 } from "../../stores/selection";
 import { toast, toastError } from "../../stores/toast";
+import { errorMessage } from "../../lib/errors";
 import { bumpFavoriteVersion } from "../../stores/favorites";
 import {
   filterBlockedFolders,
@@ -309,7 +310,7 @@ export function Explorer(props: {
       await exportSessionsBatch(items, "json", outputPath);
       toast(t("toast.copied"));
     } catch (e) {
-      toastError(String(e));
+      toastError(errorMessage(e));
     }
   }
 

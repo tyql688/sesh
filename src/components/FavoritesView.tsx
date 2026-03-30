@@ -12,6 +12,7 @@ import type { SessionMeta, TreeNode } from "../lib/types";
 import { useI18n } from "../i18n/index";
 import { buildFavoritesTree } from "../lib/tree-builders";
 import { toastError } from "../stores/toast";
+import { errorMessage } from "../lib/errors";
 import { favoriteVersion } from "../stores/favorites";
 import { TreeNodeComponent } from "./TreeNode";
 
@@ -50,7 +51,7 @@ export function FavoritesView(props: {
         setInitialized(true);
       }
     } catch (e) {
-      toastError(String(e));
+      toastError(errorMessage(e));
     } finally {
       setLoading(false);
     }
