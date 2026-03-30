@@ -23,7 +23,7 @@ impl GeminiProvider {
         let content = match fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("warn: cannot read Gemini logs '{}': {}", path.display(), e);
+                log::warn!("cannot read Gemini logs '{}': {}", path.display(), e);
                 return Vec::new();
             }
         };

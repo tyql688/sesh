@@ -28,10 +28,7 @@ pub fn get_resume_command(
         };
     }
     let p = Provider::parse(&provider).unwrap_or_else(|| {
-        eprintln!(
-            "warning: unknown provider '{}', falling back to Claude",
-            provider
-        );
+        log::warn!("unknown provider '{}', falling back to Claude", provider);
         Provider::Claude
     });
     Ok(p.resume_command(&safe_id))

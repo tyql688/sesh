@@ -33,8 +33,8 @@ impl Database {
         let current_count = self.count_sessions_for_provider(&provider_key)?;
         let scan_count = sessions.len() as u64;
         let should_delete = if scan_count == 0 {
-            eprintln!(
-                "warning: provider {:?} scan returned 0 sessions, skipping deletion to protect index",
+            log::warn!(
+                "provider {:?} scan returned 0 sessions, skipping deletion to protect index",
                 provider
             );
             false
@@ -43,8 +43,8 @@ impl Database {
         };
 
         if !should_delete {
-            eprintln!(
-                "warning: provider {:?} scan returned {} sessions but DB has {}, skipping destructive sync",
+            log::warn!(
+                "provider {:?} scan returned {} sessions but DB has {}, skipping destructive sync",
                 provider, scan_count, current_count
             );
         }
@@ -90,8 +90,8 @@ impl Database {
             || (scan_count as f64 / current_count as f64) > 0.5;
 
         if !should_delete {
-            eprintln!(
-                "warning: provider {:?} source {:?} scan returned {} sessions but DB has {}, skipping destructive sync",
+            log::warn!(
+                "provider {:?} source {:?} scan returned {} sessions but DB has {}, skipping destructive sync",
                 provider, source_path, scan_count, current_count
             );
         }

@@ -21,7 +21,7 @@ fn str_to_provider(s: &str) -> Provider {
     match Provider::parse(s) {
         Some(p) => p,
         None => {
-            eprintln!("warning: unknown provider '{}', defaulting to Claude", s);
+            log::warn!("unknown provider '{}', defaulting to Claude", s);
             Provider::Claude
         }
     }

@@ -58,8 +58,8 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         let entry: Value = match serde_json::from_str(&line) {
             Ok(e) => e,
             Err(e) => {
-                eprintln!(
-                    "warn: skipping malformed JSONL in '{}': {}",
+                log::warn!(
+                    "skipping malformed JSONL in '{}': {}",
                     path.display(),
                     e
                 );

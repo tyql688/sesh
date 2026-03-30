@@ -42,7 +42,7 @@ pub fn parse_rfc3339_timestamp(timestamp: Option<&str>) -> i64 {
     timestamp
         .and_then(|ts| {
             DateTime::parse_from_rfc3339(ts)
-                .map_err(|e| eprintln!("warn: failed to parse timestamp '{ts}': {e}"))
+                .map_err(|e| log::warn!("failed to parse timestamp '{ts}': {e}"))
                 .ok()
         })
         .map_or(0, |dt| dt.timestamp())
