@@ -91,11 +91,8 @@ pub fn run() {
         .setup(|app| {
             // On Windows, hide native decorations so the custom titlebar is the only one.
             #[cfg(target_os = "windows")]
-            {
-                use tauri::WebviewWindowExt as _;
-                if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.set_decorations(false);
-                }
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_decorations(false);
             }
 
             // Provider instances are lightweight (just PathBuf); create a separate

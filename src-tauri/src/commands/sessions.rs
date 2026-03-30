@@ -65,16 +65,12 @@ pub fn delete_session(
                 source_path
             ));
         }
-        // Block deletion of SQLite database files (Cursor store.db, OpenCode opencode.db)
-        // — these contain ALL sessions, not just one
-        if source_path.ends_with(".db") {
-            return Err(format!(
-                "refused to delete '{}': cannot delete shared database file",
-                source_path
-            ));
+        // Skip physical deletion for SQLite database files (Cursor store.db, OpenCode opencode.db)
+        // — these contain ALL sessions, not just one; only remove from index
+        if !source_path.ends_with(".db") {
+            std::fs::remove_file(path)
+                .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
         }
-        std::fs::remove_file(path)
-            .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
     }
 
     state
@@ -370,12 +366,13 @@ pub fn open_in_folder(path: String) -> Result<(), String> {
         return Err(format!("path not found: {path}"));
     }
     // Validate path is under HOME to prevent opening arbitrary system directories
-    if let Ok(canonical) = p.canonicalize() {
-        let s = canonical.to_string_lossy();
-        let home_ok = dirs::home_dir().is_some_and(|h| s.starts_with(&*h.to_string_lossy()));
-        if !home_ok {
-            return Err(format!("path not allowed: {path}"));
-        }
+    let canonical = p
+        .canonicalize()
+        .map_err(|e| format!("failed to resolve path '{path}': {e}"))?;
+    let s = canonical.to_string_lossy();
+    let home_ok = dirs::home_dir().is_some_and(|h| s.starts_with(&*h.to_string_lossy()));
+    if !home_ok {
+        return Err(format!("path not allowed: {path}"));
     }
     #[cfg(target_os = "macos")]
     {
