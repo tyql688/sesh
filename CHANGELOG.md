@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-03-30
+
+### Added
+
+- **Windows custom titlebar** — hide native decorations, render custom minimize/maximize/close buttons for consistent cross-platform look
+- **TreeNode.project_path field** — structured field replaces fragile colon-split ID encoding, fixing CC-Mirror path parsing errors
+- **Search request versioning** — stale search results are discarded, preventing slow queries from overwriting newer results
+- **Export privacy redaction** — all export formats (HTML/MD/JSON) replace home directory paths with `~`
+
+### Fixed
+
+- **CC-Mirror asset scope** — added `$HOME/.cc-mirror/**` to assetProtocol.scope; images now load correctly
+- **Provider disable filter** — `disabledProviders` now supports all 7 providers, not just claude/codex/gemini
+- **HTML export image detection** — `[Image: source: ...]` markers with trailing text now correctly render as base64 images
+- **HTML export path validation** — `inline_image()` validates paths against HOME/tmp allowlist before reading
+- **SQLite delete protection** — `delete_session` skips physical deletion of shared `.db` files (Cursor/OpenCode), only removes from index
+- **Provider fallback** — `str_to_provider` returns error instead of silently falling back to Claude
+- **Path containment checks** — use `Path::starts_with` for component-aware validation instead of string prefix matching
+- **open_in_folder** — added HOME path validation; returns error when `canonicalize` fails
+- **Residual println!** — replaced with `log::info!` in indexer and watcher
+- **Release script** — `cargo check` and `npm install` failures now abort the release instead of being silently swallowed
+
+### Changed
+
+- **Error visibility** — 6 frontend `console.warn` calls replaced with `toastError` for user-visible error notifications
+- **Titlebar drag** — uses `-webkit-app-region: drag` CSS property with `no-drag` exclusions for interactive elements
+
 ## [0.2.0] - 2026-03-30
 
 ### Added
