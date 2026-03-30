@@ -60,10 +60,7 @@ export function buildFavoritesTree(
 
 export function buildTrashTree(
   items: TrashMeta[],
-  labels: { unknown: string; untitled: string } = {
-    unknown: "(Unknown)",
-    untitled: "(untitled)",
-  },
+  labels: { unknown: string; untitled: string },
 ): TreeNode[] {
   const providerMap = new Map<string, Map<string, TrashMeta[]>>();
 

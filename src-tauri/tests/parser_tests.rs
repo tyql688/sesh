@@ -609,17 +609,11 @@ fn gemini_token_usage() {
 ///  2. assistant – plain text reply
 ///  3. assistant – tool-call array stored as JSON-array-as-string (Cursor real format)
 ///  4. tool   – tool-result array stored as JSON-array-as-string
-fn create_cursor_test_db() -> (std::path::PathBuf, std::path::PathBuf) {
+fn create_cursor_test_db() -> (tempfile::TempDir, std::path::PathBuf) {
     use rusqlite::Connection;
 
-    let tmp = std::env::temp_dir().join(format!(
-        "cursor_test_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let session_dir = tmp.join("cursor-session-uuid-0001");
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let session_dir = tmp.path().join("cursor-session-uuid-0001");
     std::fs::create_dir_all(&session_dir).expect("failed to create temp cursor session dir");
 
     let db_path = session_dir.join("store.db");
@@ -662,15 +656,14 @@ fn create_cursor_test_db() -> (std::path::PathBuf, std::path::PathBuf) {
         .expect("failed to insert cursor test row");
     }
 
-    // db_path is returned; keep tmp around so the dir is not cleaned up before
-    // the test finishes (caller owns the PathBuf to the root temp dir).
-    (db_path, tmp)
+    // Return TempDir to keep it alive; dropped at end of test = cleanup
+    (tmp, db_path)
 }
 
 #[test]
 fn cursor_parses_message_count() {
     let provider = CursorProvider::new().expect("home dir must be available");
-    let (db_path, _tmp) = create_cursor_test_db();
+    let (_tmp, db_path) = create_cursor_test_db();
 
     // Expected messages from load_messages:
     //  1. User: "Hello, can you help me list files?"  (user_query tag stripped)
@@ -691,7 +684,7 @@ fn cursor_parses_message_count() {
 #[test]
 fn cursor_user_message_extracted() {
     let provider = CursorProvider::new().expect("home dir must be available");
-    let (db_path, _tmp) = create_cursor_test_db();
+    let (_tmp, db_path) = create_cursor_test_db();
 
     let messages = provider
         .load_messages("cursor-session-uuid-0001", db_path.to_str().unwrap())
@@ -723,7 +716,7 @@ fn cursor_user_message_extracted() {
 #[test]
 fn cursor_tool_call_merged() {
     let provider = CursorProvider::new().expect("home dir must be available");
-    let (db_path, _tmp) = create_cursor_test_db();
+    let (_tmp, db_path) = create_cursor_test_db();
 
     let messages = provider
         .load_messages("cursor-session-uuid-0001", db_path.to_str().unwrap())

@@ -70,7 +70,7 @@ export function TokenUsageDisplay(props: { usage: TokenUsage }) {
       <Show when={cached() > 0}>
         <span class="msg-token-sep">·</span>
         <span class="msg-token-cached" title={t("common.cacheReadTokens")}>
-          cache_read {fmt(cached())}
+          {t("common.cacheRead")} {fmt(cached())}
         </span>
       </Show>
       <Show when={created() > 0}>
@@ -79,7 +79,7 @@ export function TokenUsageDisplay(props: { usage: TokenUsage }) {
           class="msg-token-cache-write"
           title={t("common.cacheWriteTokens")}
         >
-          cache_write {fmt(created())}
+          {t("common.cacheWrite")} {fmt(created())}
         </span>
       </Show>
     </div>
