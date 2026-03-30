@@ -1,0 +1,40 @@
+repos:
+  - repo: local
+    hooks:
+      # Frontend: Prettier formatting
+      - id: prettier
+        name: prettier
+        entry: npx prettier --write --ignore-unknown
+        language: system
+        types_or: [ts, tsx, css]
+
+      # Frontend: ESLint
+      - id: eslint
+        name: eslint
+        entry: npx eslint
+        language: system
+        types_or: [ts, tsx]
+        files: ^src/
+
+      # Frontend: TypeScript type check
+      - id: tsc
+        name: tsc
+        entry: npx tsc --noEmit
+        language: system
+        types_or: [ts, tsx]
+        pass_filenames: false
+
+      # Rust: cargo fmt
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --manifest-path src-tauri/Cargo.toml --
+        language: system
+        types: [rust]
+
+      # Rust: cargo clippy
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
