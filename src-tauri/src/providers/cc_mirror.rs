@@ -51,7 +51,7 @@ impl CcMirrorProvider {
             let meta: VariantMeta = match serde_json::from_str(&content) {
                 Ok(m) => m,
                 Err(e) => {
-                    eprintln!("warn: failed to parse '{}': {}", variant_json.display(), e);
+                    log::warn!("failed to parse '{}': {}", variant_json.display(), e);
                     continue;
                 }
             };

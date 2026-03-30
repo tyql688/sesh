@@ -22,20 +22,20 @@ pub fn run() {
     let data_dir = match dirs::data_local_dir() {
         Some(d) => d.join("cc-session"),
         None => {
-            eprintln!("fatal: failed to resolve local data dir");
+            log::error!("failed to resolve local data dir");
             std::process::exit(1);
         }
     };
 
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
-        eprintln!("fatal: failed to create data dir: {e}");
+        log::error!("failed to create data dir: {e}");
         std::process::exit(1);
     }
 
     let db = match Database::open(&data_dir) {
         Ok(db) => Arc::new(db),
         Err(e) => {
-            eprintln!("fatal: failed to open database: {e}");
+            log::error!("failed to open database: {e}");
             std::process::exit(1);
         }
     };
@@ -96,13 +96,13 @@ pub fn run() {
                 Ok(fs_watcher) => {
                     app.manage(fs_watcher);
                 }
-                Err(e) => eprintln!("warning: failed to start file watcher: {e}"),
+                Err(e) => log::warn!("failed to start file watcher: {e}"),
             }
             Ok(())
         })
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
-            eprintln!("fatal: failed to run tauri application: {e}");
+            log::error!("failed to run tauri application: {e}");
             std::process::exit(1);
         });
 }

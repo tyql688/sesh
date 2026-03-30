@@ -38,8 +38,8 @@ impl ClaudeProvider {
         let project_dirs = match fs::read_dir(&projects_dir) {
             Ok(d) => d,
             Err(e) => {
-                eprintln!(
-                    "warn: cannot read Claude projects dir '{}': {}",
+                log::warn!(
+                    "cannot read Claude projects dir '{}': {}",
                     projects_dir.display(),
                     e
                 );
