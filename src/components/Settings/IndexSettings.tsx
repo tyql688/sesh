@@ -6,9 +6,7 @@ import { toast, toastError } from "../../stores/toast";
 import { errorMessage } from "../../lib/errors";
 import { formatFileSize } from "../../lib/formatters";
 
-export function IndexSettings(props: {
-  onIndexChanged: () => void;
-}) {
+export function IndexSettings(props: { onIndexChanged: () => void }) {
   const { t } = useI18n();
   const [isRebuilding, setIsRebuilding] = createSignal(false);
 
@@ -42,9 +40,7 @@ export function IndexSettings(props: {
 
       <div class="settings-row">
         <div class="settings-label">{t("settings.totalSessions")}</div>
-        <span class="settings-stat">
-          {indexStats()?.session_count ?? 0}
-        </span>
+        <span class="settings-stat">{indexStats()?.session_count ?? 0}</span>
       </div>
 
       <div class="settings-row">

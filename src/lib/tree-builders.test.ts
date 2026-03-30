@@ -38,9 +38,24 @@ describe("buildFavoritesTree", () => {
 
   it("groups by provider then project", () => {
     const sessions = [
-      makeSession({ id: "s1", provider: "claude", project_name: "proj-a", project_path: "/a" }),
-      makeSession({ id: "s2", provider: "claude", project_name: "proj-a", project_path: "/a" }),
-      makeSession({ id: "s3", provider: "codex", project_name: "proj-b", project_path: "/b" }),
+      makeSession({
+        id: "s1",
+        provider: "claude",
+        project_name: "proj-a",
+        project_path: "/a",
+      }),
+      makeSession({
+        id: "s2",
+        provider: "claude",
+        project_name: "proj-a",
+        project_path: "/a",
+      }),
+      makeSession({
+        id: "s3",
+        provider: "codex",
+        project_name: "proj-b",
+        project_path: "/b",
+      }),
     ];
     const tree = buildFavoritesTree(sessions, "No Project");
 

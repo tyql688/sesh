@@ -36,16 +36,11 @@ export function DataSourceSettings(props: {
                       title={t("settings.openInFinder")}
                       onClick={async () => {
                         try {
-                          const { open } = await import(
-                            "@tauri-apps/plugin-shell"
-                          );
+                          const { open } =
+                            await import("@tauri-apps/plugin-shell");
                           await open(info.path);
                         } catch (e) {
-                          console.warn(
-                            "failed to open folder:",
-                            info.path,
-                            e,
-                          );
+                          console.warn("failed to open folder:", info.path, e);
                         }
                       }}
                     >

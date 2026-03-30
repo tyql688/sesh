@@ -53,9 +53,7 @@ export function AboutSettings() {
 
       <div class="settings-row">
         <div class="settings-label">{t("settings.version")}</div>
-        <div
-          style={{ display: "flex", "align-items": "center", gap: "8px" }}
-        >
+        <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
           <span class="settings-stat">{version()}</span>
           <button
             class="settings-btn"

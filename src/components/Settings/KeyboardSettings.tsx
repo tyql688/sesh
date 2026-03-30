@@ -9,9 +9,7 @@ export function KeyboardSettings() {
       <div class="settings-section-title">{t("keyboard.title")}</div>
 
       <div class="settings-shortcuts-group">
-        <div class="settings-shortcuts-label">
-          {t("keyboard.navigation")}
-        </div>
+        <div class="settings-shortcuts-label">{t("keyboard.navigation")}</div>
         <div class="settings-shortcut-row">
           <span>{t("keyboard.search")}</span>
           <kbd>{isMac ? "\u2318" : "Ctrl+"}K</kbd>
@@ -43,9 +41,7 @@ export function KeyboardSettings() {
       </div>
 
       <div class="settings-shortcuts-group">
-        <div class="settings-shortcuts-label">
-          {t("keyboard.session")}
-        </div>
+        <div class="settings-shortcuts-label">{t("keyboard.session")}</div>
         <div class="settings-shortcut-row">
           <span>{t("keyboard.resumeSession")}</span>
           <kbd>{isMac ? "\u21E7\u2318" : "Shift+Ctrl+"}R</kbd>
@@ -72,9 +68,7 @@ export function KeyboardSettings() {
       </div>
 
       <div class="settings-shortcuts-group">
-        <div class="settings-shortcuts-label">
-          {t("keyboard.general")}
-        </div>
+        <div class="settings-shortcuts-label">{t("keyboard.general")}</div>
         <div class="settings-shortcut-row">
           <span>{t("keyboard.showShortcuts")}</span>
           <kbd>{isMac ? "\u2318" : "Ctrl+"}/</kbd>

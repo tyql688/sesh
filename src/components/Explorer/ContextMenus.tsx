@@ -12,7 +12,11 @@ export interface SessionMenuContext {
   providerLabel: string | undefined;
   t: (key: string) => string;
   terminalApp: string;
-  resumeSession: (id: string, provider: string, terminal: string) => Promise<void>;
+  resumeSession: (
+    id: string,
+    provider: string,
+    terminal: string,
+  ) => Promise<void>;
   toggleFavorite: (id: string) => Promise<boolean>;
   setRenameTarget: (target: { id: string; label: string }) => void;
   onExportSession?: (id: string) => void;
@@ -79,9 +83,7 @@ export function buildSessionMenuItems(ctx: SessionMenuContext): MenuItemDef[] {
         try {
           const newState = await ctx.toggleFavorite(node.id);
           bumpFavoriteVersion();
-          toast(
-            t(newState ? "toast.favoriteAdded" : "toast.favoriteRemoved"),
-          );
+          toast(t(newState ? "toast.favoriteAdded" : "toast.favoriteRemoved"));
         } catch (_e) {
           toastError(t("toast.favoriteFailed"));
         }
@@ -116,14 +118,18 @@ export interface SelectionMenuContext {
   exportSelectedBatch: () => void;
 }
 
-export function buildSelectionMenuItems(ctx: SelectionMenuContext): MenuItemDef[] {
+export function buildSelectionMenuItems(
+  ctx: SelectionMenuContext,
+): MenuItemDef[] {
   return [
     {
-      label: () => `${ctx.t("contextMenu.deleteSelected")} (${selectionCount()})`,
+      label: () =>
+        `${ctx.t("contextMenu.deleteSelected")} (${selectionCount()})`,
       onClick: ctx.trashSelected,
     },
     {
-      label: () => `${ctx.t("contextMenu.exportSelected")} (${selectionCount()})`,
+      label: () =>
+        `${ctx.t("contextMenu.exportSelected")} (${selectionCount()})`,
       onClick: ctx.exportSelectedBatch,
     },
   ];

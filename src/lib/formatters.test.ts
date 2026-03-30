@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { parseTimestamp, fmtK, formatFileSize, formatTimestamp } from "./formatters";
+import {
+  parseTimestamp,
+  fmtK,
+  formatFileSize,
+  formatTimestamp,
+} from "./formatters";
 
 describe("parseTimestamp", () => {
   it("parses epoch seconds and converts to ms", () => {
