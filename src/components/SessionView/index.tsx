@@ -57,24 +57,6 @@ export function SessionView(props: {
     });
   });
 
-  // Search matches
-  const _searchMatches = createMemo(() => {
-    const term = sessionSearch().toLowerCase().trim();
-    if (!term) return [] as number[];
-    const indices: number[] = [];
-    filteredEntries().forEach((e, idx) => {
-      if (e.type === "message" && e.msg.content.toLowerCase().includes(term)) {
-        indices.push(idx);
-      } else if (
-        e.type === "merged-tools" &&
-        e.messages.some((m) => m.content.toLowerCase().includes(term))
-      ) {
-        indices.push(idx);
-      }
-    });
-    return indices;
-  });
-
   // Role counts for filter toolbar
   const roleCounts = createMemo(() => {
     const counts: Record<string, number> = {

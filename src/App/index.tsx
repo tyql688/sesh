@@ -1,4 +1,4 @@
-import { createSignal, createMemo, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, createMemo, onMount, onCleanup, Show, ErrorBoundary } from "solid-js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ActivityBar } from "../components/ActivityBar";
@@ -17,6 +17,7 @@ import { trashSession } from "../lib/tauri";
 import { isMac } from "../lib/platform";
 import { disabledProviders } from "../stores/settings";
 import type { TreeNode, SessionMeta } from "../lib/types";
+import { useI18n } from "../i18n";
 import { createKeyboardHandler } from "./KeyboardShortcuts";
 import { createSyncManager } from "./SyncManager";
 import "../styles/index.css";
