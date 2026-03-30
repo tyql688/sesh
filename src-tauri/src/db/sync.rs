@@ -32,9 +32,15 @@ impl Database {
 
         let current_count = self.count_sessions_for_provider(&provider_key)?;
         let scan_count = sessions.len() as u64;
-        let should_delete = scan_count == 0
-            || current_count <= 10
-            || (scan_count as f64 / current_count as f64) > 0.5;
+        let should_delete = if scan_count == 0 {
+            eprintln!(
+                "warning: provider {:?} scan returned 0 sessions, skipping deletion to protect index",
+                provider
+            );
+            false
+        } else {
+            current_count <= 10 || (scan_count as f64 / current_count as f64) > 0.5
+        };
 
         if !should_delete {
             eprintln!(
@@ -77,9 +83,15 @@ impl Database {
 
         let current_count = self.count_sessions_for_source(&provider_key, source_path)?;
         let scan_count = sessions.len() as u64;
-        let should_delete = scan_count == 0
-            || current_count <= 10
-            || (scan_count as f64 / current_count as f64) > 0.5;
+        let should_delete = if scan_count == 0 {
+            eprintln!(
+                "warning: provider {:?} source {:?} scan returned 0 sessions, skipping deletion to protect index",
+                provider, source_path
+            );
+            false
+        } else {
+            current_count <= 10 || (scan_count as f64 / current_count as f64) > 0.5
+        };
 
         if !should_delete {
             eprintln!(
