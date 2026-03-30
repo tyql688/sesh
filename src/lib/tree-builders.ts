@@ -58,14 +58,17 @@ export function buildFavoritesTree(
   return tree;
 }
 
-export function buildTrashTree(items: TrashMeta[]): TreeNode[] {
+export function buildTrashTree(
+  items: TrashMeta[],
+  labels: { unknown: string; untitled: string },
+): TreeNode[] {
   const providerMap = new Map<string, Map<string, TrashMeta[]>>();
 
   for (const item of items) {
     const provider = item.provider || "claude";
     // Derive project from original_path
     const parts = item.original_path.split("/");
-    let project = "(Unknown)";
+    let project = labels.unknown;
     if (parts.length >= 2) {
       project = parts[parts.length - 2];
     }
@@ -85,7 +88,7 @@ export function buildTrashTree(items: TrashMeta[]): TreeNode[] {
     for (const [project, sessions] of projectMap) {
       const sessionNodes: TreeNode[] = sessions.map((s) => ({
         id: s.id,
-        label: s.title || "(untitled)",
+        label: s.title || labels.untitled,
         node_type: "session" as const,
         children: [],
         count: 0,

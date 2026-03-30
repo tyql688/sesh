@@ -64,6 +64,15 @@ impl GeminiProvider {
         Some(Self { home_dir })
     }
 
+    /// Public wrapper for tests: parse a chat JSON file with an explicit project_map.
+    pub fn parse_chat_file_for_test(
+        &self,
+        path: &PathBuf,
+        project_map: &HashMap<String, String>,
+    ) -> Option<crate::provider::ParsedSession> {
+        self.parse_chat_file(path, "", project_map)
+    }
+
     fn gemini_dir(&self) -> PathBuf {
         self.home_dir.join(".gemini")
     }

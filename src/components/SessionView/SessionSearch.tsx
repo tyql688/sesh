@@ -90,14 +90,14 @@ export function SessionSearch(props: {
       <button
         class="session-search-nav"
         onClick={() => navigateSearchMatch(-1)}
-        aria-label="Previous match"
+        aria-label={t("common.previousMatch")}
       >
         &uarr;
       </button>
       <button
         class="session-search-nav"
         onClick={() => navigateSearchMatch(1)}
-        aria-label="Next match"
+        aria-label={t("common.nextMatch")}
       >
         &darr;
       </button>
@@ -107,7 +107,7 @@ export function SessionSearch(props: {
           props.setSearchBarOpen(false);
           props.setSessionSearch("");
         }}
-        aria-label="Close search"
+        aria-label={t("common.closeSearch")}
       >
         &times;
       </button>

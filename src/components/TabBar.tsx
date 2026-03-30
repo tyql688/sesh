@@ -81,7 +81,7 @@ export function TabBar(props: {
               <span class="tab-title">{tab.title}</span>
               <button
                 class={`tab-close${isActive() ? " visible" : ""}`}
-                aria-label="Close tab"
+                aria-label={t("common.closeTab")}
                 onClick={(e) => {
                   e.stopPropagation();
                   props.onTabClose(tab.id);

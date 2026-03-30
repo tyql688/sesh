@@ -54,7 +54,7 @@ export function ChatIcon() {
   );
 }
 
-export function formatSessionLabel(raw: string): string {
+export function formatSessionLabel(raw: string, fallback = "Untitled"): string {
   let label = raw;
   label = label.replace(/^##\s*TASK:\s*/i, "");
   label = label.replace(/^\d+\.\s*TASK:\s*/i, "");
@@ -74,7 +74,7 @@ export function formatSessionLabel(raw: string): string {
     label = label.slice(0, 37) + "...";
   }
 
-  return label || "Untitled";
+  return label || fallback;
 }
 
 export function TreeNodeComponent(props: {
@@ -174,12 +174,12 @@ export function TreeNodeComponent(props: {
           }
         >
           {props.node.node_type === "session"
-            ? formatSessionLabel(props.node.label)
+            ? formatSessionLabel(props.node.label, t("common.untitled"))
             : displayLabel()}
         </span>
 
         <Show when={props.node.is_sidechain}>
-          <span class="tree-node-sidechain" title="Subagent session">
+          <span class="tree-node-sidechain" title={t("common.subagentSession")}>
             ⤷
           </span>
         </Show>

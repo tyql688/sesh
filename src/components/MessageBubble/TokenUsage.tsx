@@ -57,21 +57,29 @@ export function TokenUsageDisplay(props: { usage: TokenUsage }) {
   const fmt = (n: number) => n.toLocaleString();
   const cached = () => props.usage.cache_read_input_tokens;
   const created = () => props.usage.cache_creation_input_tokens;
+  const { t } = useI18n();
   return (
     <div class="msg-token-usage">
-      <span title="Input tokens">↑{fmt(props.usage.input_tokens)}</span>
+      <span title={t("common.inputTokens")}>
+        ↑{fmt(props.usage.input_tokens)}
+      </span>
       <span class="msg-token-sep">·</span>
-      <span title="Output tokens">↓{fmt(props.usage.output_tokens)}</span>
+      <span title={t("common.outputTokens")}>
+        ↓{fmt(props.usage.output_tokens)}
+      </span>
       <Show when={cached() > 0}>
         <span class="msg-token-sep">·</span>
-        <span class="msg-token-cached" title="Cache read tokens">
-          cache_read {fmt(cached())}
+        <span class="msg-token-cached" title={t("common.cacheReadTokens")}>
+          {t("common.cacheRead")} {fmt(cached())}
         </span>
       </Show>
       <Show when={created() > 0}>
         <span class="msg-token-sep">·</span>
-        <span class="msg-token-cache-write" title="Cache creation tokens">
-          cache_write {fmt(created())}
+        <span
+          class="msg-token-cache-write"
+          title={t("common.cacheWriteTokens")}
+        >
+          {t("common.cacheWrite")} {fmt(created())}
         </span>
       </Show>
     </div>
