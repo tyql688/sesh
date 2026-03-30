@@ -41,9 +41,9 @@ pub fn open_in_terminal(
         return Err("command rejected: contains shell metacharacters".to_string());
     }
 
-    // Must match: <provider> --resume <id> or <provider> -s <id> etc.
+    // Must match: <provider> <flag> <id> or <provider> --flag=<id> (e.g. agent --resume=xxx)
     let parts: Vec<&str> = command.split_whitespace().collect();
-    if parts.len() < 3 {
+    if parts.len() < 2 {
         return Err("command rejected: expected '<provider> <flag> <session_id>'".to_string());
     }
 
