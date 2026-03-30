@@ -8,7 +8,13 @@ use super::AppState;
 #[tauri::command]
 pub fn get_resume_command(session_id: String, provider: String) -> Result<String, String> {
     let safe_id = sanitize_session_id(&session_id);
-    let p = Provider::parse(&provider).unwrap_or(Provider::Claude);
+    let p = Provider::parse(&provider).unwrap_or_else(|| {
+        eprintln!(
+            "warning: unknown provider '{}', falling back to Claude",
+            provider
+        );
+        Provider::Claude
+    });
     Ok(p.resume_command(&safe_id))
 }
 
@@ -19,15 +25,9 @@ fn sanitize_session_id(id: &str) -> String {
         .collect()
 }
 
-/// Allowed command prefixes for open_in_terminal — must match known provider resume commands.
-const ALLOWED_CMD_PREFIXES: &[&str] = &[
-    "claude ",
-    "codex ",
-    "gemini ",
-    "cursor ",
-    "agent ",
-    "opencode ",
-    "kimi ",
+/// Shell metacharacters that must never appear in a terminal command.
+const SHELL_META: &[char] = &[
+    '&', ';', '|', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r',
 ];
 
 #[tauri::command]
@@ -36,16 +36,29 @@ pub fn open_in_terminal(
     cwd: Option<String>,
     terminal_app: String,
 ) -> Result<(), String> {
-    if !ALLOWED_CMD_PREFIXES.iter().any(|p| command.starts_with(p)) {
+    // Reject any shell metacharacters to prevent command injection
+    if command.chars().any(|c| SHELL_META.contains(&c)) {
+        return Err("command rejected: contains shell metacharacters".to_string());
+    }
+
+    // Must match: <provider> <flag> <id> or <provider> --flag=<id> (e.g. agent --resume=xxx)
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    if parts.len() < 2 {
+        return Err("command rejected: expected '<provider> <flag> <session_id>'".to_string());
+    }
+
+    const ALLOWED_PROVIDERS: &[&str] = &[
+        "claude", "codex", "gemini", "cursor", "agent", "opencode", "kimi",
+    ];
+
+    if !ALLOWED_PROVIDERS.contains(&parts[0]) {
         return Err(format!(
-            "command rejected: must start with a known provider prefix ({})",
-            ALLOWED_CMD_PREFIXES
-                .iter()
-                .map(|p| p.trim())
-                .collect::<Vec<_>>()
-                .join(", ")
+            "command rejected: unknown provider '{}'. Allowed: {}",
+            parts[0],
+            ALLOWED_PROVIDERS.join(", ")
         ));
     }
+
     terminal::launch_terminal(&terminal_app, &command, cwd.as_deref())
 }
 
@@ -58,7 +71,13 @@ pub fn resume_session(
     state: State<AppState>,
 ) -> Result<(), String> {
     let safe_id = sanitize_session_id(&session_id);
-    let p = Provider::parse(&provider).unwrap_or(Provider::Claude);
+    let p = Provider::parse(&provider).unwrap_or_else(|| {
+        eprintln!(
+            "warning: unknown provider '{}', falling back to Claude",
+            provider
+        );
+        Provider::Claude
+    });
     let cmd = p.resume_command(&safe_id);
 
     let cwd = state

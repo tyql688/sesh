@@ -305,7 +305,10 @@ fn build_fallback_meta(
 }
 
 fn str_to_provider(s: &str) -> Provider {
-    Provider::parse(s).unwrap_or(Provider::Claude)
+    Provider::parse(s).unwrap_or_else(|| {
+        eprintln!("warning: unknown provider '{}', falling back to Claude", s);
+        Provider::Claude
+    })
 }
 
 #[tauri::command]

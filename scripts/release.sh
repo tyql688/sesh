@@ -26,6 +26,10 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "Running tests before release..."
+(cd src-tauri && cargo test) || { echo "Error: Rust tests failed. Aborting release."; exit 1; }
+npm test || { echo "Error: Frontend tests failed. Aborting release."; exit 1; }
+
 echo "Bumping version to $VERSION..."
 
 # Cross-platform sed in-place (BSD vs GNU)

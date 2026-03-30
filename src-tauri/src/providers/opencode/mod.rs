@@ -41,6 +41,8 @@ impl OpenCodeProvider {
         )?;
         // Ensure WAL reads see latest committed data
         let _ = conn.pragma_update(None, "journal_mode", "wal");
+        // Prevent accidental writes to external database
+        let _ = conn.pragma_update(None, "query_only", "ON");
         Ok(conn)
     }
 }

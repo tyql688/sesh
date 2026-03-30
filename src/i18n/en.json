@@ -1,5 +1,6 @@
 {
   "app": { "title": "CC Session", "subtitle": "Session Explorer" },
+  "error": { "title": "Something went wrong", "message": "An unexpected error occurred.", "reload": "Reload" },
   "common": { "loading": "Loading...", "copyCode": "Copy code", "copyMessage": "Copy message", "viewSource": "View Source", "viewDiagram": "View Diagram" },
   "explorer": { "title": "Explorer", "providers": "Providers", "noProject": "(No Project)", "selected": "selected", "today": "Today", "thisWeek": "This Week", "thisMonth": "This Month", "older": "Older" },
   "search": { "placeholder": "Search all sessions...", "noResults": "No results found", "ariaLabel": "Search sessions" },

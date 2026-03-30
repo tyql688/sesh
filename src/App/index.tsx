@@ -1,4 +1,11 @@
-import { createSignal, createMemo, onMount, onCleanup, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  onMount,
+  onCleanup,
+  Show,
+  ErrorBoundary,
+} from "solid-js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ActivityBar } from "../components/ActivityBar";
@@ -17,11 +24,13 @@ import { trashSession } from "../lib/tauri";
 import { isMac } from "../lib/platform";
 import { disabledProviders } from "../stores/settings";
 import type { TreeNode, SessionMeta } from "../lib/types";
+import { useI18n } from "../i18n";
 import { createKeyboardHandler } from "./KeyboardShortcuts";
 import { createSyncManager } from "./SyncManager";
 import "../styles/index.css";
 
 export default function App() {
+  const { t } = useI18n();
   const [tree, setTree] = createSignal<TreeNode[]>([]);
   const [sessionCount, setSessionCount] = createSignal(0);
   const [activeView, setActiveView] = createSignal("explorer");
@@ -163,88 +172,128 @@ export default function App() {
   });
 
   return (
-    <div class="app-layout">
-      <div
-        class="titlebar"
-        onMouseDown={(e) => {
-          if (e.buttons !== 1) return;
-          if ((e.target as HTMLElement).closest("input, button, .search-panel"))
-            return;
-          e.preventDefault();
-          if (e.detail === 2) {
-            getCurrentWindow().toggleMaximize();
-          } else {
-            getCurrentWindow().startDragging();
-          }
-        }}
-      >
-        <div class="titlebar-center">
-          <span class="app-name">
-            <span class="app-name-bracket">&lt;</span>cc-session
-            <span class="app-name-bracket">/&gt;</span>
-          </span>
-        </div>
-        <div class="titlebar-right">
-          <SearchPanel onOpenSession={openSession} />
-        </div>
-      </div>
-      <div class="main-layout">
-        <ActivityBar activeView={activeView()} onViewChange={setActiveView} />
-        <Show when={showExplorerTree()}>
-          <Explorer
-            tree={filteredTree()}
-            isLoading={isLoading()}
-            activeSessionId={activeTabId()}
-            onOpenSession={openSession}
-            onRefreshTree={sync.refreshTree}
-            onDeleteSession={async (id: string) => {
-              try {
-                await trashSession(id, "", "", "");
-                closeTab(id);
-                await sync.refreshTree();
-              } catch (e) {
-                console.warn("Failed to trash session:", e);
-              }
+    <ErrorBoundary
+      fallback={(err) => (
+        <div
+          style={{
+            display: "flex",
+            "flex-direction": "column",
+            "align-items": "center",
+            "justify-content": "center",
+            height: "100vh",
+            gap: "16px",
+            padding: "24px",
+            "text-align": "center",
+            "font-family": "var(--font-family)",
+            color: "var(--text-primary)",
+            background: "var(--bg-primary)",
+          }}
+        >
+          <h2>{t("error.title")}</h2>
+          <p style={{ color: "var(--text-secondary)", "max-width": "500px" }}>
+            {err?.message || t("error.message")}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: "8px 16px",
+              "border-radius": "6px",
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-secondary)",
+              color: "var(--text-primary)",
+              cursor: "pointer",
             }}
-          />
-        </Show>
-        <Show when={activeView() === "settings"}>
-          <SettingsPanel />
-        </Show>
-        <Show when={activeView() === "trash"}>
-          <TrashView onRefreshTree={sync.refreshTree} />
-        </Show>
-        <Show when={activeView() === "favorites"}>
-          <FavoritesView onOpenSession={openSession} />
-        </Show>
-        <Show when={activeView() === "blocked"}>
-          <BlockedView onRefreshTree={sync.refreshTree} />
-        </Show>
-        <Show when={showExplorer()}>
-          <EditorArea
-            tabs={openTabs()}
-            activeTabId={activeTabId()}
-            onTabSelect={setActiveTabId}
-            onTabClose={closeTab}
-            onCloseAllTabs={closeAllTabs}
-            onCloseOtherTabs={closeOtherTabs}
-            onCloseTabsToRight={closeTabsToRight}
-            onRefreshTree={sync.refreshTree}
-            tree={filteredTree()}
-            onOpenSession={openSession}
-          />
-        </Show>
+          >
+            {t("error.reload")}
+          </button>
+        </div>
+      )}
+    >
+      <div class="app-layout">
+        <div
+          class="titlebar"
+          onMouseDown={(e) => {
+            if (e.buttons !== 1) return;
+            if (
+              (e.target as HTMLElement).closest("input, button, .search-panel")
+            )
+              return;
+            e.preventDefault();
+            if (e.detail === 2) {
+              getCurrentWindow().toggleMaximize();
+            } else {
+              getCurrentWindow().startDragging();
+            }
+          }}
+        >
+          <div class="titlebar-center">
+            <span class="app-name">
+              <span class="app-name-bracket">&lt;</span>cc-session
+              <span class="app-name-bracket">/&gt;</span>
+            </span>
+          </div>
+          <div class="titlebar-right">
+            <SearchPanel onOpenSession={openSession} />
+          </div>
+        </div>
+        <div class="main-layout">
+          <ActivityBar activeView={activeView()} onViewChange={setActiveView} />
+          <Show when={showExplorerTree()}>
+            <Explorer
+              tree={filteredTree()}
+              isLoading={isLoading()}
+              activeSessionId={activeTabId()}
+              onOpenSession={openSession}
+              onRefreshTree={sync.refreshTree}
+              onDeleteSession={async (id: string) => {
+                try {
+                  await trashSession(id, "", "", "");
+                  closeTab(id);
+                  await sync.refreshTree();
+                } catch (e) {
+                  console.warn("Failed to trash session:", e);
+                }
+              }}
+            />
+          </Show>
+          <Show when={activeView() === "settings"}>
+            <SettingsPanel />
+          </Show>
+          <Show when={activeView() === "trash"}>
+            <TrashView onRefreshTree={sync.refreshTree} />
+          </Show>
+          <Show when={activeView() === "favorites"}>
+            <FavoritesView onOpenSession={openSession} />
+          </Show>
+          <Show when={activeView() === "blocked"}>
+            <BlockedView onRefreshTree={sync.refreshTree} />
+          </Show>
+          <Show when={showExplorer()}>
+            <EditorArea
+              tabs={openTabs()}
+              activeTabId={activeTabId()}
+              onTabSelect={setActiveTabId}
+              onTabClose={closeTab}
+              onCloseAllTabs={closeAllTabs}
+              onCloseOtherTabs={closeOtherTabs}
+              onCloseTabsToRight={closeTabsToRight}
+              onRefreshTree={sync.refreshTree}
+              tree={filteredTree()}
+              onOpenSession={openSession}
+            />
+          </Show>
+        </div>
+        <StatusBar
+          sessionCount={sessionCount()}
+          providerCount={filteredTree().length}
+          isIndexing={isLoading()}
+        />
+        <KeyboardOverlay
+          show={showKeyboardOverlay()}
+          onClose={() => setShowKeyboardOverlay(false)}
+        />
+        <ToastContainer />
       </div>
-      <StatusBar
-        sessionCount={sessionCount()}
-        providerCount={filteredTree().length}
-        isIndexing={isLoading()}
-      />
-      <KeyboardOverlay
-        show={showKeyboardOverlay()}
-        onClose={() => setShowKeyboardOverlay(false)}
-      />
-      <ToastContainer />
-    </div>
+    </ErrorBoundary>
   );
 }

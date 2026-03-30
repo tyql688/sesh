@@ -1,5 +1,6 @@
 {
   "app": { "title": "CC Session", "subtitle": "会话浏览器" },
+  "error": { "title": "出现错误", "message": "发生了意外错误。", "reload": "重新加载" },
   "common": { "loading": "加载中...", "copyCode": "复制代码", "copyMessage": "复制消息", "viewSource": "查看源码", "viewDiagram": "查看图表" },
   "explorer": { "title": "资源管理器", "providers": "提供商", "noProject": "(无项目)", "selected": "已选择", "today": "今天", "thisWeek": "本周", "thisMonth": "本月", "older": "更早" },
   "search": { "placeholder": "搜索所有会话...", "noResults": "未找到结果", "ariaLabel": "搜索会话" },

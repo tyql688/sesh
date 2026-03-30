@@ -89,6 +89,8 @@ pub fn run() {
             commands::open_in_folder,
         ])
         .setup(|app| {
+            // Provider instances are lightweight (just PathBuf); create a separate
+            // set for the watcher since Indexer consumed the first set.
             let watcher_providers = provider::all_providers();
             match watcher::start_watcher(app.handle().clone(), &watcher_providers) {
                 Ok(fs_watcher) => {
