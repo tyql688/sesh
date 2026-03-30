@@ -36,6 +36,8 @@ pub fn make_provider(provider: &Provider) -> Option<Box<dyn SessionProvider>> {
             .map(|p| Box::new(p) as Box<dyn SessionProvider>),
         Provider::Kimi => crate::providers::kimi::KimiProvider::new()
             .map(|p| Box::new(p) as Box<dyn SessionProvider>),
+        Provider::CcMirror => crate::providers::cc_mirror::CcMirrorProvider::new()
+            .map(|p| Box::new(p) as Box<dyn SessionProvider>),
     }
 }
 

@@ -150,8 +150,9 @@ fn upsert_session_on(
 
     conn.execute(
         "INSERT INTO sessions (id, provider, title, project_path, project_name,
-            created_at, updated_at, message_count, file_size_bytes, source_path, content_text, is_sidechain)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            created_at, updated_at, message_count, file_size_bytes, source_path, content_text, is_sidechain,
+            variant_name)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(id) DO UPDATE SET
             provider = excluded.provider,
             title = CASE WHEN sessions.title_custom = 1 THEN sessions.title ELSE excluded.title END,
@@ -163,7 +164,8 @@ fn upsert_session_on(
             file_size_bytes = excluded.file_size_bytes,
             source_path = excluded.source_path,
             content_text = excluded.content_text,
-            is_sidechain = excluded.is_sidechain",
+            is_sidechain = excluded.is_sidechain,
+            variant_name = excluded.variant_name",
         params![
             meta.id,
             provider_str,
@@ -177,6 +179,7 @@ fn upsert_session_on(
             meta.source_path,
             content_text,
             meta.is_sidechain as i64,
+            meta.variant_name,
         ],
     )?;
     Ok(())

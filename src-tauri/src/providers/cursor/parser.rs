@@ -110,6 +110,7 @@ impl CursorProvider {
                 file_size_bytes: file_size,
                 source_path: db_path.to_string_lossy().to_string(),
                 is_sidechain: false,
+                variant_name: None,
             },
             messages: Vec::new(),
             content_text: truncate_to_bytes(&content_parts.join("\n"), FTS_CONTENT_LIMIT),

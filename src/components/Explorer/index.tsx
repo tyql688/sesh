@@ -1,7 +1,6 @@
 import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
 import type { SessionMeta, TreeNode } from "../../lib/types";
 import {
-  getResumeCommand,
   resumeSession,
   trashSession,
   exportSessionsBatch,
@@ -9,6 +8,7 @@ import {
   renameSession,
   openInFolder,
 } from "../../lib/tauri";
+import { getProviderConfig } from "../../lib/providers";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../../i18n/index";
 import {
@@ -208,38 +208,65 @@ export function Explorer(props: {
     }
   }
 
-  function findSessionInTree(
-    sessionId: string,
-  ): { provider: string; projectPath: string } | null {
+  function findSessionInTree(sessionId: string): {
+    provider: string;
+    projectPath: string;
+    providerLabel: string;
+  } | null {
     function search(
       nodes: TreeNode[],
       providerHint: string,
+      providerLabelHint: string,
+      displayKeyHint: string,
       projectHint: string,
-    ): { provider: string; projectPath: string } | null {
+    ): {
+      provider: string;
+      projectPath: string;
+      providerLabel: string;
+    } | null {
       for (const node of nodes) {
         if (node.node_type === "session" && node.id === sessionId) {
-          return { provider: providerHint, projectPath: projectHint };
+          return {
+            provider: providerHint,
+            projectPath: projectHint,
+            providerLabel: providerLabelHint,
+          };
         }
         if (node.children && node.children.length > 0) {
           const nextProvider =
-            node.node_type === "provider" ? node.id : providerHint;
-          // Only capture projectPath from the first project level (direct child of provider),
-          // not from time group sub-nodes which also have node_type "project".
+            node.node_type === "provider"
+              ? (node.provider ?? node.id)
+              : providerHint;
+          const nextProviderLabel =
+            node.node_type === "provider" ? node.label : providerLabelHint;
+          // displayKey is the provider tree node id (e.g. "claude", "cc-mirror:cczai").
+          // Project node id is "displayKey:/path". Strip displayKey + ":" to get path.
+          const nextDisplayKey =
+            node.node_type === "provider" ? node.id : displayKeyHint;
           const nextProject =
             node.node_type === "project" && !providerHint
               ? ""
               : node.node_type === "project" && providerHint && !projectHint
-                ? node.id.includes(":")
-                  ? node.id.slice(node.id.indexOf(":") + 1)
-                  : ""
+                ? (() => {
+                    const prefix = nextDisplayKey + ":";
+                    return node.id.startsWith(prefix)
+                      ? node.id.slice(prefix.length)
+                      : "";
+                  })()
                 : projectHint;
-          const result = search(node.children, nextProvider, nextProject);
+          const result = search(
+            node.children,
+            nextProvider,
+            nextProviderLabel,
+            nextDisplayKey,
+            nextProject,
+          );
           if (result) return result;
         }
       }
       return null;
     }
-    return search(props.tree, "", "");
+    return search(props.tree, "", "", "", "");
   }
 
   async function trashSelected() {
@@ -291,14 +318,10 @@ export function Explorer(props: {
   function sessionMenuItems(): MenuItemDef[] {
     const m = sessionMenu();
     if (!m) return [];
-    const { node, projectLabel } = m;
-    const sessionProjectPath = findSessionInTree(node.id)?.projectPath ?? "";
+    const { node } = m;
+    const sessionInfo = findSessionInTree(node.id);
+    const sessionProjectPath = sessionInfo?.projectPath ?? "";
     const items: MenuItemDef[] = [
-      {
-        label: t("contextMenu.openInNewTab"),
-        onClick: () =>
-          props.onOpenSession(buildSessionMeta(node, projectLabel)),
-      },
       {
         label: t("contextMenu.copySessionId"),
         onClick: () => {
@@ -309,11 +332,18 @@ export function Explorer(props: {
       },
       {
         label: t("contextMenu.copyResumeCommand"),
-        onClick: async () => {
+        onClick: () => {
           const provider = node.provider ?? "claude";
-          const cmd = await getResumeCommand(node.id, provider);
-          await navigator.clipboard.writeText(cmd);
-          toast(t("toast.cmdCopied"));
+          let cmd: string;
+          if (provider === "cc-mirror" && sessionInfo?.providerLabel) {
+            cmd = `${sessionInfo.providerLabel} --resume ${node.id}`;
+          } else {
+            const config = getProviderConfig(provider);
+            cmd = config.resumeCommand(node.id);
+          }
+          void navigator.clipboard
+            .writeText(cmd)
+            .then(() => toast(t("toast.cmdCopied")));
         },
       },
       ...(sessionProjectPath

@@ -39,6 +39,7 @@ src-tauri/src/
     kimi/                  # mod.rs, parser.rs, tools.rs
     cursor/                # mod.rs, parser.rs, tools.rs
     opencode/              # mod.rs, parser.rs
+    cc_mirror.rs           # CC-Mirror provider (multi-variant Claude Code aggregator)
   commands/                # sessions.rs, settings.rs, trash.rs, terminal.rs
   exporter/                # json.rs, markdown.rs, html.rs, templates.rs
   db/                      # mod.rs (schema, read/write conn separation), queries.rs, sync.rs, row_mapper.rs
@@ -59,8 +60,10 @@ All providers implement `SessionProvider` trait:
 Provider constructors return `Option<Self>` (graceful skip if HOME unavailable).
 `Provider::parse(s)` maps string keys to enum variants (renamed from `from_str`).
 
-File-based (Claude, Codex, Gemini, Kimi CLI): FS event watching via `notify` crate.
+File-based (Claude, Codex, Gemini, Kimi CLI, CC-Mirror): FS event watching via `notify` crate.
 SQLite-based (Cursor CLI, OpenCode): 2s polling in frontend when live watch enabled. Opened with `SQLITE_OPEN_READ_WRITE` to read WAL data.
+
+CC-Mirror is a special provider that aggregates multiple Claude Code-like variants under `~/.cc-mirror/`. Each variant subdirectory contains a `variant.json` metadata file and `config/projects/` directory with JSONL sessions (same format as Claude Code). Variant names are sanitized (alphanumeric, hyphens, underscores) for safe shell usage. Sessions are grouped by variant in the UI. Resume commands use variant names as command prefixes (e.g., `mycczai --resume session-id`).
 
 Heavy commands (`reindex`, `sync_sources`, `delete_sessions_batch`, `export_sessions_batch`) are `async` with `tokio::task::spawn_blocking` to avoid blocking the main thread.
 
@@ -76,6 +79,7 @@ Tool names are mapped to canonical names per provider (e.g. Codex `exec_command`
 | Kimi CLI    | `~/.kimi/sessions/**/*.jsonl`          | JSONL  |
 | Cursor CLI  | `~/.cursor/chats/**/store.db`          | SQLite |
 | OpenCode    | `~/.local/share/opencode/opencode.db`  | SQLite |
+| CC-Mirror   | `~/.cc-mirror/{variant}/config/projects/**/*.jsonl` | JSONL |
 
 ## Database
 
@@ -150,10 +154,19 @@ Three-platform matrix (macOS, Windows, Linux) with:
 
 - **`build_tree` must use `Provider::from_str()`.** Previously hardcoded `match` for claude/codex/gemini — adding cursor/opencode silently failed. Using `from_str()` ensures new providers are automatically included.
 
+### CC Mirror
+
+- **Multiple variants under one `~/.cc-mirror/` root.** Each subdirectory is a variant (e.g., `cczai`, `qwen`). Each must have `variant.json` at the root.
+- **Variant names are sanitized.** Only alphanumeric, hyphens, underscores allowed. Extracted from the directory name for safe shell usage.
+- **Session grouping by variant.** Tree structure: `Provider (CC-Mirror) → Project (variant name) → Sessions`. Differs from single-instance providers.
+- **Projects dir path.** Each variant's sessions are at `{variant-dir}/config/projects/`. Fixed path structure.
+- **Resume command uses variant name.** `{variant-name} --resume {session-id}`. Variant name stored in `SessionMeta.variant_name`. Fallback: `claude --resume {session-id}`.
+- **Terminal validation for variants.** `open_in_terminal` validates that a variant name matches a known variant directory (directory exists with valid `variant.json`) to prevent shell injection.
+
 ### General
 
 - **Provider isolation.** Changes to one provider's parser must not affect others. The boundary is the canonical tool name mapping — each provider maps its tool names to {Bash, Edit, Read, Write, Glob, Grep, Agent, Plan} and the frontend only handles these.
-- **Resume commands vary per provider.** Claude: `claude --resume ID`, Codex: `codex resume ID`, Gemini: `gemini --resume ID`, Kimi CLI: `kimi --session ID`, Cursor CLI: `agent --resume=ID`, OpenCode: `opencode -s ID`.
+- **Resume commands vary per provider.** Claude: `claude --resume ID`, Codex: `codex resume ID`, Gemini: `gemini --resume ID`, Kimi CLI: `kimi --session ID`, Cursor CLI: `agent --resume=ID`, OpenCode: `opencode -s ID`, CC-Mirror: `{variant-name} --resume ID`.
 - **FTS content is intentionally truncated** to 2000 bytes via `truncate_to_bytes`. This is for index size, not display. Display content is never truncated.
 - **Timestamps.** Claude/Codex/Gemini have per-message timestamps. Cursor CLI has none (use file metadata). OpenCode uses epoch milliseconds (convert with `ms / 1000`).
 - **Cursor CLI has no token usage data.** store.db blobs only contain `role`, `content`, `id` — no usage/token fields. Token billing is tracked server-side only.
@@ -165,4 +178,4 @@ Three-platform matrix (macOS, Windows, Linux) with:
 - TypeScript: strict mode, no `any`
 - Commits: conventional commits (`feat:`, `fix:`, `refactor:`)
 - i18n: all user-facing strings via `t()`, never hardcoded
-- CSS: variables in `variables.css`. Provider colors: Claude `#8b5cf6`, Codex `#10b981`, Gemini `#f59e0b`, Kimi CLI `#6366f1`, Cursor CLI `#3b82f6`, OpenCode `#06b6d4`
+- CSS: variables in `variables.css`. Provider colors: Claude `#8b5cf6`, Codex `#10b981`, Gemini `#f59e0b`, Kimi CLI `#6366f1`, Cursor CLI `#3b82f6`, OpenCode `#06b6d4`, CC-Mirror `#f472b6`

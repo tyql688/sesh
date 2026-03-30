@@ -6,8 +6,27 @@ use crate::terminal;
 use super::AppState;
 
 #[tauri::command]
-pub fn get_resume_command(session_id: String, provider: String) -> Result<String, String> {
+pub fn get_resume_command(
+    session_id: String,
+    provider: String,
+    state: State<AppState>,
+) -> Result<String, String> {
     let safe_id = sanitize_session_id(&session_id);
+    if provider == "cc-mirror" {
+        return match state
+            .db
+            .get_session(&session_id)
+            .ok()
+            .flatten()
+            .and_then(|s| s.variant_name)
+        {
+            Some(name) => {
+                let safe_name = sanitize_session_id(&name);
+                Ok(format!("{safe_name} --resume {safe_id}"))
+            }
+            None => Err("cc-mirror session missing variant name".to_string()),
+        };
+    }
     let p = Provider::parse(&provider).unwrap_or_else(|| {
         eprintln!(
             "warning: unknown provider '{}', falling back to Claude",
@@ -51,15 +70,28 @@ pub fn open_in_terminal(
         "claude", "codex", "gemini", "cursor", "agent", "opencode", "kimi",
     ];
 
-    if !ALLOWED_PROVIDERS.contains(&parts[0]) {
-        return Err(format!(
-            "command rejected: unknown provider '{}'. Allowed: {}",
-            parts[0],
-            ALLOWED_PROVIDERS.join(", ")
-        ));
+    let cmd_name = parts[0];
+    // Allow known providers, or cc-mirror variant names discovered from ~/.cc-mirror/
+    let is_allowed = ALLOWED_PROVIDERS.contains(&cmd_name) || is_known_cc_mirror_variant(cmd_name);
+
+    if !is_allowed {
+        return Err(format!("command rejected: unknown provider '{cmd_name}'"));
     }
 
     terminal::launch_terminal(&terminal_app, &command, cwd.as_deref())
+}
+
+/// Check if a command name matches a discovered cc-mirror variant.
+fn is_known_cc_mirror_variant(name: &str) -> bool {
+    let Some(home) = dirs::home_dir() else {
+        return false;
+    };
+    let mirror_root = home.join(".cc-mirror");
+    if !mirror_root.exists() {
+        return false;
+    }
+    let variant_dir = mirror_root.join(name);
+    variant_dir.is_dir() && variant_dir.join("variant.json").exists()
 }
 
 /// Resume a session: looks up cwd from DB, builds command, launches terminal
@@ -71,27 +103,27 @@ pub fn resume_session(
     state: State<AppState>,
 ) -> Result<(), String> {
     let safe_id = sanitize_session_id(&session_id);
-    let p = Provider::parse(&provider).unwrap_or_else(|| {
-        eprintln!(
-            "warning: unknown provider '{}', falling back to Claude",
-            provider
-        );
-        Provider::Claude
-    });
-    let cmd = p.resume_command(&safe_id);
+    let session = state.db.get_session(&session_id).ok().flatten();
 
-    let cwd = state
-        .db
-        .get_session(&session_id)
-        .ok()
-        .flatten()
-        .and_then(|s| {
-            if s.project_path.is_empty() {
-                None
-            } else {
-                Some(s.project_path)
-            }
-        });
+    let cmd = if provider == "cc-mirror" {
+        if let Some(ref name) = session.as_ref().and_then(|s| s.variant_name.clone()) {
+            let safe_name = sanitize_session_id(name);
+            format!("{safe_name} --resume {safe_id}")
+        } else {
+            return Err("cc-mirror session missing variant name, cannot resume".to_string());
+        }
+    } else {
+        let p = Provider::parse(&provider).unwrap_or(Provider::Claude);
+        p.resume_command(&safe_id)
+    };
+
+    let cwd = session.and_then(|s| {
+        if s.project_path.is_empty() {
+            None
+        } else {
+            Some(s.project_path)
+        }
+    });
 
     terminal::launch_terminal(&terminal_app, &cmd, cwd.as_deref())
 }

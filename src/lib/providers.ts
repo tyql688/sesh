@@ -4,7 +4,7 @@ export interface ProviderConfig {
   key: Provider;
   label: string;
   color: string; // CSS variable name (without --)
-  resumePrefix: string; // e.g. "claude --resume"
+  resumeCommand: (id: string) => string;
 }
 
 const PROVIDERS: Record<Provider, ProviderConfig> = {
@@ -12,37 +12,44 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
     key: "claude",
     label: "Claude Code",
     color: "claude",
-    resumePrefix: "claude --resume",
+    resumeCommand: (id) => `claude --resume ${id}`,
   },
   codex: {
     key: "codex",
     label: "Codex",
     color: "codex",
-    resumePrefix: "codex resume",
+    resumeCommand: (id) => `codex resume ${id}`,
   },
   gemini: {
     key: "gemini",
     label: "Gemini",
     color: "gemini",
-    resumePrefix: "gemini --resume",
+    resumeCommand: (id) => `gemini --resume ${id}`,
   },
   cursor: {
     key: "cursor",
     label: "Cursor",
     color: "cursor",
-    resumePrefix: "cursor --resume",
+    resumeCommand: (id) => `agent --resume=${id}`,
   },
   opencode: {
     key: "opencode",
     label: "OpenCode",
     color: "opencode",
-    resumePrefix: "opencode --resume",
+    resumeCommand: (id) => `opencode -s ${id}`,
   },
   kimi: {
     key: "kimi",
     label: "Kimi CLI",
     color: "kimi",
-    resumePrefix: "kimi --session",
+    resumeCommand: (id) => `kimi --session ${id}`,
+  },
+  "cc-mirror": {
+    key: "cc-mirror",
+    label: "CC-Mirror",
+    color: "cc-mirror",
+    // cc-mirror uses variant_name as command; handled separately in Explorer
+    resumeCommand: () => "",
   },
 };
 

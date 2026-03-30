@@ -13,6 +13,7 @@ pub fn row_to_session_meta(row: &rusqlite::Row) -> rusqlite::Result<SessionMeta>
         file_size_bytes: row.get(8)?,
         source_path: row.get(9)?,
         is_sidechain: row.get::<_, i64>(10).unwrap_or(0) != 0,
+        variant_name: row.get::<_, Option<String>>(11).unwrap_or(None),
     })
 }
 

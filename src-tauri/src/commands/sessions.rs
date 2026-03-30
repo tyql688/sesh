@@ -223,6 +223,11 @@ pub(crate) fn sync_source_from_path(source_path: &str, state: &AppState) -> Resu
 fn provider_from_source_path(source_path: &str) -> Option<Provider> {
     let normalized = source_path.replace('\\', "/");
 
+    // cc-mirror check BEFORE claude — cc-mirror paths also contain /projects/
+    if normalized.contains("/.cc-mirror/") && normalized.contains("/config/projects/") {
+        return Some(Provider::CcMirror);
+    }
+
     if normalized.contains("/.claude/projects/") {
         return Some(Provider::Claude);
     }
@@ -301,6 +306,7 @@ fn build_fallback_meta(
         file_size_bytes: 0,
         source_path: source_path.to_string(),
         is_sidechain: false,
+        variant_name: None,
     }
 }
 

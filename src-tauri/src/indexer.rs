@@ -62,12 +62,19 @@ impl Indexer {
             .list_sessions()
             .map_err(|e| format!("failed to list sessions: {e}"))?;
 
-        // Group by provider -> project_path -> sessions
         let mut provider_map: BTreeMap<String, BTreeMap<String, Vec<crate::models::SessionMeta>>> =
             BTreeMap::new();
 
         for session in sessions {
-            let provider_key = session.provider.key().to_string();
+            let display_key = if session.provider == Provider::CcMirror {
+                if let Some(ref vn) = session.variant_name {
+                    format!("cc-mirror:{vn}")
+                } else {
+                    "cc-mirror".to_string()
+                }
+            } else {
+                session.provider.key().to_string()
+            };
             let project_key = if session.project_path.is_empty() {
                 String::new()
             } else {
@@ -75,7 +82,7 @@ impl Indexer {
             };
 
             provider_map
-                .entry(provider_key)
+                .entry(display_key)
                 .or_default()
                 .entry(project_key)
                 .or_default()
@@ -84,15 +91,22 @@ impl Indexer {
 
         let mut tree = Vec::new();
 
-        for (provider_key, projects) in &provider_map {
-            let provider_enum = match Provider::parse(provider_key) {
-                Some(p) => p,
-                None => continue,
-            };
+        for (display_key, projects) in &provider_map {
+            let (provider_enum, label) =
+                if let Some(variant_name) = display_key.strip_prefix("cc-mirror:") {
+                    (Provider::CcMirror, variant_name.to_string())
+                } else if display_key == "cc-mirror" {
+                    (Provider::CcMirror, "CC-Mirror".to_string())
+                } else {
+                    match Provider::parse(display_key) {
+                        Some(p) => {
+                            let l = p.label().to_string();
+                            (p, l)
+                        }
+                        None => continue,
+                    }
+                };
 
-            let label = provider_enum.label().to_string();
-
-            // Sort projects by most recently updated session
             let mut sorted_projects: Vec<_> = projects.iter().collect();
             sorted_projects.sort_by(|a, b| {
                 let max_a = a.1.iter().map(|s| s.updated_at).max().unwrap_or(0);
@@ -132,7 +146,7 @@ impl Indexer {
                 provider_total += count;
 
                 project_nodes.push(TreeNode {
-                    id: format!("{provider_key}:{project_path}"),
+                    id: format!("{display_key}:{project_path}"),
                     label: project_label,
                     node_type: TreeNodeType::Project,
                     children: session_nodes,
@@ -144,7 +158,7 @@ impl Indexer {
             }
 
             tree.push(TreeNode {
-                id: provider_key.clone(),
+                id: display_key.clone(),
                 label,
                 node_type: TreeNodeType::Provider,
                 children: project_nodes,
@@ -154,6 +168,21 @@ impl Indexer {
                 is_sidechain: false,
             });
         }
+
+        // Sort: known providers in display order, cc-mirror variants right after Claude
+        tree.sort_by_key(|node| {
+            let id = &node.id;
+            match id.as_str() {
+                "claude" => (0, id.clone()),
+                _ if id.starts_with("cc-mirror") => (1, id.clone()),
+                "codex" => (2, id.clone()),
+                "gemini" => (3, id.clone()),
+                "cursor" => (4, id.clone()),
+                "opencode" => (5, id.clone()),
+                "kimi" => (6, id.clone()),
+                _ => (99, id.clone()),
+            }
+        });
 
         Ok(tree)
     }

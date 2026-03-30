@@ -21,7 +21,13 @@ export function SessionToolbar(props: {
 }) {
   const { t, locale } = useI18n();
 
-  const providerLabel = () => getProviderLabel(props.meta().provider);
+  const providerLabel = () => {
+    const meta = props.meta();
+    if (meta.provider === "cc-mirror" && meta.variant_name) {
+      return meta.variant_name;
+    }
+    return getProviderLabel(meta.provider);
+  };
 
   // Total token usage across all messages
   const totalTokens = () => {

@@ -19,6 +19,12 @@ impl ClaudeProvider {
         Some(Self { home_dir })
     }
 
+    /// Thin wrapper for tests — delegates to the free function in parser module.
+    pub fn parse_session(&self, path: &std::path::Path) -> Option<crate::provider::ParsedSession> {
+        let buf = path.to_path_buf();
+        parser::parse_session_file(&buf)
+    }
+
     fn projects_dir(&self) -> PathBuf {
         self.home_dir.join(".claude").join("projects")
     }
@@ -82,7 +88,7 @@ impl SessionProvider for ClaudeProvider {
 
         let sessions: Vec<ParsedSession> = all_files
             .par_iter()
-            .filter_map(|path| self.parse_session(path))
+            .filter_map(parser::parse_session_file)
             .collect();
 
         Ok(sessions)
@@ -90,7 +96,7 @@ impl SessionProvider for ClaudeProvider {
 
     fn scan_source(&self, source_path: &str) -> Result<Vec<ParsedSession>, ProviderError> {
         let path = PathBuf::from(source_path);
-        Ok(self.parse_session(&path).into_iter().collect())
+        Ok(parser::parse_session_file(&path).into_iter().collect())
     }
 
     fn load_messages(
@@ -100,8 +106,7 @@ impl SessionProvider for ClaudeProvider {
     ) -> Result<Vec<Message>, ProviderError> {
         let path = PathBuf::from(source_path);
 
-        let parsed = self
-            .parse_session(&path)
+        let parsed = parser::parse_session_file(&path)
             .ok_or_else(|| ProviderError::Parse("failed to parse session file".to_string()))?;
 
         Ok(parsed.messages)

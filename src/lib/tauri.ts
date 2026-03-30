@@ -104,7 +104,10 @@ export async function getResumeCommand(
   sessionId: string,
   provider: string,
 ): Promise<string> {
-  return invoke<string>("get_resume_command", { sessionId, provider });
+  return invoke<string>("get_resume_command", {
+    sessionId,
+    provider,
+  });
 }
 
 export async function openInTerminal(

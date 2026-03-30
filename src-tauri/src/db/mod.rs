@@ -153,6 +153,18 @@ impl Database {
             )?;
         }
 
+        // Migration: add variant_name column if not exists
+        let has_variant_name: bool = {
+            let mut stmt = write_conn.prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'variant_name'",
+            )?;
+            let count: i64 = stmt.query_row([], |row| row.get(0))?;
+            count > 0
+        };
+        if !has_variant_name {
+            write_conn.execute_batch("ALTER TABLE sessions ADD COLUMN variant_name TEXT;")?;
+        }
+
         let read_conn = Connection::open(&db_path)?;
         read_conn.pragma_update(None, "journal_mode", "WAL")?;
         read_conn.pragma_update(None, "query_only", "ON")?;

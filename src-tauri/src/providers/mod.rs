@@ -1,3 +1,4 @@
+pub mod cc_mirror;
 pub mod claude;
 pub mod codex;
 pub mod cursor;

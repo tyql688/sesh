@@ -4,7 +4,8 @@ export type Provider =
   | "gemini"
   | "cursor"
   | "opencode"
-  | "kimi";
+  | "kimi"
+  | "cc-mirror";
 
 export interface SessionMeta {
   id: string;
@@ -18,6 +19,7 @@ export interface SessionMeta {
   file_size_bytes: number;
   source_path: string;
   is_sidechain: boolean;
+  variant_name?: string;
 }
 
 export type MessageRole = "user" | "assistant" | "tool" | "system";

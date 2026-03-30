@@ -358,6 +358,7 @@ impl CodexProvider {
             file_size_bytes: file_size,
             source_path: path.to_string_lossy().to_string(),
             is_sidechain: false,
+            variant_name: None,
         };
 
         Some(ParsedSession {

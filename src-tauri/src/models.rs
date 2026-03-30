@@ -10,6 +10,8 @@ pub enum Provider {
     #[serde(rename = "opencode")]
     OpenCode,
     Kimi,
+    #[serde(rename = "cc-mirror")]
+    CcMirror,
 }
 
 impl Provider {
@@ -21,6 +23,7 @@ impl Provider {
             Provider::Cursor => "Cursor",
             Provider::OpenCode => "OpenCode",
             Provider::Kimi => "Kimi CLI",
+            Provider::CcMirror => "CC-Mirror",
         }
     }
 
@@ -32,6 +35,7 @@ impl Provider {
             Provider::Cursor => "cursor",
             Provider::OpenCode => "opencode",
             Provider::Kimi => "kimi",
+            Provider::CcMirror => "cc-mirror",
         }
     }
 
@@ -43,6 +47,7 @@ impl Provider {
             "cursor" => Some(Provider::Cursor),
             "opencode" => Some(Provider::OpenCode),
             "kimi" => Some(Provider::Kimi),
+            "cc-mirror" => Some(Provider::CcMirror),
             _ => None,
         }
     }
@@ -55,6 +60,7 @@ impl Provider {
             Provider::Cursor => "#3b82f6",
             Provider::OpenCode => "#06b6d4",
             Provider::Kimi => "#6366f1",
+            Provider::CcMirror => "#f472b6",
         }
     }
 
@@ -66,6 +72,8 @@ impl Provider {
             Provider::Cursor => format!("agent --resume={session_id}"),
             Provider::OpenCode => format!("opencode -s {session_id}"),
             Provider::Kimi => format!("kimi --session {session_id}"),
+            // cc-mirror requires variant_name; this fallback should not be used
+            Provider::CcMirror => String::new(),
         }
     }
 
@@ -78,6 +86,7 @@ impl Provider {
             Provider::Cursor,
             Provider::OpenCode,
             Provider::Kimi,
+            Provider::CcMirror,
         ]
     }
 }
@@ -101,6 +110,8 @@ pub struct SessionMeta {
     pub file_size_bytes: u64,
     pub source_path: String,
     pub is_sidechain: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variant_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

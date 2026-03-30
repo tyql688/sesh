@@ -183,6 +183,7 @@ impl SessionProvider for OpenCodeProvider {
                             file_size_bytes: 0,
                             source_path: self.db_path.to_string_lossy().to_string(),
                             is_sidechain,
+                            variant_name: None,
                         },
                         messages: Vec::new(),
                         content_text: truncate_to_bytes(&content_text, FTS_CONTENT_LIMIT),
