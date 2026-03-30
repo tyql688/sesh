@@ -1,5 +1,6 @@
 import { createSignal, createEffect, Show } from "solid-js";
 import { readImageBase64 } from "../../lib/tauri";
+import { useI18n } from "../../i18n/index";
 
 export function isLocalPath(source: string): boolean {
   return (
@@ -15,6 +16,7 @@ export function LocalImage(props: {
   path: string;
   onPreview: (src: string) => void;
 }) {
+  const { t } = useI18n();
   const [src, setSrc] = createSignal<string | null>(null);
 
   createEffect(() => {
@@ -31,7 +33,7 @@ export function LocalImage(props: {
       <div class="msg-image-wrap">
         <img
           src={src()!}
-          alt="Image"
+          alt={t("common.image")}
           class="msg-image"
           loading="lazy"
           decoding="async"
@@ -44,6 +46,7 @@ export function LocalImage(props: {
 }
 
 export function ImagePreview(props: { src: string; onClose: () => void }) {
+  const { t } = useI18n();
   return (
     <div class="image-preview-overlay" onClick={props.onClose}>
       <img
@@ -53,7 +56,7 @@ export function ImagePreview(props: { src: string; onClose: () => void }) {
       />
       <button
         class="image-preview-close"
-        aria-label="Close preview"
+        aria-label={t("common.closePreview")}
         onClick={props.onClose}
       >
         <svg

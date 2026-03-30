@@ -1,6 +1,7 @@
 import { createSignal, createMemo, For, Show, JSX } from "solid-js";
 import type { Message, Provider } from "../../lib/types";
 import { ProviderIcon, UserIcon } from "../../lib/icons";
+import { useI18n } from "../../i18n/index";
 import { CodeBlock } from "../CodeBlock";
 import { MermaidBlock } from "../MermaidBlock";
 import { parseContent } from "./MarkdownRenderer";
@@ -19,6 +20,7 @@ export function MessageBubble(props: {
   provider?: Provider;
   highlightTerm?: string;
 }) {
+  const { t } = useI18n();
   const segments = createMemo(() => parseContent(props.message.content));
   const [previewSrc, setPreviewSrc] = createSignal<string | null>(null);
 
@@ -109,7 +111,7 @@ export function MessageBubble(props: {
                       <div class="msg-image-wrap">
                         <img
                           src={seg.content}
-                          alt="Image"
+                          alt={t("common.image")}
                           class="msg-image"
                           loading="lazy"
                           decoding="async"

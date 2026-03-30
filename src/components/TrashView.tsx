@@ -44,15 +44,18 @@ export function TrashView(props: { onRefreshTree: () => void }) {
 
   const tree = createMemo(() => {
     const items = trashItems() || [];
-    const t = buildTrashTree(items);
+    const trashTree = buildTrashTree(items, {
+      unknown: t("common.unknown"),
+      untitled: t("common.untitled"),
+    });
     // Auto-expand all
     const ids = new Set<string>();
-    for (const n of t) {
+    for (const n of trashTree) {
       ids.add(n.id);
       for (const c of n.children) ids.add(c.id);
     }
     setExpandedIds(ids);
-    return t;
+    return trashTree;
   });
 
   const itemMap = createMemo(() => {

@@ -142,11 +142,11 @@ export function SessionToolbar(props: {
           <span class="info-sep">&middot;</span>
           <span
             class="session-info-tokens"
-            title={`Input: ${totalTokens()!.input.toLocaleString()}, Output: ${totalTokens()!.output.toLocaleString()}${totalTokens()!.cacheRead > 0 ? `, Cache hit: ${totalTokens()!.cacheRead.toLocaleString()}` : ""}`}
+            title={`${t("common.inputTokens")}: ${totalTokens()!.input.toLocaleString()}, ${t("common.outputTokens")}: ${totalTokens()!.output.toLocaleString()}${totalTokens()!.cacheRead > 0 ? `, ${t("common.cacheReadTokens")}: ${totalTokens()!.cacheRead.toLocaleString()}` : ""}`}
           >
             {"\u2191"}
             {fmtK(totalTokens()!.input)} {"\u2193"}
-            {fmtK(totalTokens()!.output)} tokens
+            {fmtK(totalTokens()!.output)} {t("common.tokens")}
           </span>
         </Show>
         <Show when={props.meta().is_sidechain}>
