@@ -1,6 +1,6 @@
 [package]
 name = "cc-session"
-version = "0.2.0"
+version = "0.2.1"
 description = "High-performance desktop session explorer for Claude Code, Codex, and Gemini CLI"
 authors = ["you"]
 edition = "2021"
