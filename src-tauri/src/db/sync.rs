@@ -45,7 +45,9 @@ impl Database {
         if !should_delete {
             log::warn!(
                 "provider {:?} scan returned {} sessions but DB has {}, skipping destructive sync",
-                provider, scan_count, current_count
+                provider,
+                scan_count,
+                current_count
             );
         }
 
