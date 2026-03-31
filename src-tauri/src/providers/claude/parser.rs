@@ -289,7 +289,7 @@ fn handle_tool_result(msg: &Value, state: &mut ParseState, timestamp: &Option<St
             if result_item.get("type").and_then(|t| t.as_str()) != Some("tool_result") {
                 continue;
             }
-            let result_text = extract_tool_result_content(result_item);
+            let result_text = resolve_persisted_outputs(&extract_tool_result_content(result_item));
             if result_text.trim().is_empty() {
                 continue;
             }
@@ -681,6 +681,64 @@ fn is_tool_result_message(message: &Value) -> bool {
             .all(|item| item.get("type").and_then(|t| t.as_str()) == Some("tool_result")),
         _ => false,
     }
+}
+
+/// Resolve `<persisted-output>` tags by reading the referenced external file.
+/// Falls back to keeping the original content (with preview) if the file can't be read.
+fn resolve_persisted_outputs(content: &str) -> String {
+    const TAG_START: &str = "<persisted-output>";
+    const TAG_END: &str = "</persisted-output>";
+
+    if !content.contains(TAG_START) {
+        return content.to_string();
+    }
+
+    let mut result = String::new();
+    let mut remaining = content;
+
+    while let Some(start_pos) = remaining.find(TAG_START) {
+        // Add everything before the tag
+        result.push_str(&remaining[..start_pos]);
+
+        let after_tag_start = &remaining[start_pos + TAG_START.len()..];
+        if let Some(end_pos) = after_tag_start.find(TAG_END) {
+            let inner = &after_tag_start[..end_pos];
+
+            // Extract file path from "Full output saved to: /path"
+            let file_content = inner
+                .lines()
+                .find_map(|line| {
+                    let trimmed = line.trim();
+                    if let Some(rest) = trimmed.strip_prefix("Full output saved to: ") {
+                        Some(rest.trim().to_string())
+                    } else if trimmed.contains("saved to: ") {
+                        trimmed.split("saved to: ").nth(1).map(|p| p.trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|path| std::fs::read_to_string(&path).ok());
+
+            match file_content {
+                Some(full) => result.push_str(&full),
+                None => {
+                    // Keep the original tag content as fallback
+                    result.push_str(TAG_START);
+                    result.push_str(inner);
+                    result.push_str(TAG_END);
+                }
+            }
+
+            remaining = &after_tag_start[end_pos + TAG_END.len()..];
+        } else {
+            // No closing tag found, keep everything as-is
+            result.push_str(&remaining[start_pos..]);
+            remaining = "";
+        }
+    }
+
+    result.push_str(remaining);
+    result
 }
 
 /// Extract text content from a single tool_result block.
