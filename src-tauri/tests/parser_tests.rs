@@ -36,10 +36,12 @@ fn claude_parses_message_count() {
     //  5. Assistant: "I'll read the file..."
     //  6. Tool (Read): content = file contents (merged from tool_result)
     //  7. Assistant: "Your function looks correct!"
+    //  8. System: "[turn_duration] 20.0s, 6 messages"
+    //  9. System: "[microcompact_boundary] 27k tokens saved 2k"
     assert_eq!(
         session.messages.len(),
-        7,
-        "expected 7 messages, got: {:#?}",
+        9,
+        "expected 9 messages, got: {:#?}",
         session.messages
     );
 }
@@ -162,6 +164,69 @@ fn claude_session_title_from_first_user_message() {
         session.meta.title.contains("debug this Rust code"),
         "title should derive from first user message, got: {}",
         session.meta.title
+    );
+}
+
+#[test]
+fn claude_extracts_model() {
+    let provider = ClaudeProvider::new().expect("home dir must be available");
+    let path = fixtures_dir().join("claude_session.jsonl");
+    let session = provider
+        .parse_session(&path)
+        .expect("claude fixture must parse");
+
+    assert_eq!(
+        session.meta.model.as_deref(),
+        Some("claude-sonnet-4-5-20250514"),
+        "model should be extracted from first assistant message"
+    );
+}
+
+#[test]
+fn claude_extracts_version_and_branch() {
+    let provider = ClaudeProvider::new().expect("home dir must be available");
+    let path = fixtures_dir().join("claude_session.jsonl");
+    let session = provider
+        .parse_session(&path)
+        .expect("claude fixture must parse");
+
+    assert_eq!(
+        session.meta.cc_version.as_deref(),
+        Some("2.1.87"),
+        "cc_version should be extracted"
+    );
+    assert_eq!(
+        session.meta.git_branch.as_deref(),
+        Some("main"),
+        "git_branch should be extracted"
+    );
+}
+
+#[test]
+fn claude_parses_system_subtypes() {
+    let provider = ClaudeProvider::new().expect("home dir must be available");
+    let path = fixtures_dir().join("claude_session.jsonl");
+    let session = provider
+        .parse_session(&path)
+        .expect("claude fixture must parse");
+
+    use cc_session_lib::models::MessageRole;
+    let system_msgs: Vec<&cc_session_lib::models::Message> = session
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::System && !m.content.starts_with("[thinking]"))
+        .collect();
+
+    assert_eq!(system_msgs.len(), 2, "expected 2 system subtype messages");
+    assert!(
+        system_msgs[0].content.contains("[turn_duration]"),
+        "first system msg should be turn_duration: {}",
+        system_msgs[0].content
+    );
+    assert!(
+        system_msgs[1].content.contains("[microcompact_boundary]"),
+        "second system msg should be microcompact_boundary: {}",
+        system_msgs[1].content
     );
 }
 
