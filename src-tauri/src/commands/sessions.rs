@@ -298,6 +298,9 @@ fn build_fallback_meta(
         source_path: source_path.to_string(),
         is_sidechain: false,
         variant_name: None,
+        model: None,
+        cc_version: None,
+        git_branch: None,
     }
 }
 

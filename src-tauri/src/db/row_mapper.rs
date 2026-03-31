@@ -14,6 +14,9 @@ pub fn row_to_session_meta(row: &rusqlite::Row) -> rusqlite::Result<SessionMeta>
         source_path: row.get(9)?,
         is_sidechain: row.get::<_, i64>(10).unwrap_or(0) != 0,
         variant_name: row.get::<_, Option<String>>(11).unwrap_or(None),
+        model: row.get::<_, Option<String>>(12).unwrap_or(None),
+        cc_version: row.get::<_, Option<String>>(13).unwrap_or(None),
+        git_branch: row.get::<_, Option<String>>(14).unwrap_or(None),
     })
 }
 

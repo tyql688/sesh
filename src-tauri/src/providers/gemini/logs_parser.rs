@@ -123,6 +123,9 @@ impl GeminiProvider {
                 source_path: path.to_string_lossy().to_string(),
                 is_sidechain: false,
                 variant_name: None,
+                model: None,
+                cc_version: None,
+                git_branch: None,
             };
 
             sessions.push(ParsedSession {
