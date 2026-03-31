@@ -112,6 +112,12 @@ pub struct SessionMeta {
     pub is_sidechain: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variant_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -13,7 +13,7 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, provider, title, project_path, project_name,
                     created_at, updated_at, message_count, file_size_bytes, source_path, is_sidechain,
-                    variant_name
+                    variant_name, model, cc_version, git_branch
              FROM sessions WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], row_to_session_meta)?;
@@ -30,7 +30,7 @@ impl Database {
             &conn,
             "SELECT id, provider, title, project_path, project_name,
                     created_at, updated_at, message_count, file_size_bytes, source_path, is_sidechain,
-                    variant_name
+                    variant_name, model, cc_version, git_branch
              FROM sessions ORDER BY updated_at DESC",
             [],
         )
@@ -139,7 +139,7 @@ impl Database {
             &conn,
             "SELECT id, provider, title, project_path, project_name,
                     created_at, updated_at, message_count, file_size_bytes, source_path, is_sidechain,
-                    variant_name
+                    variant_name, model, cc_version, git_branch
              FROM sessions
              ORDER BY updated_at DESC
              LIMIT ?1",
@@ -342,7 +342,7 @@ fn query_search_results(
     let rows = stmt.query_map(params_refs.as_slice(), |row| {
         Ok(SearchResult {
             session: row_to_session_meta(row)?,
-            snippet: row.get(12)?,
+            snippet: row.get(15)?,
         })
     })?;
 

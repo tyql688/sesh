@@ -165,6 +165,42 @@ impl Database {
             write_conn.execute_batch("ALTER TABLE sessions ADD COLUMN variant_name TEXT;")?;
         }
 
+        // Migration: add model column if not exists
+        let has_model: bool = {
+            let mut stmt = write_conn.prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'model'",
+            )?;
+            let count: i64 = stmt.query_row([], |row| row.get(0))?;
+            count > 0
+        };
+        if !has_model {
+            write_conn.execute_batch("ALTER TABLE sessions ADD COLUMN model TEXT;")?;
+        }
+
+        // Migration: add cc_version column if not exists
+        let has_cc_version: bool = {
+            let mut stmt = write_conn.prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'cc_version'",
+            )?;
+            let count: i64 = stmt.query_row([], |row| row.get(0))?;
+            count > 0
+        };
+        if !has_cc_version {
+            write_conn.execute_batch("ALTER TABLE sessions ADD COLUMN cc_version TEXT;")?;
+        }
+
+        // Migration: add git_branch column if not exists
+        let has_git_branch: bool = {
+            let mut stmt = write_conn.prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'git_branch'",
+            )?;
+            let count: i64 = stmt.query_row([], |row| row.get(0))?;
+            count > 0
+        };
+        if !has_git_branch {
+            write_conn.execute_batch("ALTER TABLE sessions ADD COLUMN git_branch TEXT;")?;
+        }
+
         let read_conn = Connection::open(&db_path)?;
         read_conn.pragma_update(None, "journal_mode", "WAL")?;
         read_conn.pragma_update(None, "query_only", "ON")?;
