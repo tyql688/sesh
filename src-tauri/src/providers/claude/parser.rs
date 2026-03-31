@@ -41,10 +41,14 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         tool_use_id_map: HashMap::new(),
     };
     let mut summary_text: Option<String> = None;
+    let mut title_override: Option<String> = None;
     let mut first_timestamp: Option<String> = None;
     let mut last_timestamp: Option<String> = None;
     let mut cwd: Option<String> = None;
     let mut is_sidechain = false;
+    let mut model: Option<String> = None;
+    let mut cc_version: Option<String> = None;
+    let mut git_branch: Option<String> = None;
 
     for line in reader.lines() {
         let line = match line {
@@ -87,6 +91,24 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
             is_sidechain = true;
         }
 
+        // Extract cc_version from the first entry that has it
+        if cc_version.is_none() {
+            if let Some(v) = entry.get("version").and_then(|v| v.as_str()) {
+                if !v.is_empty() {
+                    cc_version = Some(v.to_string());
+                }
+            }
+        }
+
+        // Extract git_branch from the first entry that has it (filter out "HEAD")
+        if git_branch.is_none() {
+            if let Some(b) = entry.get("gitBranch").and_then(|b| b.as_str()) {
+                if !b.is_empty() && b != "HEAD" {
+                    git_branch = Some(b.to_string());
+                }
+            }
+        }
+
         // Extract timestamp
         if let Some(ts) = entry.get("timestamp").and_then(|t| t.as_str()) {
             if first_timestamp.is_none() {
@@ -105,10 +127,34 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                 handle_user_message(&entry, &mut state, timestamp);
             }
             "assistant" => {
+                // Extract model from the first assistant message that has it
+                if model.is_none() {
+                    if let Some(m) = entry
+                        .get("message")
+                        .and_then(|msg| msg.get("model"))
+                        .and_then(|m| m.as_str())
+                    {
+                        if !m.is_empty() {
+                            model = Some(m.to_string());
+                        }
+                    }
+                }
                 handle_assistant_message(&entry, &mut state, timestamp);
             }
             "summary" => {
                 handle_summary(&entry, &mut summary_text, &mut state);
+                continue;
+            }
+            "system" => {
+                handle_system_message(&entry, &mut state, timestamp);
+            }
+            "custom-title" | "ai-title" => {
+                flush_pending(&mut state);
+                if let Some(t) = entry.get("title").and_then(|t| t.as_str()) {
+                    if !t.trim().is_empty() {
+                        title_override = Some(t.to_string());
+                    }
+                }
                 continue;
             }
             // Skip all other types
@@ -137,12 +183,14 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let full_content = state.content_parts.join("\n");
     let content_text = truncate_to_bytes(&full_content, FTS_CONTENT_LIMIT);
 
-    let title = session_title(
-        state
-            .first_user_message
-            .as_deref()
-            .or(summary_text.as_deref()),
-    );
+    let title = title_override.unwrap_or_else(|| {
+        session_title(
+            state
+                .first_user_message
+                .as_deref()
+                .or(summary_text.as_deref()),
+        )
+    });
 
     let meta = crate::models::SessionMeta {
         id: session_id,
@@ -157,9 +205,9 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         source_path: path.to_string_lossy().to_string(),
         is_sidechain,
         variant_name: None,
-        model: None,
-        cc_version: None,
-        git_branch: None,
+        model,
+        cc_version,
+        git_branch,
     };
 
     Some(ParsedSession {
@@ -392,6 +440,108 @@ fn handle_summary(entry: &Value, summary_text: &mut Option<String>, state: &mut 
         }
     }
     flush_pending(state);
+}
+
+/// Handle a "system" line: emit human-readable summaries of system subtypes.
+fn handle_system_message(entry: &Value, state: &mut ParseState, timestamp: Option<String>) {
+    flush_pending(state);
+
+    let subtype = match entry.get("subtype").and_then(|s| s.as_str()) {
+        Some(s) => s,
+        None => return,
+    };
+
+    let content = match subtype {
+        "turn_duration" => {
+            let duration_ms = entry
+                .get("durationMs")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let message_count = entry
+                .get("messageCount")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!(
+                "[turn_duration] {:.1}s, {} messages",
+                duration_ms / 1000.0,
+                message_count
+            )
+        }
+        "compact_boundary" => {
+            let pre_tokens = entry
+                .get("compactMetadata")
+                .and_then(|m| m.get("preTokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!("[compact_boundary] {}k tokens", pre_tokens / 1000)
+        }
+        "microcompact_boundary" => {
+            let metadata = entry.get("microcompactMetadata");
+            let pre_tokens = metadata
+                .and_then(|m| m.get("preTokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let tokens_saved = metadata
+                .and_then(|m| m.get("tokensSaved"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!(
+                "[microcompact_boundary] {}k tokens saved {}k",
+                pre_tokens / 1000,
+                tokens_saved / 1000
+            )
+        }
+        "stop_hook_summary" => {
+            let hook_count = entry.get("hookCount").and_then(|v| v.as_u64()).unwrap_or(0);
+            let hook_details: Vec<String> = entry
+                .get("hookInfos")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .map(|h| {
+                            let cmd = h
+                                .get("command")
+                                .and_then(|c| c.as_str())
+                                .unwrap_or("unknown");
+                            let ms = h.get("durationMs").and_then(|d| d.as_u64()).unwrap_or(0);
+                            format!("{cmd} ({ms}ms)")
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            format!(
+                "[stop_hook_summary] {} hooks: {}",
+                hook_count,
+                hook_details.join(", ")
+            )
+        }
+        "api_error" => {
+            let code = entry
+                .get("cause")
+                .and_then(|c| c.get("code"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("Unknown");
+            let retry = entry
+                .get("retryAttempt")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let max_retries = entry
+                .get("maxRetries")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!("[api_error] {code} (retry {retry}/{max_retries})")
+        }
+        _ => return,
+    };
+
+    state.messages.push(Message {
+        role: MessageRole::System,
+        content,
+        timestamp,
+        tool_name: None,
+        tool_input: None,
+        token_usage: None,
+    });
 }
 
 /// Flush any pending user message that was waiting for an image-source merge.
