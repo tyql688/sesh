@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-02
+
+### Added
+
+- **Provider Bridge architecture** — `ProviderDescriptor` trait 让每个 provider 在自己的模块中定义静态元数据（颜色、排序、路径匹配、resume 命令、SVG 图标），`Provider` enum 通过 `descriptor()` 零开销桥接
+- **Provider trash strategy** — `TrashResult` 枚举 + `trash_session()` trait 方法，每个 provider 定义自己的回收站策略（移动文件 vs 软删除），替代集中式 if/else 分支
+- **TypeScript provider registry** — `provider-registry.ts` 用 `Record<Provider, ProviderDef>` 替代所有 switch/if-else，包含 watch 策略、debounce、resume 命令、显示标签
+- **Claude subagent sessions** — 扫描并解析 Claude 子代理会话，树形嵌套显示在父会话下
+- **Codex subagent support** — 解析 Codex 子代理会话，支持导航和回收站级联
+- **OpenCode subagent support** — 共享 DB 删除和子会话支持
+- **Per-message model display** — 助手消息显示模型名称（model/version/branch）
+- **Session metadata** — 提取并显示 model、cc_version、git_branch 信息
+- **Persisted-output references** — 解析 `<persisted-output>` 引用在工具结果中
+- **Tab keep-alive** — 标签页切换保持滚动位置，CSS display 切换替代卸载
+- **Agent jump-to-subagent** — Agent 工具调用显示跳转按钮
+- **Orphan subagent management** — `showOrphans` 开关，孤儿子代理显示 ⤷ 图标
+- **Ctrl+Click folder select** — 文件夹节点 Ctrl+Click 选中所有子会话
+- **Recent sessions improvements** — 过滤子代理，显示模型/时间/代理数
+- **Compile-time Provider::all() safety** — 使用固定大小数组确保新增 variant 不会被遗漏
+- **Provider unit tests** — Rust 4 个 provider 路径匹配/display key 测试 + TS 8 个 registry 测试
+
+### Fixed
+
+- **Cursor trash bug** — Cursor 会话现在正确进入回收站，而非永久删除
+- **Gemini mixed storage** — `logs.json`（共享）软删除，chat JSON 文件物理移动，不再 trash 后复活
+- **CC-Mirror variant sanitize** — resume 命令中 variant_name 现在经过 sanitize，防止 shell 注入
+- **OpenCode delete transaction** — `delete_from_source` 使用 SQLite 事务包裹，防止中途失败导致数据不一致
+- **delete_from_source error logging** — 删除失败不再静默吞没，改为 `log::warn!` 记录
+- **Bash icon consistency** — HTML 导出中 Bash 图标与前端对齐（💻）
+- **Subagent tree rendering** — 子代理始终可见，无需展开文件夹
+- **Tree reveal** — 递归 DFS 搜索任意嵌套深度，包括子代理
+- **Scroll position restore** — 切换标签后恢复滚动位置
+- **Clear index** — 正确回收磁盘空间（WAL checkpoint + vacuum）
+
+### Changed
+
+- **Provider enum 精简** — 从 14 个方法减至 5 个（key/label/parse/all/descriptor），静态元数据移入各 provider 的 Descriptor
+- **SessionProvider trait** — 仅保留实例行为（scan/load/watch/trash/delete），移除所有静态查询
+- **trash.rs** — 纯调度层 + metadata 管理，零 provider 特判
+- **sessions.rs / terminal.rs / indexer.rs** — 通过 descriptor 派发，零 provider 特判
+- **icons.tsx** — switch 替换为 Record 查找
+- **SessionView watch** — 通过 registry 驱动，替代 `.endsWith(".db")` 和 Gemini 硬编码延迟
+
+### Removed
+
+- **providers.ts** — 被 provider-registry.ts 替代
+- **PROVIDER_PATH_PATTERNS** — 路径匹配移入各 provider descriptor
+- **is_shared_file()** — 替换为 `descriptor().is_shared_file()`
+- **delete_from_source_db()** — 替换为 provider trait 方法
+- **Dead frontend exports** — `deleteSession`、`deleteSessionsBatch`、`getResumeCommand` 从 tauri.ts 移除
+
 ## [0.2.1] - 2026-03-30
 
 ### Added
