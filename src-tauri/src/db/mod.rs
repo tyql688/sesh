@@ -16,6 +16,10 @@ pub struct Database {
 }
 
 impl Database {
+    pub fn db_path(&self) -> String {
+        self.db_path.to_string_lossy().to_string()
+    }
+
     /// Acquire the write connection lock, recovering from mutex poisoning.
     fn lock_write(&self) -> Result<std::sync::MutexGuard<'_, Connection>, rusqlite::Error> {
         self.write_conn.lock().map_err(|_| {

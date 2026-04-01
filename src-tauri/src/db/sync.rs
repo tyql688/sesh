@@ -124,17 +124,55 @@ impl Database {
     }
 
     pub fn clear_all(&self) -> Result<(), rusqlite::Error> {
-        // Lock BOTH connections — VACUUM needs exclusive access (no readers)
-        let _read_guard = self.lock_read()?;
-        let write_guard = self.lock_write()?;
-        write_guard.execute_batch(
-            "DELETE FROM favorites;
-             DELETE FROM sessions;
-             DELETE FROM meta;
-             INSERT INTO sessions_fts(sessions_fts) VALUES('rebuild');
-             PRAGMA wal_checkpoint(TRUNCATE);
-             VACUUM;",
+        // Drop all data and rebuild tables from scratch.
+        // We can't VACUUM while two connections are open, so instead we
+        // DROP + recreate tables. This reclaims space within the same file
+        // without needing exclusive access.
+        let conn = self.lock_write()?;
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS favorites;
+             DROP TABLE IF EXISTS sessions_fts;
+             DROP TABLE IF EXISTS sessions;
+             DROP TABLE IF EXISTS meta;",
         )?;
+        // Recreate tables (same schema as Database::open)
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS sessions (
+                 id TEXT PRIMARY KEY,
+                 provider TEXT NOT NULL,
+                 title TEXT NOT NULL DEFAULT '',
+                 project_path TEXT NOT NULL DEFAULT '',
+                 project_name TEXT NOT NULL DEFAULT '',
+                 created_at INTEGER NOT NULL DEFAULT 0,
+                 updated_at INTEGER NOT NULL DEFAULT 0,
+                 message_count INTEGER NOT NULL DEFAULT 0,
+                 file_size_bytes INTEGER NOT NULL DEFAULT 0,
+                 source_path TEXT NOT NULL DEFAULT '',
+                 content_text TEXT NOT NULL DEFAULT '',
+                 is_sidechain INTEGER NOT NULL DEFAULT 0,
+                 title_custom INTEGER NOT NULL DEFAULT 0,
+                 variant_name TEXT,
+                 model TEXT,
+                 cc_version TEXT,
+                 git_branch TEXT,
+                 parent_id TEXT
+             );
+             CREATE TABLE IF NOT EXISTS meta (
+                 key TEXT PRIMARY KEY,
+                 value TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS favorites (
+                 session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+                 added_at INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
+                 title, content_text, content=sessions, content_rowid=rowid
+             );",
+        )?;
+        drop(conn);
+        // Checkpoint WAL to truncate WAL file
+        let conn = self.lock_write()?;
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
         Ok(())
     }
 

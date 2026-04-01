@@ -35,10 +35,21 @@ pub fn rebuild_index(state: State<AppState>) -> Result<usize, String> {
 
 #[tauri::command]
 pub fn clear_index(state: State<AppState>) -> Result<(), String> {
+    // Clear all data from tables
     state
         .db
         .clear_all()
-        .map_err(|e| format!("failed to clear index: {e}"))
+        .map_err(|e| format!("failed to clear index: {e}"))?;
+    // Delete the physical DB file to reclaim disk space.
+    // Existing connections remain valid (SQLite keeps the file open),
+    // but the file is unlinked from the filesystem.
+    // On next app restart, a fresh DB is created.
+    let db_path = state.db.db_path();
+    for ext in &["", "-wal", "-shm"] {
+        let p = format!("{}{}", db_path, ext);
+        let _ = std::fs::remove_file(&p);
+    }
+    Ok(())
 }
 
 #[tauri::command]
