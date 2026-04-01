@@ -37,6 +37,13 @@ pub trait ProviderDescriptor: Send + Sync {
         false
     }
 
+    /// Whether a specific source file is shared (contains multiple sessions).
+    /// Default delegates to `is_shared_source()`. Providers with mixed storage
+    /// (e.g. Gemini: logs.json is shared, chat files are not) should override.
+    fn is_shared_file(&self, _source_path: &str) -> bool {
+        self.is_shared_source()
+    }
+
     /// Check if a source file path belongs to this provider.
     fn owns_source_path(&self, source_path: &str) -> bool;
 

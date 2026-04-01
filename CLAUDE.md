@@ -46,7 +46,7 @@ src-tauri/src/
   indexer.rs               # Parallel scan, batch upsert, tree building
   watcher.rs               # notify crate, FS events for JSONL/JSON providers
   models.rs                # Provider, SessionMeta, Message, TokenUsage, TreeNode
-  provider.rs              # SessionProvider trait, make_provider()
+  provider.rs              # ProviderDescriptor trait, SessionProvider trait, TrashResult, make_provider()
   provider_utils.rs        # Shared helpers, FTS_CONTENT_LIMIT constant
 ```
 
@@ -59,6 +59,12 @@ All providers implement `SessionProvider` trait:
 
 Provider constructors return `Option<Self>` (graceful skip if HOME unavailable).
 `Provider::parse(s)` maps string keys to enum variants (renamed from `from_str`).
+
+Provider metadata uses the Bridge pattern: the `Provider` enum delegates to
+`ProviderDescriptor` trait objects (zero-sized structs in each provider module)
+for static metadata (color, sort order, resume command, path ownership, etc.).
+Instance operations (scan, load, trash, delete) use the `SessionProvider` trait
+via `make_provider()`. This separation means static queries have zero overhead.
 
 File-based (Claude, Codex, Gemini, Kimi CLI, CC-Mirror): FS event watching via `notify` crate.
 SQLite-based (Cursor CLI, OpenCode): 2s polling in frontend when live watch enabled. Opened with `SQLITE_OPEN_READ_WRITE` to read WAL data.
@@ -90,9 +96,10 @@ WAL mode enables concurrent reads during writes.
 ## Testing
 
 - **Rust**: 21 golden tests in `src-tauri/tests/parser_tests.rs` covering Claude, Codex, Kimi parsers
+  - Provider unit tests in `src-tauri/src/provider.rs` (path matching, display key roundtrip)
   - Test fixtures in `src-tauri/tests/fixtures/`
   - Run: `cd src-tauri && cargo test`
-- **Frontend**: vitest (`src/stores/search.test.ts`)
+- **Frontend**: vitest (`src/stores/search.test.ts`, `src/lib/provider-registry.test.ts`)
   - Run: `npm test`
 
 ## CI

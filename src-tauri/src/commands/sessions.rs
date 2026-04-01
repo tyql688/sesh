@@ -72,7 +72,7 @@ pub fn delete_session(
         for (_child_id, child_source) in &children {
             let child_path = std::path::Path::new(child_source);
             let child_shared = Provider::from_source_path(child_source)
-                .is_some_and(|p| p.descriptor().is_shared_source());
+                .is_some_and(|p| p.descriptor().is_shared_file(child_source));
             if child_path.exists() && !child_shared {
                 let _ = std::fs::remove_file(child_path);
                 // Also try to remove the .meta.json file
@@ -86,18 +86,13 @@ pub fn delete_session(
 
     let path = std::path::Path::new(&source_path);
     if path.exists() {
-        // Only allow deleting files that belong to a known provider directory
-        if Provider::from_source_path(&source_path).is_none() {
-            return Err(format!(
+        let provider = Provider::from_source_path(&source_path).ok_or_else(|| {
+            format!(
                 "refused to delete '{}': not inside a known provider directory",
                 source_path
-            ));
-        }
-        // Skip physical deletion for shared sources (e.g. SQLite databases
-        // that contain ALL sessions, not just one) — only remove from index
-        let is_shared = Provider::from_source_path(&source_path)
-            .is_some_and(|p| p.descriptor().is_shared_source());
-        if !is_shared {
+            )
+        })?;
+        if !provider.descriptor().is_shared_file(&source_path) {
             std::fs::remove_file(path)
                 .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
         }
@@ -133,7 +128,7 @@ pub async fn delete_sessions_batch(
                 for (_child_id, child_source) in &children {
                     let child_path = std::path::Path::new(child_source.as_str());
                     let child_shared = Provider::from_source_path(child_source)
-                        .is_some_and(|p| p.descriptor().is_shared_source());
+                        .is_some_and(|p| p.descriptor().is_shared_file(child_source));
                     if child_path.exists() && !child_shared {
                         let _ = std::fs::remove_file(child_path);
                         let meta_path = child_path.with_extension("meta.json");
@@ -146,15 +141,13 @@ pub async fn delete_sessions_batch(
 
             let path = std::path::Path::new(source_path);
             if path.exists() {
-                if Provider::from_source_path(source_path).is_none() {
-                    return Err(format!(
+                let provider = Provider::from_source_path(source_path).ok_or_else(|| {
+                    format!(
                         "refused to delete '{}': not inside a known provider directory",
                         source_path
-                    ));
-                }
-                let is_shared = Provider::from_source_path(source_path)
-                    .is_some_and(|p| p.descriptor().is_shared_source());
-                if !is_shared {
+                    )
+                })?;
+                if !provider.descriptor().is_shared_file(source_path) {
                     std::fs::remove_file(path)
                         .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;
                 }
