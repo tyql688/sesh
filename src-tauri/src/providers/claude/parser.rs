@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -27,6 +27,17 @@ struct ParseState {
     tool_use_id_map: HashMap<String, usize>,
 }
 
+/// Extract parent session ID from subagent path.
+/// Path pattern: .../{parent_session_id}/subagents/agent-{agentId}.jsonl
+fn parent_id_from_path(path: &Path) -> Option<String> {
+    let parent = path.parent()?; // subagents/
+    if parent.file_name()?.to_str()? != "subagents" {
+        return None;
+    }
+    let session_dir = parent.parent()?; // {parent_session_id}/
+    Some(session_dir.file_name()?.to_str()?.to_string())
+}
+
 pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let file = File::open(path).ok()?;
     let metadata = fs::metadata(path).ok()?;
@@ -47,6 +58,16 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let mut last_timestamp: Option<String> = None;
     let mut cwd: Option<String> = None;
     let mut is_sidechain = false;
+    let parent_id = parent_id_from_path(path);
+    let subagent_title = parent_id.as_ref().and_then(|_| {
+        let meta_path = path.with_extension("meta.json");
+        let meta_content = fs::read_to_string(&meta_path).ok()?;
+        let meta_json: Value = serde_json::from_str(&meta_content).ok()?;
+        meta_json
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(|s| s.to_string())
+    });
     let mut model: Option<String> = None;
     let mut cc_version: Option<String> = None;
     let mut git_branch: Option<String> = None;
@@ -177,6 +198,9 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
 
     flush_pending(&mut state);
 
+    // Subagent files detected by path are always sidechains
+    let is_sidechain = is_sidechain || parent_id.is_some();
+
     if state.messages.is_empty() {
         return None;
     }
@@ -193,7 +217,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let full_content = state.content_parts.join("\n");
     let content_text = truncate_to_bytes(&full_content, FTS_CONTENT_LIMIT);
 
-    let title = custom_title.or(ai_title).unwrap_or_else(|| {
+    let title = custom_title.or(ai_title).or(subagent_title).unwrap_or_else(|| {
         session_title(
             state
                 .first_user_message
@@ -218,7 +242,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         model,
         cc_version,
         git_branch,
-        parent_id: None,
+        parent_id,
     };
 
     Some(ParsedSession {
