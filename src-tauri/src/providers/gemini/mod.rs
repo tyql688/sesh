@@ -316,4 +316,29 @@ impl SessionProvider for GeminiProvider {
 
         Ok(session.messages)
     }
+
+    fn is_shared_source(&self) -> bool {
+        true
+    }
+
+    fn delete_from_source(
+        &self,
+        _source_path: &str,
+        _session_id: &str,
+    ) -> Result<(), ProviderError> {
+        // Gemini logs.json: session removal is handled by shared_deletions mechanism
+        Ok(())
+    }
+
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path.replace('\\', "/").contains("/.gemini/tmp/")
+    }
+
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("gemini --resume {session_id}"))
+    }
+
+    fn sort_order(&self) -> u32 {
+        3
+    }
 }

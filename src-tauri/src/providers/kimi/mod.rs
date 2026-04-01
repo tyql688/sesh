@@ -121,4 +121,16 @@ impl SessionProvider for KimiProvider {
 
         Ok(parsed.messages)
     }
+
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path.replace('\\', "/").contains("/.kimi/sessions/")
+    }
+
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("kimi --session {session_id}"))
+    }
+
+    fn sort_order(&self) -> u32 {
+        6
+    }
 }

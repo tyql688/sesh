@@ -62,4 +62,36 @@ pub trait SessionProvider: Send + Sync {
         session_id: &str,
         source_path: &str,
     ) -> Result<Vec<Message>, ProviderError>;
+
+    /// Whether this provider's source files are shared across multiple sessions.
+    /// Shared sources (e.g. OpenCode's opencode.db, Gemini's logs.json) cannot be
+    /// physically moved to trash — only soft-deleted.
+    fn is_shared_source(&self) -> bool {
+        false
+    }
+
+    /// Delete a session's data from its shared source file.
+    /// Only called for providers where `is_shared_source()` returns true.
+    fn delete_from_source(
+        &self,
+        _source_path: &str,
+        _session_id: &str,
+    ) -> Result<(), ProviderError> {
+        Ok(())
+    }
+
+    /// Check if a source file path belongs to this provider.
+    fn owns_source_path(&self, source_path: &str) -> bool;
+
+    /// Build the CLI resume command for a session.
+    fn resume_command(&self, session_id: &str, variant_name: Option<&str>) -> Option<String>;
+
+    /// Key used to group sessions in the tree. Defaults to provider key.
+    fn display_key(&self, variant_name: Option<&str>) -> String {
+        let _ = variant_name;
+        self.provider().key().to_string()
+    }
+
+    /// Sort order for provider groups in the tree.
+    fn sort_order(&self) -> u32;
 }
