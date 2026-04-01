@@ -85,10 +85,7 @@ impl CodexProvider {
                 if entry.line_type == "response_item" {
                     let item_type = payload.get("type").and_then(|v| v.as_str());
                     if item_type == Some("function_call_output") {
-                        let output = payload
-                            .get("output")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
+                        let output = payload.get("output").and_then(|v| v.as_str()).unwrap_or("");
                         if output.contains("newly spawned agent") {
                             skipping_fork_context = false;
                         }

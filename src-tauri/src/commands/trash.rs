@@ -13,11 +13,12 @@ use super::{sessions::sync_source_for_provider, AppState};
 static TRASH_META_LOCK: Mutex<()> = Mutex::new(());
 
 /// Check if a source_path is a multi-session file that should never be moved.
-/// Gemini's logs.json contains multiple sessions in one file.
+/// Gemini logs.json, OpenCode opencode.db, Cursor store.db all contain multiple sessions.
 /// Claude/Codex each use one file per session, safe to move.
 fn is_shared_file(source_path: &str) -> bool {
-    // Gemini logs.json is always shared (multiple sessions per file)
     source_path.ends_with("/logs.json")
+        || source_path.ends_with("/opencode.db")
+        || source_path.ends_with("/store.db")
 }
 
 #[tauri::command]
@@ -75,19 +76,8 @@ pub fn trash_session(
     let shared = !resolved_path.is_empty() && is_shared_file(&resolved_path);
 
     if shared {
-        // SHARED FILE: don't move the file, just remove from DB and record in trash meta.
-        // The file stays on disk so other sessions from same file still work.
-        let mut entries = read_trash_meta(&meta_path);
-        entries.push(TrashMeta {
-            id: session_id.clone(),
-            provider: resolved_provider,
-            title: resolved_title,
-            original_path: resolved_path,
-            trashed_at: now_ts,
-            trash_file: String::new(), // empty = soft-delete, no file moved
-            project_name: resolved_project,
-        });
-        atomic_write_json(&meta_path, &entries)?;
+        // SHARED FILE: delete session from the source DB directly, then remove from our DB.
+        delete_from_source_db(&resolved_path, &session_id);
 
         state
             .db
@@ -113,7 +103,15 @@ pub fn trash_session(
         });
 
         // Trash child session files that still exist on disk
-        trash_children(&session_id, &resolved_provider, &resolved_project, now_ts, &trash_dir, &mut entries, &state);
+        trash_children(
+            &session_id,
+            &resolved_provider,
+            &resolved_project,
+            now_ts,
+            &trash_dir,
+            &mut entries,
+            &state,
+        );
 
         atomic_write_json(&meta_path, &entries)?;
 
@@ -157,7 +155,15 @@ pub fn trash_session(
         project_name: resolved_project.clone(),
     });
 
-    trash_children(&session_id, &resolved_provider, &resolved_project, now_ts, &trash_dir, &mut entries, &state);
+    trash_children(
+        &session_id,
+        &resolved_provider,
+        &resolved_project,
+        now_ts,
+        &trash_dir,
+        &mut entries,
+        &state,
+    );
 
     atomic_write_json(&meta_path, &entries)?;
 
@@ -410,6 +416,40 @@ fn trash_children(
             trash_file: child_name,
             project_name: project_name.to_string(),
         });
+    }
+}
+
+/// Delete a session's data from the source SQLite database (OpenCode, Cursor).
+/// Best-effort: errors are silently ignored since the session is already removed from our DB.
+fn delete_from_source_db(source_path: &str, session_id: &str) {
+    let Ok(conn) = rusqlite::Connection::open(source_path) else {
+        return;
+    };
+    if source_path.ends_with("/opencode.db") {
+        // OpenCode: session → message → part → todo → session_share
+        let _ = conn.execute("DELETE FROM part WHERE session_id = ?1", rusqlite::params![session_id]);
+        let _ = conn.execute("DELETE FROM message WHERE session_id = ?1", rusqlite::params![session_id]);
+        let _ = conn.execute("DELETE FROM todo WHERE session_id = ?1", rusqlite::params![session_id]);
+        let _ = conn.execute("DELETE FROM session_share WHERE session_id = ?1", rusqlite::params![session_id]);
+        // Also delete child sessions (subagents)
+        let child_ids: Vec<String> = conn
+            .prepare("SELECT id FROM session WHERE parent_id = ?1")
+            .and_then(|mut stmt| {
+                let rows = stmt.query_map(rusqlite::params![session_id], |row| row.get(0))?;
+                Ok(rows.filter_map(|r| r.ok()).collect())
+            })
+            .unwrap_or_default();
+        for cid in &child_ids {
+            let _ = conn.execute("DELETE FROM part WHERE session_id = ?1", rusqlite::params![cid]);
+            let _ = conn.execute("DELETE FROM message WHERE session_id = ?1", rusqlite::params![cid]);
+            let _ = conn.execute("DELETE FROM todo WHERE session_id = ?1", rusqlite::params![cid]);
+            let _ = conn.execute("DELETE FROM session_share WHERE session_id = ?1", rusqlite::params![cid]);
+            let _ = conn.execute("DELETE FROM session WHERE id = ?1", rusqlite::params![cid]);
+        }
+        let _ = conn.execute("DELETE FROM session WHERE id = ?1", rusqlite::params![session_id]);
+    } else if source_path.ends_with("/store.db") {
+        // Cursor: blobs table, session ID is used as blob key prefix
+        let _ = conn.execute("DELETE FROM blobs WHERE id = ?1", rusqlite::params![session_id]);
     }
 }
 

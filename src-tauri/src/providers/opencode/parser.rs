@@ -28,11 +28,17 @@ pub fn ms_to_rfc3339(ms: i64) -> Option<String> {
         .map(|dt| dt.to_rfc3339())
 }
 
-/// Capitalize tool names to match our display convention (bash -> Bash, read -> Read, etc.)
-pub fn capitalize_tool(name: &str) -> String {
-    let mut chars = name.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+/// Map OpenCode tool names to our display convention.
+pub fn map_opencode_tool_name(name: &str) -> String {
+    match name {
+        "task" => "Agent".to_string(),
+        _ => {
+            // Capitalize: bash -> Bash, read -> Read, etc.
+            let mut chars = name.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        }
     }
 }
