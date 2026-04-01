@@ -134,6 +134,7 @@ impl SessionProvider for CursorProvider {
                         tool_name: None,
                         tool_input: None,
                         token_usage: None,
+                        model: None,
                     });
                 }
                 "assistant" => {
@@ -148,6 +149,7 @@ impl SessionProvider for CursorProvider {
                             tool_name: None,
                             tool_input: None,
                             token_usage: None,
+                            model: None,
                         });
                     }
 
@@ -161,6 +163,7 @@ impl SessionProvider for CursorProvider {
                             tool_name: None,
                             tool_input: None,
                             token_usage: None,
+                            model: None,
                         });
                     }
 
@@ -191,6 +194,7 @@ impl SessionProvider for CursorProvider {
                             tool_name: Some(display_name.to_string()),
                             tool_input,
                             token_usage: None,
+                            model: None,
                         });
                     }
                 }
@@ -228,6 +232,7 @@ impl SessionProvider for CursorProvider {
                                 tool_name: Some(map_cursor_tool_name(tool_name).to_string()),
                                 tool_input: None,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                     }

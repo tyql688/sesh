@@ -317,6 +317,7 @@ fn handle_tool_result(msg: &Value, state: &mut ParseState, timestamp: &Option<St
                     tool_name: use_id.map(std::string::ToString::to_string),
                     tool_input: None,
                     token_usage: None,
+                    model: None,
                 });
             }
         }
@@ -330,6 +331,12 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
         Some(m) => m,
         None => return,
     };
+
+    // Extract per-message model
+    let per_message_model = msg
+        .get("model")
+        .and_then(|m| m.as_str())
+        .map(|s| s.to_string());
 
     // Extract token usage for this assistant turn
     let turn_usage = extract_token_usage(msg);
@@ -352,6 +359,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                                 tool_name: None,
                                 tool_input: None,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                     }
@@ -375,6 +383,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                             tool_name: None,
                             tool_input: None,
                             token_usage: None,
+                            model: per_message_model.clone(),
                         });
                         text_parts.clear();
                     }
@@ -389,6 +398,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                         tool_name: Some(name.to_string()),
                         tool_input: input,
                         token_usage: None,
+                        model: None,
                     });
                     // Record tool_use_id for merging results later
                     if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
@@ -409,6 +419,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                 tool_name: None,
                 tool_input: None,
                 token_usage: None,
+                model: per_message_model,
             });
         }
     } else {
@@ -423,6 +434,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                 tool_name: None,
                 tool_input: None,
                 token_usage: None,
+                model: per_message_model,
             });
         }
     }
@@ -558,6 +570,7 @@ fn handle_system_message(entry: &Value, state: &mut ParseState, timestamp: Optio
         tool_name: None,
         tool_input: None,
         token_usage: None,
+        model: None,
     });
 }
 
@@ -602,6 +615,7 @@ fn append_user_message(
         tool_name: None,
         tool_input: None,
         token_usage: None,
+        model: None,
     });
 }
 

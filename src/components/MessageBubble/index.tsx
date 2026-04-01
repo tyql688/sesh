@@ -165,11 +165,17 @@ export function MessageBubble(props: {
           </div>
           <Show
             when={
-              props.message.role === "assistant" && props.message.token_usage
+              props.message.role === "assistant" &&
+              (props.message.token_usage || props.message.model)
             }
           >
             <div class="msg-token-row">
-              <TokenUsageDisplay usage={props.message.token_usage!} />
+              <Show when={props.message.model}>
+                <span class="msg-model-label">{props.message.model}</span>
+              </Show>
+              <Show when={props.message.token_usage}>
+                <TokenUsageDisplay usage={props.message.token_usage!} />
+              </Show>
             </div>
           </Show>
         </Show>

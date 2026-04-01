@@ -42,6 +42,7 @@ impl CodexProvider {
             std::collections::HashMap::new();
         let mut model: Option<String> = None;
         let mut model_provider: Option<String> = None;
+        let mut current_model: Option<String> = None;
         let mut cc_version: Option<String> = None;
         let mut git_branch: Option<String> = None;
 
@@ -135,6 +136,11 @@ impl CodexProvider {
                                 content_parts.push(normalized_text);
                             }
 
+                            let msg_model = if role == MessageRole::Assistant {
+                                current_model.clone()
+                            } else {
+                                None
+                            };
                             messages.push(Message {
                                 role,
                                 content: text,
@@ -142,6 +148,7 @@ impl CodexProvider {
                                 tool_name: None,
                                 tool_input: None,
                                 token_usage: None,
+                                model: msg_model,
                             });
                         }
                         "function_call" => {
@@ -181,6 +188,7 @@ impl CodexProvider {
                                             tool_name: None,
                                             tool_input: None,
                                             token_usage: None,
+                                            model: None,
                                         });
                                         continue;
                                     }
@@ -215,6 +223,7 @@ impl CodexProvider {
                                 tool_name: Some(display_name.to_string()),
                                 tool_input,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                         "function_call_output" => {
@@ -246,6 +255,7 @@ impl CodexProvider {
                                 tool_name: None,
                                 tool_input: None,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                         "custom_tool_call" => {
@@ -273,6 +283,7 @@ impl CodexProvider {
                                 tool_name: Some(display_name.to_string()),
                                 tool_input: input,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                         "custom_tool_call_output" => {
@@ -299,6 +310,7 @@ impl CodexProvider {
                                     tool_name: None,
                                     tool_input: None,
                                     token_usage: None,
+                                    model: None,
                                 });
                             }
                         }
@@ -307,9 +319,10 @@ impl CodexProvider {
                 }
                 "turn_context" => {
                     // Extract actual model name (e.g. "gpt-5.4") from turn_context
-                    if model.is_none() {
-                        if let Some(m) = payload.get("model").and_then(|v| v.as_str()) {
-                            if !m.is_empty() {
+                    if let Some(m) = payload.get("model").and_then(|v| v.as_str()) {
+                        if !m.is_empty() {
+                            current_model = Some(m.to_string());
+                            if model.is_none() {
                                 model = Some(m.to_string());
                             }
                         }
