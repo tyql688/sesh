@@ -129,10 +129,14 @@ impl Indexer {
                     })
                     .unwrap_or_else(|| "(No Project)".to_string());
                 // Separate top-level sessions from subagents
-                let (top_sessions, _): (Vec<_>, Vec<_>) =
+                let (top_sessions, subagents): (Vec<_>, Vec<_>) =
                     sessions.iter().partition(|s| s.parent_id.is_none());
 
-                let session_nodes: Vec<TreeNode> = top_sessions
+                // Collect top-level session IDs for orphan detection
+                let top_ids: std::collections::HashSet<&str> =
+                    top_sessions.iter().map(|s| s.id.as_str()).collect();
+
+                let mut session_nodes: Vec<TreeNode> = top_sessions
                     .iter()
                     .map(|s| {
                         // Find children of this session, sorted by creation time
@@ -169,6 +173,25 @@ impl Indexer {
                         }
                     })
                     .collect();
+
+                // Add orphan subagents (parent not in this project group) as standalone sessions
+                for orphan in &subagents {
+                    if let Some(ref pid) = orphan.parent_id {
+                        if !top_ids.contains(pid.as_str()) {
+                            session_nodes.push(TreeNode {
+                                id: orphan.id.clone(),
+                                label: orphan.title.clone(),
+                                node_type: TreeNodeType::Session,
+                                children: Vec::new(),
+                                count: 0,
+                                provider: Some(provider_enum.clone()),
+                                updated_at: Some(orphan.updated_at),
+                                is_sidechain: orphan.is_sidechain,
+                                project_path: None,
+                            });
+                        }
+                    }
+                }
 
                 let count = session_nodes.len() as u32;
                 if count == 0 {

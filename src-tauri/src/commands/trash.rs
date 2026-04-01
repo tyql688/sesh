@@ -60,20 +60,6 @@ pub fn trash_session(
         title
     };
 
-    // Cascade: delete child subagent files before trashing the parent
-    if let Ok(children) = state.db.list_children(&session_id) {
-        for (_child_id, child_source) in &children {
-            let child_path = std::path::Path::new(child_source.as_str());
-            if child_path.exists() && !child_source.ends_with(".db") {
-                let _ = std::fs::remove_file(child_path);
-                let meta_path = child_path.with_extension("meta.json");
-                if meta_path.exists() {
-                    let _ = std::fs::remove_file(&meta_path);
-                }
-            }
-        }
-    }
-
     let now_ts = chrono::Utc::now().timestamp();
     let meta_path = trash_meta_path(&trash_dir);
     let _lock = TRASH_META_LOCK
