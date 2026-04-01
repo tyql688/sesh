@@ -31,6 +31,9 @@ impl crate::provider::ProviderDescriptor for Descriptor {
     fn color(&self) -> &'static str {
         "#f59e0b"
     }
+    fn is_shared_file(&self, source_path: &str) -> bool {
+        source_path.ends_with("/logs.json")
+    }
     fn cli_command(&self) -> &'static str {
         "gemini"
     }

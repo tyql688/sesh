@@ -47,19 +47,6 @@ export async function renameSession(
   return invoke<void>("rename_session", { sessionId, newTitle });
 }
 
-export async function deleteSession(
-  sessionId: string,
-  sourcePath: string,
-): Promise<void> {
-  return invoke<void>("delete_session", { sessionId, sourcePath });
-}
-
-export async function deleteSessionsBatch(
-  items: [string, string][],
-): Promise<number> {
-  return invoke<number>("delete_sessions_batch", { items });
-}
-
 export async function getSessionCount(): Promise<number> {
   return invoke<number>("get_session_count");
 }

@@ -323,7 +323,7 @@ fn tool_icon(name: &str) -> &'static str {
         "Read" => "📄",
         "Edit" | "Apply_patch" => "✏️",
         "Write" => "📝",
-        "Bash" => "⬛",
+        "Bash" => "💻",
         "Glob" => "🔍",
         "Grep" => "🔎",
         "Agent" => "🤖",
