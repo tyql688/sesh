@@ -267,6 +267,17 @@ pub fn empty_trash() -> Result<(), String> {
                     let _ = std::fs::remove_file(&file);
                 }
             }
+
+            // Also permanently delete subagent directory from original location
+            if !entry.original_path.is_empty() {
+                let original = std::path::Path::new(&entry.original_path);
+                let session_dir = original.with_extension("");
+                let subagents_dir = session_dir.join("subagents");
+                if subagents_dir.is_dir() {
+                    let _ = std::fs::remove_dir_all(&subagents_dir);
+                    let _ = std::fs::remove_dir(&session_dir);
+                }
+            }
         }
 
         let empty: Vec<TrashMeta> = Vec::new();
@@ -313,6 +324,17 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
                 if file.exists() {
                     let _ = std::fs::remove_file(&file);
                 }
+            }
+        }
+
+        // Also permanently delete subagent directory from original location
+        if !entry.original_path.is_empty() {
+            let original = std::path::Path::new(&entry.original_path);
+            let session_dir = original.with_extension("");
+            let subagents_dir = session_dir.join("subagents");
+            if subagents_dir.is_dir() {
+                let _ = std::fs::remove_dir_all(&subagents_dir);
+                let _ = std::fs::remove_dir(&session_dir);
             }
         }
     }
