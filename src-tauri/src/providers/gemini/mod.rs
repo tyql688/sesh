@@ -353,10 +353,15 @@ impl SessionProvider for GeminiProvider {
 
     fn trash_session(
         &self,
-        _source_path: &std::path::Path,
-        _trash_dir: &std::path::Path,
-        _timestamp: i64,
+        source_path: &std::path::Path,
+        trash_dir: &std::path::Path,
+        timestamp: i64,
     ) -> Result<crate::provider::TrashResult, ProviderError> {
-        Ok(crate::provider::TrashResult::SoftDeleted)
+        // logs.json is shared (contains multiple sessions) — soft delete only
+        if source_path.file_name().is_some_and(|f| f == "logs.json") {
+            return Ok(crate::provider::TrashResult::SoftDeleted);
+        }
+        // Individual chat JSON files — physically move to trash
+        crate::provider::move_to_trash(source_path, trash_dir, timestamp)
     }
 }

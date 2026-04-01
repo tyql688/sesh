@@ -28,7 +28,7 @@ src/                       # Solid.js frontend
     ...                    # Flat components: TreeNode, TabBar, CodeBlock, etc.
   stores/                  # Reactive state (toast, search, theme, settings, favorites)
   i18n/                    # en.json, zh.json
-  lib/                     # types.ts, tauri.ts, providers.ts, icons.tsx, formatters.ts,
+  lib/                     # types.ts, tauri.ts, provider-registry.ts, icons.tsx, formatters.ts,
                            # platform.ts, tree-utils.ts, tree-builders.ts
   styles/                  # variables.css, layout.css, messages.css, components.css
 src-tauri/src/

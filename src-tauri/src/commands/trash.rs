@@ -246,7 +246,9 @@ pub fn empty_trash() -> Result<(), String> {
                 if let Some(p) = crate::models::Provider::parse(&entry.provider)
                     .and_then(|p| crate::provider::make_provider(&p))
                 {
-                    let _ = p.delete_from_source(&entry.original_path, &entry.id);
+                    if let Err(e) = p.delete_from_source(&entry.original_path, &entry.id) {
+                        log::warn!("failed to delete session {} from source: {e}", entry.id);
+                    }
                 }
                 add_shared_deletion(
                     &shared_deletions_path,

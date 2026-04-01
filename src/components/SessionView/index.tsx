@@ -275,6 +275,8 @@ export function SessionView(props: {
 
             let matched: boolean;
             if (providerDef.watchMatchPrefix) {
+              // Gemini: match by project directory prefix
+              // (strip last 2 path segments: /chats/session-id.json → project dir)
               const dir = activeSourcePath.replace(/\/[^/]+\/[^/]+$/, "");
               matched = changedPaths.some((p) => p.startsWith(dir));
             } else {

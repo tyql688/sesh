@@ -19,7 +19,8 @@ pub fn get_resume_command(
         .get_session(&session_id)
         .ok()
         .flatten()
-        .and_then(|s| s.variant_name);
+        .and_then(|s| s.variant_name)
+        .map(|v| sanitize_session_id(&v));
 
     p.descriptor()
         .resume_command(&safe_id, variant_name.as_deref())
@@ -93,7 +94,10 @@ pub fn resume_session(
     let p = Provider::parse(&provider).ok_or_else(|| format!("unknown provider '{provider}'"))?;
 
     let session = state.db.get_session(&session_id).ok().flatten();
-    let variant_name = session.as_ref().and_then(|s| s.variant_name.clone());
+    let variant_name = session
+        .as_ref()
+        .and_then(|s| s.variant_name.clone())
+        .map(|v| sanitize_session_id(&v));
 
     let cmd = p
         .descriptor()
