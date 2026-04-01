@@ -7,6 +7,8 @@ import {
   setTerminalApp,
   timeGrouping,
   setTimeGrouping,
+  showOrphans,
+  setShowOrphans,
 } from "../../stores/settings";
 import type { TerminalApp } from "../../stores/settings";
 import { isMac, isWindows } from "../../lib/platform";
@@ -116,6 +118,19 @@ export function GeneralSettings() {
           class="settings-checkbox"
           checked={timeGrouping()}
           onChange={(e) => setTimeGrouping(e.currentTarget.checked)}
+        />
+      </div>
+
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">{t("settings.showOrphans")}</div>
+          <div class="settings-desc">{t("settings.showOrphansDesc")}</div>
+        </div>
+        <input
+          type="checkbox"
+          class="settings-checkbox"
+          checked={showOrphans()}
+          onChange={(e) => setShowOrphans(e.currentTarget.checked)}
         />
       </div>
     </div>

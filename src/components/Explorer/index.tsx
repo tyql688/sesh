@@ -12,6 +12,7 @@ import { useI18n } from "../../i18n/index";
 import {
   terminalApp,
   timeGrouping,
+  showOrphans,
   addBlockedFolder,
 } from "../../stores/settings";
 import { ContextMenu } from "../ContextMenu";
@@ -28,6 +29,7 @@ import { errorMessage } from "../../lib/errors";
 import {
   filterBlockedFolders,
   applyTimeGrouping,
+  filterOrphanSubagents,
   buildSessionMeta,
 } from "./hooks";
 import {
@@ -69,8 +71,9 @@ export function Explorer(props: {
 }) {
   const { t } = useI18n();
   const displayTree = createMemo(() => {
-    const filtered = filterBlockedFolders(props.tree);
-    return timeGrouping() ? applyTimeGrouping(filtered, t) : filtered;
+    let tree = filterBlockedFolders(props.tree);
+    if (!showOrphans()) tree = filterOrphanSubagents(tree);
+    return timeGrouping() ? applyTimeGrouping(tree, t) : tree;
   });
   const [expandedIds, setExpandedIds] = createSignal<Set<string>>(new Set());
   const [initialized, setInitialized] = createSignal(false);

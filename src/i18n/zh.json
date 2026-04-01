@@ -90,6 +90,8 @@
     "clearIndexConfirm": "清除整个索引？下次重建时将重新扫描会话。",
     "timeGrouping": "按时间分组",
     "timeGroupingDesc": "将会话按今天、本周、本月和更早分组",
+    "showOrphans": "显示孤立子代理",
+    "showOrphansDesc": "显示父会话不在树中的子代理会话",
     "checkUpdate": "检查更新",
     "updateAvailable": "发现新版本",
     "updateConfirm": "立即下载并安装？",

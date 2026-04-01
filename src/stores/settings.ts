@@ -98,6 +98,18 @@ export function setTimeGrouping(v: boolean) {
 
 export { timeGrouping };
 
+// Show orphan subagents toggle (default off)
+const [showOrphans, setShowOrphansSignal] = createSignal<boolean>(
+  localStorage.getItem("cc-session-show-orphans") === "true",
+);
+
+export function setShowOrphans(v: boolean) {
+  setShowOrphansSignal(v);
+  localStorage.setItem("cc-session-show-orphans", String(v));
+}
+
+export { showOrphans };
+
 // Blocked folders: sessions from these project paths are hidden
 const [blockedFolders, setBlockedFoldersSignal] = createSignal<string[]>(
   (() => {
