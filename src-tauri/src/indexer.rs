@@ -66,15 +66,10 @@ impl Indexer {
             BTreeMap::new();
 
         for session in sessions {
-            let display_key = if session.provider == Provider::CcMirror {
-                if let Some(ref vn) = session.variant_name {
-                    format!("cc-mirror:{vn}")
-                } else {
-                    "cc-mirror".to_string()
-                }
-            } else {
-                session.provider.key().to_string()
-            };
+            let display_key = session
+                .provider
+                .descriptor()
+                .display_key(session.variant_name.as_deref());
             let project_key = if session.project_path.is_empty() {
                 String::new()
             } else {
@@ -92,20 +87,10 @@ impl Indexer {
         let mut tree = Vec::new();
 
         for (display_key, projects) in &provider_map {
-            let (provider_enum, label) =
-                if let Some(variant_name) = display_key.strip_prefix("cc-mirror:") {
-                    (Provider::CcMirror, variant_name.to_string())
-                } else if display_key == "cc-mirror" {
-                    (Provider::CcMirror, "CC-Mirror".to_string())
-                } else {
-                    match Provider::parse(display_key) {
-                        Some(p) => {
-                            let l = p.label().to_string();
-                            (p, l)
-                        }
-                        None => continue,
-                    }
-                };
+            let (provider_enum, label) = match Provider::parse_display_key(display_key) {
+                Some(pair) => pair,
+                None => continue,
+            };
 
             let mut sorted_projects: Vec<_> = projects.iter().collect();
             sorted_projects.sort_by(|a, b| {
@@ -225,19 +210,19 @@ impl Indexer {
             });
         }
 
-        // Sort: known providers in display order, cc-mirror variants right after Claude
-        tree.sort_by_key(|node| {
-            let id = &node.id;
-            match id.as_str() {
-                "claude" => (0, id.clone()),
-                _ if id.starts_with("cc-mirror") => (1, id.clone()),
-                "codex" => (2, id.clone()),
-                "gemini" => (3, id.clone()),
-                "cursor" => (4, id.clone()),
-                "opencode" => (5, id.clone()),
-                "kimi" => (6, id.clone()),
-                _ => (99, id.clone()),
-            }
+        // Sort providers by their declared sort_order, then by id
+        tree.sort_by(|a, b| {
+            let order_a = a
+                .provider
+                .as_ref()
+                .map(|p| p.descriptor().sort_order())
+                .unwrap_or(99);
+            let order_b = b
+                .provider
+                .as_ref()
+                .map(|p| p.descriptor().sort_order())
+                .unwrap_or(99);
+            order_a.cmp(&order_b).then(a.id.cmp(&b.id))
         });
 
         Ok(tree)

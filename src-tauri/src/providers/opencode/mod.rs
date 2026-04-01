@@ -10,6 +10,36 @@ use crate::models::{Message, MessageRole, Provider, SessionMeta};
 use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 use crate::provider_utils::{session_title, truncate_to_bytes, FTS_CONTENT_LIMIT};
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn is_shared_file(&self, _source_path: &str) -> bool {
+        true // opencode.db always contains all sessions
+    }
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path
+            .replace('\\', "/")
+            .contains("/opencode/opencode.db")
+    }
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("opencode -s {session_id}"))
+    }
+    fn display_key(&self, _variant_name: Option<&str>) -> String {
+        "opencode".into()
+    }
+    fn sort_order(&self) -> u32 {
+        5
+    }
+    fn color(&self) -> &'static str {
+        "#06b6d4"
+    }
+    fn cli_command(&self) -> &'static str {
+        "opencode"
+    }
+    fn avatar_svg(&self) -> &'static str {
+        r#"<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" fill="currentColor"/></svg>"#
+    }
+}
+
 pub struct OpenCodeProvider {
     db_path: PathBuf,
 }
@@ -532,5 +562,59 @@ impl SessionProvider for OpenCodeProvider {
         }
 
         Ok(messages)
+    }
+
+    fn trash_session(
+        &self,
+        _source_path: &std::path::Path,
+        _trash_dir: &std::path::Path,
+        _timestamp: i64,
+    ) -> Result<crate::provider::TrashResult, ProviderError> {
+        Ok(crate::provider::TrashResult::SoftDeleted)
+    }
+
+    fn delete_from_source(&self, source_path: &str, session_id: &str) -> Result<(), ProviderError> {
+        let mut conn = Connection::open(source_path)?;
+        let tx = conn.transaction()?;
+
+        tx.execute(
+            "DELETE FROM part WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        tx.execute(
+            "DELETE FROM message WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        tx.execute(
+            "DELETE FROM todo WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        tx.execute(
+            "DELETE FROM session_share WHERE session_id = ?1",
+            params![session_id],
+        )?;
+
+        // Delete child sessions (subagents)
+        let child_ids: Vec<String> = tx
+            .prepare("SELECT id FROM session WHERE parent_id = ?1")
+            .and_then(|mut stmt| {
+                let rows = stmt.query_map(params![session_id], |row| row.get(0))?;
+                Ok(rows.filter_map(|r| r.ok()).collect())
+            })
+            .unwrap_or_default();
+        for cid in &child_ids {
+            tx.execute("DELETE FROM part WHERE session_id = ?1", params![cid])?;
+            tx.execute("DELETE FROM message WHERE session_id = ?1", params![cid])?;
+            tx.execute("DELETE FROM todo WHERE session_id = ?1", params![cid])?;
+            tx.execute(
+                "DELETE FROM session_share WHERE session_id = ?1",
+                params![cid],
+            )?;
+            tx.execute("DELETE FROM session WHERE id = ?1", params![cid])?;
+        }
+        tx.execute("DELETE FROM session WHERE id = ?1", params![session_id])?;
+
+        tx.commit()?;
+        Ok(())
     }
 }

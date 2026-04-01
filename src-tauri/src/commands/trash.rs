@@ -12,13 +12,6 @@ use super::{sessions::sync_source_for_provider, AppState};
 /// Global lock to serialize all trash metadata read-modify-write operations.
 static TRASH_META_LOCK: Mutex<()> = Mutex::new(());
 
-/// Check if a source_path is a multi-session file that should never be moved.
-/// Gemini logs.json and OpenCode opencode.db contain multiple sessions.
-/// Claude/Codex/Cursor each use one file per session, safe to move.
-fn is_shared_file(source_path: &str) -> bool {
-    source_path.ends_with("/logs.json") || source_path.ends_with("/opencode.db")
-}
-
 #[tauri::command]
 pub fn trash_session(
     session_id: String,
@@ -70,36 +63,10 @@ pub fn trash_session(
         .lock()
         .map_err(|_| "trash meta lock poisoned".to_string())?;
 
-    // Check if this is a shared file (e.g. Gemini logs.json with multiple sessions)
-    let shared = !resolved_path.is_empty() && is_shared_file(&resolved_path);
-
-    if shared {
-        // SHARED FILE: record in trash metadata (soft delete).
-        // Do NOT delete from source DB yet — that happens on empty_trash / permanent_delete.
-        let mut entries = read_trash_meta(&meta_path);
-        entries.push(TrashMeta {
-            id: session_id.clone(),
-            provider: resolved_provider.clone(),
-            title: resolved_title,
-            original_path: resolved_path,
-            trashed_at: now_ts,
-            trash_file: String::new(),
-            project_name: resolved_project,
-        });
-        atomic_write_json(&meta_path, &entries)?;
-
-        state
-            .db
-            .delete_session(&session_id)
-            .map_err(|e| format!("failed to delete from db: {e}"))?;
-        return Ok(());
-    }
-
-    // DEDICATED FILE: move file to trash directory
     let src = std::path::Path::new(&resolved_path);
 
     if !src.exists() || resolved_path.is_empty() {
-        // File already gone, just remove from DB and record
+        // Source already gone — just record and clean up
         let mut entries = read_trash_meta(&meta_path);
         entries.push(TrashMeta {
             id: session_id.clone(),
@@ -110,8 +77,6 @@ pub fn trash_session(
             trash_file: String::new(),
             project_name: resolved_project.clone(),
         });
-
-        // Trash child session files that still exist on disk
         trash_children(
             &session_id,
             &resolved_provider,
@@ -121,9 +86,7 @@ pub fn trash_session(
             &mut entries,
             &state,
         );
-
         atomic_write_json(&meta_path, &entries)?;
-
         state
             .db
             .delete_session(&session_id)
@@ -131,27 +94,24 @@ pub fn trash_session(
         return Ok(());
     }
 
-    let base_name = src.file_name().map_or_else(
-        || format!("{session_id}.jsonl"),
-        |f| f.to_string_lossy().to_string(),
-    );
-    // Sanitize: strip path separators to prevent directory traversal
-    let base_name = base_name.replace(['/', '\\'], "_");
-    let file_name = if let Some(dot_pos) = base_name.rfind('.') {
-        format!(
-            "{}_{}{}",
-            &base_name[..dot_pos],
-            now_ts,
-            &base_name[dot_pos..]
-        )
-    } else {
-        format!("{base_name}_{now_ts}")
+    // Delegate to provider's trash strategy
+    let provider_enum = crate::models::Provider::parse(&resolved_provider);
+    let provider_impl = provider_enum
+        .as_ref()
+        .and_then(crate::provider::make_provider);
+    let result = match &provider_impl {
+        Some(p) => p
+            .trash_session(src, &trash_dir, now_ts)
+            .map_err(|e| format!("failed to trash session: {e}"))?,
+        None => {
+            return Err(format!("unknown provider: {}", resolved_provider));
+        }
     };
 
-    let dest = trash_dir.join(&file_name);
-    std::fs::rename(src, &dest)
-        .or_else(|_| std::fs::copy(src, &dest).and_then(|_| std::fs::remove_file(src)))
-        .map_err(|e| format!("failed to move file to trash: {e}"))?;
+    let trash_file = match &result {
+        crate::provider::TrashResult::Moved { trash_file } => trash_file.clone(),
+        crate::provider::TrashResult::SoftDeleted => String::new(),
+    };
 
     let mut entries = read_trash_meta(&meta_path);
     entries.push(TrashMeta {
@@ -160,27 +120,28 @@ pub fn trash_session(
         title: resolved_title,
         original_path: resolved_path,
         trashed_at: now_ts,
-        trash_file: file_name,
+        trash_file,
         project_name: resolved_project.clone(),
     });
 
-    trash_children(
-        &session_id,
-        &resolved_provider,
-        &resolved_project,
-        now_ts,
-        &trash_dir,
-        &mut entries,
-        &state,
-    );
+    // Only trash children for dedicated-file providers
+    if matches!(result, crate::provider::TrashResult::Moved { .. }) {
+        trash_children(
+            &session_id,
+            &resolved_provider,
+            &resolved_project,
+            now_ts,
+            &trash_dir,
+            &mut entries,
+            &state,
+        );
+    }
 
     atomic_write_json(&meta_path, &entries)?;
-
     state
         .db
         .delete_session(&session_id)
         .map_err(|e| format!("failed to delete from db: {e}"))?;
-
     Ok(())
 }
 
@@ -282,7 +243,13 @@ pub fn empty_trash() -> Result<(), String> {
 
         for entry in &entries {
             if entry.trash_file.is_empty() && !entry.original_path.is_empty() {
-                delete_from_source_db(&entry.original_path, &entry.id);
+                if let Some(p) = crate::models::Provider::parse(&entry.provider)
+                    .and_then(|p| crate::provider::make_provider(&p))
+                {
+                    if let Err(e) = p.delete_from_source(&entry.original_path, &entry.id) {
+                        log::warn!("failed to delete session {} from source: {e}", entry.id);
+                    }
+                }
                 add_shared_deletion(
                     &shared_deletions_path,
                     &entry.id,
@@ -334,7 +301,11 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
 
     if let Some(entry) = entries.iter().find(|e| e.id == trash_id) {
         if entry.trash_file.is_empty() && !entry.original_path.is_empty() {
-            delete_from_source_db(&entry.original_path, &entry.id);
+            if let Some(p) = crate::models::Provider::parse(&entry.provider)
+                .and_then(|p| crate::provider::make_provider(&p))
+            {
+                let _ = p.delete_from_source(&entry.original_path, &entry.id);
+            }
             add_shared_deletion(
                 &shared_deletions_path,
                 &entry.id,
@@ -399,21 +370,7 @@ fn trash_children(
         if !child_src.exists() || child_path.is_empty() {
             continue;
         }
-        let child_base = child_src.file_name().map_or_else(
-            || format!("{child_id}.jsonl"),
-            |f| f.to_string_lossy().to_string(),
-        );
-        let child_base = child_base.replace(['/', '\\'], "_");
-        let child_name = if let Some(dot_pos) = child_base.rfind('.') {
-            format!(
-                "{}_{}{}",
-                &child_base[..dot_pos],
-                now_ts,
-                &child_base[dot_pos..]
-            )
-        } else {
-            format!("{child_base}_{now_ts}")
-        };
+        let child_name = crate::provider::trash_file_name(child_src, now_ts);
         let child_dest = trash_dir.join(&child_name);
         let _ = std::fs::rename(child_src, &child_dest).or_else(|_| {
             std::fs::copy(child_src, &child_dest).and_then(|_| std::fs::remove_file(child_src))
@@ -427,64 +384,6 @@ fn trash_children(
             trash_file: child_name,
             project_name: project_name.to_string(),
         });
-    }
-}
-
-/// Delete a session's data from the source SQLite database (OpenCode, Cursor).
-/// Best-effort: errors are silently ignored since the session is already removed from our DB.
-fn delete_from_source_db(source_path: &str, session_id: &str) {
-    let Ok(conn) = rusqlite::Connection::open(source_path) else {
-        return;
-    };
-    if source_path.ends_with("/opencode.db") {
-        // OpenCode: session → message → part → todo → session_share
-        let _ = conn.execute(
-            "DELETE FROM part WHERE session_id = ?1",
-            rusqlite::params![session_id],
-        );
-        let _ = conn.execute(
-            "DELETE FROM message WHERE session_id = ?1",
-            rusqlite::params![session_id],
-        );
-        let _ = conn.execute(
-            "DELETE FROM todo WHERE session_id = ?1",
-            rusqlite::params![session_id],
-        );
-        let _ = conn.execute(
-            "DELETE FROM session_share WHERE session_id = ?1",
-            rusqlite::params![session_id],
-        );
-        // Also delete child sessions (subagents)
-        let child_ids: Vec<String> = conn
-            .prepare("SELECT id FROM session WHERE parent_id = ?1")
-            .and_then(|mut stmt| {
-                let rows = stmt.query_map(rusqlite::params![session_id], |row| row.get(0))?;
-                Ok(rows.filter_map(|r| r.ok()).collect())
-            })
-            .unwrap_or_default();
-        for cid in &child_ids {
-            let _ = conn.execute(
-                "DELETE FROM part WHERE session_id = ?1",
-                rusqlite::params![cid],
-            );
-            let _ = conn.execute(
-                "DELETE FROM message WHERE session_id = ?1",
-                rusqlite::params![cid],
-            );
-            let _ = conn.execute(
-                "DELETE FROM todo WHERE session_id = ?1",
-                rusqlite::params![cid],
-            );
-            let _ = conn.execute(
-                "DELETE FROM session_share WHERE session_id = ?1",
-                rusqlite::params![cid],
-            );
-            let _ = conn.execute("DELETE FROM session WHERE id = ?1", rusqlite::params![cid]);
-        }
-        let _ = conn.execute(
-            "DELETE FROM session WHERE id = ?1",
-            rusqlite::params![session_id],
-        );
     }
 }
 

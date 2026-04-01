@@ -14,6 +14,31 @@ use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 
 use tools::*;
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path.replace('\\', "/").contains("/.cursor/chats/")
+    }
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("agent --resume={session_id}"))
+    }
+    fn display_key(&self, _variant_name: Option<&str>) -> String {
+        "cursor".into()
+    }
+    fn sort_order(&self) -> u32 {
+        4
+    }
+    fn color(&self) -> &'static str {
+        "#3b82f6"
+    }
+    fn cli_command(&self) -> &'static str {
+        "agent"
+    }
+    fn avatar_svg(&self) -> &'static str {
+        r#"<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.106 5.68L12.5.135a.998.998 0 00-.998 0L1.893 5.68a.84.84 0 00-.419.726v11.186c0 .3.16.577.42.727l9.607 5.547a.999.999 0 00.998 0l9.608-5.547a.84.84 0 00.42-.727V6.407a.84.84 0 00-.42-.726zm-.603 1.176L12.228 22.92c-.063.108-.228.064-.228-.061V12.34a.59.59 0 00-.295-.51l-9.11-5.26c-.107-.062-.063-.228.062-.228h18.55c.264 0 .428.286.296.514z" fill="currentColor"/></svg>"#
+    }
+}
+
 pub struct CursorProvider {
     home_dir: PathBuf,
 }

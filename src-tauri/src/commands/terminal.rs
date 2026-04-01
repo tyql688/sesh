@@ -12,26 +12,19 @@ pub fn get_resume_command(
     state: State<AppState>,
 ) -> Result<String, String> {
     let safe_id = sanitize_session_id(&session_id);
-    if provider == "cc-mirror" {
-        return match state
-            .db
-            .get_session(&session_id)
-            .ok()
-            .flatten()
-            .and_then(|s| s.variant_name)
-        {
-            Some(name) => {
-                let safe_name = sanitize_session_id(&name);
-                Ok(format!("{safe_name} --resume {safe_id}"))
-            }
-            None => Err("cc-mirror session missing variant name".to_string()),
-        };
-    }
-    let p = Provider::parse(&provider).unwrap_or_else(|| {
-        log::warn!("unknown provider '{}', falling back to Claude", provider);
-        Provider::Claude
-    });
-    Ok(p.resume_command(&safe_id))
+    let p = Provider::parse(&provider).ok_or_else(|| format!("unknown provider '{provider}'"))?;
+
+    let variant_name = state
+        .db
+        .get_session(&session_id)
+        .ok()
+        .flatten()
+        .and_then(|s| s.variant_name)
+        .map(|v| sanitize_session_id(&v));
+
+    p.descriptor()
+        .resume_command(&safe_id, variant_name.as_deref())
+        .ok_or_else(|| format!("{} session missing variant name", provider))
 }
 
 /// Sanitize session ID to prevent shell injection — only allow alnum, hyphens, underscores
@@ -63,13 +56,11 @@ pub fn open_in_terminal(
         return Err("command rejected: expected '<provider> <flag> <session_id>'".to_string());
     }
 
-    const ALLOWED_PROVIDERS: &[&str] = &[
-        "claude", "codex", "gemini", "cursor", "agent", "opencode", "kimi",
-    ];
-
     let cmd_name = parts[0];
-    // Allow known providers, or cc-mirror variant names discovered from ~/.cc-mirror/
-    let is_allowed = ALLOWED_PROVIDERS.contains(&cmd_name) || is_known_cc_mirror_variant(cmd_name);
+    // Security: only allow known CLI commands or discovered cc-mirror variants.
+    let is_allowed = Provider::all().iter().any(|p| {
+        !p.descriptor().cli_command().is_empty() && p.descriptor().cli_command() == cmd_name
+    }) || is_known_cc_mirror_variant(cmd_name);
 
     if !is_allowed {
         return Err(format!("command rejected: unknown provider '{cmd_name}'"));
@@ -100,19 +91,18 @@ pub fn resume_session(
     state: State<AppState>,
 ) -> Result<(), String> {
     let safe_id = sanitize_session_id(&session_id);
-    let session = state.db.get_session(&session_id).ok().flatten();
+    let p = Provider::parse(&provider).ok_or_else(|| format!("unknown provider '{provider}'"))?;
 
-    let cmd = if provider == "cc-mirror" {
-        if let Some(ref name) = session.as_ref().and_then(|s| s.variant_name.clone()) {
-            let safe_name = sanitize_session_id(name);
-            format!("{safe_name} --resume {safe_id}")
-        } else {
-            return Err("cc-mirror session missing variant name, cannot resume".to_string());
-        }
-    } else {
-        let p = Provider::parse(&provider).unwrap_or(Provider::Claude);
-        p.resume_command(&safe_id)
-    };
+    let session = state.db.get_session(&session_id).ok().flatten();
+    let variant_name = session
+        .as_ref()
+        .and_then(|s| s.variant_name.clone())
+        .map(|v| sanitize_session_id(&v));
+
+    let cmd = p
+        .descriptor()
+        .resume_command(&safe_id, variant_name.as_deref())
+        .ok_or_else(|| format!("{} session missing variant name, cannot resume", provider))?;
 
     let cwd = session.and_then(|s| {
         if s.project_path.is_empty() {

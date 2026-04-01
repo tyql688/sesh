@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { SessionMeta, Message } from "../../lib/types";
 import { useI18n } from "../../i18n/index";
-import { getProviderLabel } from "../../lib/providers";
+import { getDisplayLabel } from "../../lib/provider-registry";
 import { formatTimestamp, fmtK, formatFileSize } from "../../lib/formatters";
 import type { ProcessedEntry } from "./hooks";
 
@@ -23,10 +23,7 @@ export function SessionToolbar(props: {
 
   const providerLabel = () => {
     const meta = props.meta();
-    if (meta.provider === "cc-mirror" && meta.variant_name) {
-      return meta.variant_name;
-    }
-    return getProviderLabel(meta.provider);
+    return getDisplayLabel(meta.provider, meta.variant_name);
   };
 
   // Total token usage across all messages

@@ -1,5 +1,5 @@
 import type { SessionMeta, TrashMeta, TreeNode, Provider } from "./types";
-import { getProviderLabel } from "./providers";
+import { getProviderLabel } from "./provider-registry";
 
 export function buildFavoritesTree(
   sessions: SessionMeta[],

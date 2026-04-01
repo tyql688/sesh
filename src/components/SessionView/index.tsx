@@ -10,6 +10,7 @@ import {
 } from "solid-js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { SessionMeta, Message, MessageRole } from "../../lib/types";
+import { getProvider } from "../../lib/provider-registry";
 import {
   getSessionDetail,
   trashSession,
@@ -262,29 +263,32 @@ export function SessionView(props: {
       if (isWatching) {
         const activeSourcePath =
           meta().source_path || props.session.source_path;
-        const isDbSource = activeSourcePath?.endsWith(".db");
+        const providerDef = getProvider(meta().provider);
 
-        if (isDbSource) {
-          // SQLite-based providers (Cursor, OpenCode): use polling
-          // FSEvents on macOS doesn't reliably detect SQLite WAL changes
-          pollTimer = setInterval(reloadSession, 2000);
+        if (providerDef.watchStrategy === "poll") {
+          pollTimer = setInterval(reloadSession, providerDef.watchDebounceMs);
         } else {
-          // File-based providers (Claude, Codex, Gemini): use FS events
+          // File-based providers: use FS events
           unwatchFn = await listen<string[]>("sessions-changed", (event) => {
             const changedPaths = event.payload ?? [];
             if (!activeSourcePath) return;
 
-            const isGemini = meta().provider === "gemini";
-            let matched = changedPaths.includes(activeSourcePath);
-            if (!matched && isGemini) {
-              const projectDir = activeSourcePath.replace(/\/chats\/.*$/, "");
-              matched = changedPaths.some((p) => p.startsWith(projectDir));
+            let matched: boolean;
+            if (providerDef.watchMatchPrefix) {
+              // Gemini: match by project directory prefix
+              // (strip last 2 path segments: /chats/session-id.json → project dir)
+              const dir = activeSourcePath.replace(/\/[^/]+\/[^/]+$/, "");
+              matched = changedPaths.some((p) => p.startsWith(dir));
+            } else {
+              matched = changedPaths.includes(activeSourcePath);
             }
             if (!matched) return;
 
             clearTimeout(watchDebounce);
-            const delay = isGemini ? 800 : 300;
-            watchDebounce = setTimeout(reloadSession, delay);
+            watchDebounce = setTimeout(
+              reloadSession,
+              providerDef.watchDebounceMs,
+            );
           });
         }
       }

@@ -52,34 +52,13 @@ impl Provider {
         }
     }
 
-    pub fn color(&self) -> &'static str {
-        match self {
-            Provider::Claude => "#8b5cf6",
-            Provider::Codex => "#10b981",
-            Provider::Gemini => "#f59e0b",
-            Provider::Cursor => "#3b82f6",
-            Provider::OpenCode => "#06b6d4",
-            Provider::Kimi => "#6366f1",
-            Provider::CcMirror => "#f472b6",
-        }
-    }
-
-    pub fn resume_command(&self, session_id: &str) -> String {
-        match self {
-            Provider::Claude => format!("claude --resume {session_id}"),
-            Provider::Codex => format!("codex resume {session_id}"),
-            Provider::Gemini => format!("gemini --resume {session_id}"),
-            Provider::Cursor => format!("agent --resume={session_id}"),
-            Provider::OpenCode => format!("opencode -s {session_id}"),
-            Provider::Kimi => format!("kimi --session {session_id}"),
-            // cc-mirror requires variant_name; this fallback should not be used
-            Provider::CcMirror => String::new(),
-        }
-    }
-
     /// All known providers in display order.
+    /// The compile-time assertion below ensures this list stays in sync with the enum.
     pub fn all() -> &'static [Provider] {
-        &[
+        // SAFETY: update EXPECTED_COUNT when adding a new Provider variant.
+        // If they mismatch, this will fail at compile time.
+        const EXPECTED_COUNT: usize = 7;
+        const ALL: [Provider; EXPECTED_COUNT] = [
             Provider::Claude,
             Provider::Codex,
             Provider::Gemini,
@@ -87,7 +66,8 @@ impl Provider {
             Provider::OpenCode,
             Provider::Kimi,
             Provider::CcMirror,
-        ]
+        ];
+        &ALL
     }
 }
 
