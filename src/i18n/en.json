@@ -102,6 +102,7 @@
     "noBlockedFolders": "No blocked folders",
     "unblock": "Unblock"
   },
+  "system": { "turnDuration": "Turn", "compact": "Compact", "microcompact": "Microcompact", "hooks": "Hooks", "apiError": "API Error" },
   "blocked": { "hint": "Right-click a project folder and select \"Block This Folder\"" },
   "trash": {
     "title": "Trash",

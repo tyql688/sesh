@@ -17,20 +17,33 @@ export { formatMcpLabel } from "./ToolMessage";
 
 const SYSTEM_SUBTYPE_CONFIG: Record<
   string,
-  { icon: string; label: string; cls: string }
+  { icon: string; labelKey: string; cls: string }
 > = {
-  turn_duration: { icon: "\u23F1", label: "Turn", cls: "sys-duration" },
-  compact_boundary: { icon: "\u2702", label: "Compact", cls: "sys-compact" },
-  microcompact_boundary: {
+  turn_duration: {
+    icon: "\u23F1",
+    labelKey: "system.turnDuration",
+    cls: "sys-duration",
+  },
+  compact_boundary: {
     icon: "\u2702",
-    label: "Microcompact",
+    labelKey: "system.compact",
     cls: "sys-compact",
   },
-  stop_hook_summary: { icon: "\u2699", label: "Hooks", cls: "sys-hook" },
-  api_error: { icon: "\u26A0", label: "API Error", cls: "sys-error" },
+  microcompact_boundary: {
+    icon: "\u2702",
+    labelKey: "system.microcompact",
+    cls: "sys-compact",
+  },
+  stop_hook_summary: {
+    icon: "\u2699",
+    labelKey: "system.hooks",
+    cls: "sys-hook",
+  },
+  api_error: { icon: "\u26A0", labelKey: "system.apiError", cls: "sys-error" },
 };
 
 function SystemMessage(props: { content: string }) {
+  const { t } = useI18n();
   const match = props.content.match(/^\[(\w+)\]\s*(.*)/s);
   if (match) {
     const config = SYSTEM_SUBTYPE_CONFIG[match[1]];
@@ -38,7 +51,7 @@ function SystemMessage(props: { content: string }) {
       return (
         <div class={`msg-system msg-system-tag ${config.cls}`}>
           <span class="sys-icon">{config.icon}</span>
-          <span class="sys-label">{config.label}</span>
+          <span class="sys-label">{t(config.labelKey)}</span>
           <span class="sys-detail">{match[2]}</span>
         </div>
       );
