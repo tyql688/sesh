@@ -1,6 +1,6 @@
 mod parser;
 
-use parser::{capitalize_tool, extract_tokens, ms_to_rfc3339};
+use parser::{extract_tokens, map_opencode_tool_name, ms_to_rfc3339};
 
 use std::path::PathBuf;
 
@@ -463,7 +463,7 @@ impl SessionProvider for OpenCodeProvider {
                                     role: MessageRole::Tool,
                                     content: output,
                                     timestamp: tool_ts,
-                                    tool_name: Some(capitalize_tool(&tool_name)),
+                                    tool_name: Some(map_opencode_tool_name(&tool_name)),
                                     tool_input,
                                     token_usage: None,
                                     model: None,

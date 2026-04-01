@@ -143,7 +143,8 @@ export default function App() {
         const match = children.find(
           (c) =>
             (nickname && c.title === nickname) ||
-            (description && c.title === description),
+            (description &&
+              (c.title === description || c.title.startsWith(description))),
         );
         if (match) {
           openSession(match);
