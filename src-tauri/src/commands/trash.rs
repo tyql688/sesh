@@ -85,7 +85,7 @@ pub fn trash_session(
 
         state
             .db
-            .remove_session(&session_id)
+            .delete_session(&session_id)
             .map_err(|e| format!("failed to delete from db: {e}"))?;
         return Ok(());
     }
@@ -108,7 +108,7 @@ pub fn trash_session(
 
         state
             .db
-            .remove_session(&session_id)
+            .delete_session(&session_id)
             .map_err(|e| format!("failed to delete from db: {e}"))?;
         return Ok(());
     }
@@ -148,7 +148,7 @@ pub fn trash_session(
 
     state
         .db
-        .remove_session(&session_id)
+        .delete_session(&session_id)
         .map_err(|e| format!("failed to delete from db: {e}"))?;
 
     Ok(())
