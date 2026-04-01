@@ -27,6 +27,7 @@ function makeTrashItem(overrides: Partial<TrashMeta> = {}): TrashMeta {
     original_path: "/home/user/.claude/projects/myproject/session.jsonl",
     trashed_at: 1711800000,
     trash_file: "/trash/trash-1.jsonl",
+    project_name: "myproject",
     ...overrides,
   };
 }

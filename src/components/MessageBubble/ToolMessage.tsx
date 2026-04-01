@@ -177,10 +177,10 @@ function toolIcon(name: string): string {
   return TOOL_ICONS[name] || "⚙";
 }
 
-/** Dispatch a custom event to open a subagent session by description match. */
-function openSubagentByDescription(description: string) {
+/** Dispatch a custom event to open a subagent session by description or nickname match. */
+function openSubagent(description: string, nickname?: string) {
   window.dispatchEvent(
-    new CustomEvent("open-subagent", { detail: { description } }),
+    new CustomEvent("open-subagent", { detail: { description, nickname } }),
   );
 }
 
@@ -207,6 +207,16 @@ export function ToolMessage(props: { message: Message }) {
   const formatted = createMemo(() =>
     hasInput() ? formatToolInput(name(), props.message.tool_input!) : null,
   );
+  /** Extract nickname from Agent tool output (Codex: {"nickname":"Faraday"}) */
+  const agentNickname = createMemo(() => {
+    if (name() !== "Agent" || !hasOutput()) return undefined;
+    try {
+      const obj = JSON.parse(props.message.content);
+      return obj.nickname as string | undefined;
+    } catch {
+      return undefined;
+    }
+  });
 
   return (
     <div class={`msg-tool${expanded() ? " expanded" : ""}`}>
@@ -219,12 +229,12 @@ export function ToolMessage(props: { message: Message }) {
         <Show when={summary()}>
           <span class="msg-tool-summary">{summary()}</span>
         </Show>
-        <Show when={name() === "Agent" && summary()}>
+        <Show when={name() === "Agent" && (summary() || agentNickname())}>
           <button
             class="msg-tool-subagent-link"
             onClick={(e) => {
               e.stopPropagation();
-              openSubagentByDescription(summary());
+              openSubagent(summary(), agentNickname());
             }}
             title="Open subagent session"
           >

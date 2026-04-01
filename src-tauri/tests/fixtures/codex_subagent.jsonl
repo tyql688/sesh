@@ -1,0 +1,4 @@
+{"type":"session_meta","timestamp":"2026-01-01T10:00:00.000Z","payload":{"id":"codex-sub-001","forked_from_id":"codex-parent-001","cwd":"/home/user/my-project","originator":"codex_cli_rs","cli_version":"0.116.0","source":{"subagent":{"thread_spawn":{"parent_thread_id":"codex-parent-001","depth":1,"agent_nickname":"Faraday","agent_role":"worker"}}},"agent_nickname":"Faraday","agent_role":"worker","model_provider":"openai"}}
+{"type":"turn_context","timestamp":"2026-01-01T10:00:01.000Z","payload":{"turn_id":"turn-001","model":"gpt-5.4"}}
+{"type":"response_item","timestamp":"2026-01-01T10:00:02.000Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Investigate the auth module"}]}}
+{"type":"response_item","timestamp":"2026-01-01T10:00:05.000Z","payload":{"type":"message","role":"assistant","content":[{"type":"text","text":"I'll analyze the auth module structure."}]}}

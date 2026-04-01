@@ -66,11 +66,13 @@ export function buildTrashTree(
 
   for (const item of items) {
     const provider = item.provider || "claude";
-    // Derive project from original_path
-    const parts = item.original_path.split("/");
-    let project = labels.unknown;
-    if (parts.length >= 2) {
-      project = parts[parts.length - 2];
+    // Use project_name from trash meta, fallback to path extraction for legacy entries
+    let project = item.project_name || labels.unknown;
+    if (!item.project_name) {
+      const parts = item.original_path.split("/");
+      if (parts.length >= 2) {
+        project = parts[parts.length - 2];
+      }
     }
     if (!providerMap.has(provider)) {
       providerMap.set(provider, new Map());

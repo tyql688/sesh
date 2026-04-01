@@ -45,6 +45,13 @@ impl CodexProvider {
         let mut current_model: Option<String> = None;
         let mut cc_version: Option<String> = None;
         let mut git_branch: Option<String> = None;
+        let mut is_sidechain = false;
+        let mut parent_id: Option<String> = None;
+        let mut agent_nickname: Option<String> = None;
+        // When parsing subagent files, skip the forked parent context.
+        // Subagent JSONL: [sub_meta, parent_meta, ...parent_context..., spawn_marker, sub_turn]
+        // The marker "You are the newly spawned agent" signals end of parent context.
+        let mut skipping_fork_context = false;
 
         for line in reader.lines() {
             let line = match line {
@@ -72,8 +79,36 @@ impl CodexProvider {
                 None => continue,
             };
 
+            // Skip forked parent context in subagent files.
+            // End marker: function_call_output containing "newly spawned agent".
+            if skipping_fork_context {
+                if entry.line_type == "response_item" {
+                    let item_type = payload.get("type").and_then(|v| v.as_str());
+                    if item_type == Some("function_call_output") {
+                        let output = payload
+                            .get("output")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if output.contains("newly spawned agent") {
+                            skipping_fork_context = false;
+                        }
+                    }
+                }
+                continue;
+            }
+
             match entry.line_type.as_str() {
                 "session_meta" => {
+                    // Only process the first session_meta; subagent JSONL files
+                    // contain a second session_meta for the parent context which
+                    // would overwrite the subagent's own id/cwd/source fields.
+                    if session_id.is_some() {
+                        // 2nd session_meta = start of forked parent context
+                        if is_sidechain {
+                            skipping_fork_context = true;
+                        }
+                        continue;
+                    }
                     if let Some(id) = payload.get("id").and_then(|v| v.as_str()) {
                         session_id = Some(id.to_string());
                     }
@@ -98,6 +133,22 @@ impl CodexProvider {
                         if !b.is_empty() && b != "HEAD" {
                             git_branch = Some(b.to_string());
                         }
+                    }
+                    // Detect subagent sessions: source.subagent.thread_spawn
+                    if let Some(spawn) = payload
+                        .get("source")
+                        .and_then(|s| s.get("subagent"))
+                        .and_then(|a| a.get("thread_spawn"))
+                    {
+                        is_sidechain = true;
+                        parent_id = spawn
+                            .get("parent_thread_id")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        agent_nickname = payload
+                            .get("agent_nickname")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
                     }
                 }
                 "response_item" => {
@@ -379,7 +430,10 @@ impl CodexProvider {
             )
         });
 
-        let title = session_title(first_user_message.as_deref());
+        let title = agent_nickname
+            .as_deref()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| session_title(first_user_message.as_deref()));
 
         let project_path = cwd.unwrap_or_else(|| NO_PROJECT.to_string());
 
@@ -403,12 +457,12 @@ impl CodexProvider {
             message_count: messages.len() as u32,
             file_size_bytes: file_size,
             source_path: path.to_string_lossy().to_string(),
-            is_sidechain: false,
+            is_sidechain,
             variant_name: None,
             model: model.or(model_provider),
             cc_version,
             git_branch,
-            parent_id: None,
+            parent_id,
         };
 
         Some(ParsedSession {

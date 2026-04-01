@@ -60,6 +60,11 @@ pub fn trash_session(
         title
     };
 
+    let resolved_project = db_meta
+        .as_ref()
+        .map(|s| s.project_name.clone())
+        .unwrap_or_default();
+
     let now_ts = chrono::Utc::now().timestamp();
     let meta_path = trash_meta_path(&trash_dir);
     let _lock = TRASH_META_LOCK
@@ -80,6 +85,7 @@ pub fn trash_session(
             original_path: resolved_path,
             trashed_at: now_ts,
             trash_file: String::new(), // empty = soft-delete, no file moved
+            project_name: resolved_project,
         });
         atomic_write_json(&meta_path, &entries)?;
 
@@ -98,12 +104,17 @@ pub fn trash_session(
         let mut entries = read_trash_meta(&meta_path);
         entries.push(TrashMeta {
             id: session_id.clone(),
-            provider: resolved_provider,
+            provider: resolved_provider.clone(),
             title: resolved_title,
             original_path: resolved_path,
             trashed_at: now_ts,
             trash_file: String::new(),
+            project_name: resolved_project.clone(),
         });
+
+        // Trash child session files that still exist on disk
+        trash_children(&session_id, &resolved_provider, &resolved_project, now_ts, &trash_dir, &mut entries, &state);
+
         atomic_write_json(&meta_path, &entries)?;
 
         state
@@ -138,12 +149,16 @@ pub fn trash_session(
     let mut entries = read_trash_meta(&meta_path);
     entries.push(TrashMeta {
         id: session_id.clone(),
-        provider: resolved_provider,
+        provider: resolved_provider.clone(),
         title: resolved_title,
         original_path: resolved_path,
         trashed_at: now_ts,
         trash_file: file_name,
+        project_name: resolved_project.clone(),
     });
+
+    trash_children(&session_id, &resolved_provider, &resolved_project, now_ts, &trash_dir, &mut entries, &state);
+
     atomic_write_json(&meta_path, &entries)?;
 
     state
@@ -343,6 +358,59 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
     atomic_write_json(&meta_path, &remaining)?;
 
     Ok(())
+}
+
+/// Move child session files (subagents) to the trash directory.
+/// Works for all providers: Claude subagents in `subagents/` dir, Codex subagents as separate JSONL files.
+fn trash_children(
+    parent_id: &str,
+    provider: &str,
+    project_name: &str,
+    now_ts: i64,
+    trash_dir: &std::path::Path,
+    entries: &mut Vec<TrashMeta>,
+    state: &AppState,
+) {
+    let children = match state.db.get_child_sessions(parent_id) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    for child in &children {
+        let child_id = &child.id;
+        let child_path = &child.source_path;
+        let child_src = std::path::Path::new(child_path);
+        if !child_src.exists() || child_path.is_empty() {
+            continue;
+        }
+        let child_base = child_src.file_name().map_or_else(
+            || format!("{child_id}.jsonl"),
+            |f| f.to_string_lossy().to_string(),
+        );
+        let child_base = child_base.replace(['/', '\\'], "_");
+        let child_name = if let Some(dot_pos) = child_base.rfind('.') {
+            format!(
+                "{}_{}{}",
+                &child_base[..dot_pos],
+                now_ts,
+                &child_base[dot_pos..]
+            )
+        } else {
+            format!("{child_base}_{now_ts}")
+        };
+        let child_dest = trash_dir.join(&child_name);
+        let _ = std::fs::rename(child_src, &child_dest).or_else(|_| {
+            std::fs::copy(child_src, &child_dest).and_then(|_| std::fs::remove_file(child_src))
+        });
+        entries.push(TrashMeta {
+            id: child_id.clone(),
+            provider: provider.to_string(),
+            title: child.title.clone(),
+            original_path: child_path.clone(),
+            trashed_at: now_ts,
+            trash_file: child_name,
+            project_name: project_name.to_string(),
+        });
+    }
 }
 
 fn sync_source(provider_str: &str, source_path: &str, state: &AppState) -> Result<(), String> {

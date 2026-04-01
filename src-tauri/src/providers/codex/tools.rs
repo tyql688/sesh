@@ -91,6 +91,7 @@ pub fn map_codex_tool_name(name: &str) -> &str {
         "apply_patch" => "Apply_patch",
         "view_image" => "Image",
         "update_plan" => "Plan",
+        "spawn_agent" | "wait_agent" | "close_agent" => "Agent",
         "write_stdin" => "Stdin",
         _ if name.starts_with("mcp__") => {
             // e.g. mcp__playwright__browser_click -> last segment
