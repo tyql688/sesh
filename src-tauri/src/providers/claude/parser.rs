@@ -781,11 +781,14 @@ pub fn resolve_persisted_outputs(content: &str) -> String {
                     }
                 })
                 .and_then(|path| {
-                    // Only allow reading files under ~/.claude/ to prevent arbitrary file access
                     let canonical = std::fs::canonicalize(&path).ok()?;
-                    let claude_dir = dirs::home_dir()?.join(".claude");
-                    let claude_canonical = std::fs::canonicalize(&claude_dir).ok()?;
-                    if !canonical.starts_with(&claude_canonical) {
+                    let home = dirs::home_dir()?;
+                    let allowed = [home.join(".claude"), home.join(".cc-mirror")];
+                    if !allowed.iter().any(|base| {
+                        std::fs::canonicalize(base)
+                            .ok()
+                            .map_or(false, |b| canonical.starts_with(&b))
+                    }) {
                         return None;
                     }
                     std::fs::read_to_string(&canonical).ok()
