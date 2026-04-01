@@ -8,7 +8,7 @@ const TOOL_ICONS: Record<string, string> = {
   Apply_patch: "✏️",
   Plan: "📋",
   Write: "📝",
-  Bash: "⬛",
+  Bash: "▶",
   Glob: "🔍",
   Grep: "🔎",
   Agent: "🤖",
