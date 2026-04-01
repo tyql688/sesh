@@ -98,17 +98,18 @@ export function TreeNodeComponent(props: {
 }) {
   const { t } = useI18n();
   const hasChildren = () => props.node.children.length > 0;
+  const isSession = () => props.node.node_type === "session";
+  const isSubagentParent = () => isSession() && hasChildren();
   const isLeaf = () => props.node.node_type === "session" && !hasChildren();
   const expanded = () => props.isNodeExpanded(props.node.id);
 
-  const isSession = () => props.node.node_type === "session";
-
   const handleClick = (e: MouseEvent) => {
-    if (isSession() && hasChildren()) {
+    if (isSession()) {
       props.onSessionClick(e, props.node, props.parentProjectLabel ?? "");
-      props.toggleExpanded(props.node.id);
-    } else if (isLeaf()) {
-      props.onSessionClick(e, props.node, props.parentProjectLabel ?? "");
+      // Auto-expand parent sessions that have subagents
+      if (isSubagentParent() && !expanded()) {
+        props.toggleExpanded(props.node.id);
+      }
     } else {
       props.toggleExpanded(props.node.id);
     }
@@ -152,10 +153,10 @@ export function TreeNodeComponent(props: {
         onContextMenu={handleContextMenu}
         data-session-id={isLeaf() ? props.node.id : undefined}
       >
-        <Show when={!isLeaf()}>
+        <Show when={!isLeaf() && !isSubagentParent()}>
           <ChevronIcon expanded={expanded()} />
         </Show>
-        <Show when={isLeaf()}>
+        <Show when={isLeaf() || isSubagentParent()}>
           <span class="tree-node-icon-spacer" />
         </Show>
 
@@ -194,7 +195,26 @@ export function TreeNodeComponent(props: {
         </Show>
       </button>
 
-      <Show when={expanded() && !isLeaf()}>
+      {/* Subagent children always visible under parent session */}
+      <Show when={isSubagentParent()}>
+        <For each={props.node.children}>
+          {(child) => (
+            <TreeNodeComponent
+              node={child}
+              depth={props.depth + 1}
+              activeSessionId={props.activeSessionId}
+              parentProjectLabel={projectLabel()}
+              isNodeExpanded={props.isNodeExpanded}
+              toggleExpanded={props.toggleExpanded}
+              onSessionContextMenu={props.onSessionContextMenu}
+              onNodeContextMenu={props.onNodeContextMenu}
+              onSessionClick={props.onSessionClick}
+            />
+          )}
+        </For>
+      </Show>
+      {/* Provider/project children use expand/collapse */}
+      <Show when={expanded() && !isLeaf() && !isSubagentParent()}>
         <For each={props.node.children}>
           {(child) => (
             <TreeNodeComponent

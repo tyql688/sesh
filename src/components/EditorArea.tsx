@@ -100,10 +100,10 @@ export function EditorArea(props: {
                       </span>
                       <div class="editor-empty-session-info">
                         <span class="editor-empty-session-title">
-                          {session.title}
                           <Show when={session.is_sidechain}>
                             <span class="session-sidechain-badge">⤷</span>
                           </Show>
+                          {session.title}
                         </span>
                         <span class="editor-empty-session-path">
                           {session.project_path
