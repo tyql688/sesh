@@ -128,6 +128,11 @@ impl Database {
             conn.execute_batch("DELETE FROM favorites; DELETE FROM sessions; DELETE FROM meta;")?;
             Ok(())
         })?;
+        // Checkpoint WAL before vacuum so WAL file gets truncated too
+        {
+            let conn = self.lock_write()?;
+            let _ = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE");
+        }
         self.vacuum()
     }
 
