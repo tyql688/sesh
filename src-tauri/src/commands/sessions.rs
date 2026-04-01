@@ -71,7 +71,10 @@ pub fn delete_session(
     if let Ok(children) = state.db.list_children(&session_id) {
         for (_child_id, child_source) in &children {
             let child_path = std::path::Path::new(child_source);
-            if child_path.exists() && !child_source.ends_with(".db") {
+            let child_shared = crate::provider::provider_from_source_path(child_source)
+                .and_then(|p| crate::provider::make_provider(&p))
+                .is_some_and(|p| p.is_shared_source());
+            if child_path.exists() && !child_shared {
                 let _ = std::fs::remove_file(child_path);
                 // Also try to remove the .meta.json file
                 let meta_path = child_path.with_extension("meta.json");
@@ -91,9 +94,12 @@ pub fn delete_session(
                 source_path
             ));
         }
-        // Skip physical deletion for shared SQLite database files (OpenCode opencode.db)
-        // — these contain ALL sessions, not just one; only remove from index
-        if !source_path.ends_with("/opencode.db") {
+        // Skip physical deletion for shared sources (e.g. SQLite databases
+        // that contain ALL sessions, not just one) — only remove from index
+        let is_shared = provider_from_source_path(&source_path)
+            .and_then(|p| crate::provider::make_provider(&p))
+            .is_some_and(|p| p.is_shared_source());
+        if !is_shared {
             std::fs::remove_file(path)
                 .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
         }
@@ -128,7 +134,10 @@ pub async fn delete_sessions_batch(
             if let Ok(children) = state.db.list_children(session_id) {
                 for (_child_id, child_source) in &children {
                     let child_path = std::path::Path::new(child_source.as_str());
-                    if child_path.exists() && !child_source.ends_with(".db") {
+                    let child_shared = crate::provider::provider_from_source_path(child_source)
+                        .and_then(|p| crate::provider::make_provider(&p))
+                        .is_some_and(|p| p.is_shared_source());
+                    if child_path.exists() && !child_shared {
                         let _ = std::fs::remove_file(child_path);
                         let meta_path = child_path.with_extension("meta.json");
                         if meta_path.exists() {
@@ -146,9 +155,10 @@ pub async fn delete_sessions_batch(
                         source_path
                     ));
                 }
-                if source_path.ends_with("/opencode.db") {
-                    // Skip physical deletion for shared DB — just remove from index
-                } else {
+                let is_shared = provider_from_source_path(source_path)
+                    .and_then(|p| crate::provider::make_provider(&p))
+                    .is_some_and(|p| p.is_shared_source());
+                if !is_shared {
                     std::fs::remove_file(path)
                         .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;
                 }
@@ -298,13 +308,7 @@ pub(crate) fn sync_source_from_path(source_path: &str, state: &AppState) -> Resu
 }
 
 fn provider_from_source_path(source_path: &str) -> Option<Provider> {
-    let normalized = source_path.replace('\\', "/");
-    crate::provider_utils::PROVIDER_PATH_PATTERNS
-        .iter()
-        .find(|(primary, secondary, _)| {
-            normalized.contains(primary) && secondary.is_none_or(|s| normalized.contains(s))
-        })
-        .map(|(_, _, provider)| provider.clone())
+    crate::provider::provider_from_source_path(source_path)
 }
 
 fn load_messages_from_provider(
