@@ -15,6 +15,38 @@ import { ToolMessage } from "./ToolMessage";
 export { ProviderIcon } from "../../lib/icons";
 export { formatMcpLabel } from "./ToolMessage";
 
+const SYSTEM_SUBTYPE_CONFIG: Record<
+  string,
+  { icon: string; label: string; cls: string }
+> = {
+  turn_duration: { icon: "\u23F1", label: "Turn", cls: "sys-duration" },
+  compact_boundary: { icon: "\u2702", label: "Compact", cls: "sys-compact" },
+  microcompact_boundary: {
+    icon: "\u2702",
+    label: "Microcompact",
+    cls: "sys-compact",
+  },
+  stop_hook_summary: { icon: "\u2699", label: "Hooks", cls: "sys-hook" },
+  api_error: { icon: "\u26A0", label: "API Error", cls: "sys-error" },
+};
+
+function SystemMessage(props: { content: string }) {
+  const match = props.content.match(/^\[(\w+)\]\s*(.*)/s);
+  if (match) {
+    const config = SYSTEM_SUBTYPE_CONFIG[match[1]];
+    if (config) {
+      return (
+        <div class={`msg-system msg-system-tag ${config.cls}`}>
+          <span class="sys-icon">{config.icon}</span>
+          <span class="sys-label">{config.label}</span>
+          <span class="sys-detail">{match[2]}</span>
+        </div>
+      );
+    }
+  }
+  return <div class="msg-system">{props.content}</div>;
+}
+
 export function MessageBubble(props: {
   message: Message;
   provider?: Provider;
@@ -70,7 +102,7 @@ export function MessageBubble(props: {
                 content={props.message.content.slice("[thinking]\n".length)}
               />
             ) : (
-              <div class="msg-system">{props.message.content}</div>
+              <SystemMessage content={props.message.content} />
             )
           }
         >

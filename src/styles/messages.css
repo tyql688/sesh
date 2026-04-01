@@ -332,6 +332,55 @@
   padding: 4px 0;
 }
 
+.msg-system-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: var(--bg-subtle);
+}
+
+.msg-system-tag .sys-icon {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.msg-system-tag .sys-label {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.msg-system-tag .sys-detail {
+  opacity: 0.6;
+}
+
+.msg-system-tag.sys-error {
+  color: var(--text-warning, #e5a00d);
+}
+
+/* Session info meta tags */
+.session-info-model {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.session-info-version {
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-info-branch {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
 /* Thinking Block */
 .msg-thinking {
   margin: 1px 0;

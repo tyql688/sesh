@@ -155,6 +155,22 @@ export function SessionToolbar(props: {
             {"\u2937"} {t("session.subagent")}
           </span>
         </Show>
+        <Show when={props.meta().model}>
+          <span class="info-sep">&middot;</span>
+          <span class="session-info-model" title={props.meta().model}>
+            {props.meta().model}
+          </span>
+        </Show>
+        <Show when={props.meta().cc_version}>
+          <span class="info-sep">&middot;</span>
+          <span class="session-info-version">v{props.meta().cc_version}</span>
+        </Show>
+        <Show when={props.meta().git_branch}>
+          <span class="info-sep">&middot;</span>
+          <span class="session-info-branch" title={props.meta().git_branch}>
+            {"\u2387"} {props.meta().git_branch}
+          </span>
+        </Show>
         <Show when={props.meta().project_path}>
           <span class="info-sep">&middot;</span>
           <span class="session-info-path">{props.meta().project_path}</span>
