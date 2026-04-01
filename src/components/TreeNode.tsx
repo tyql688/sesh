@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
 import type { TreeNode } from "../lib/types";
 import { useI18n } from "../i18n/index";
-import { isSelected } from "../stores/selection";
+import { isSelected, toggleSelected } from "../stores/selection";
 import { ProviderDot } from "../lib/icons";
 
 // Re-exports for backward compatibility
@@ -93,6 +93,16 @@ export function formatSessionLabel(raw: string, fallback = "Untitled"): string {
   return label || fallback;
 }
 
+/** Recursively collect all session node IDs under a tree node. */
+function collectAllSessions(nodes: TreeNode[]): TreeNode[] {
+  const result: TreeNode[] = [];
+  for (const n of nodes) {
+    if (n.node_type === "session") result.push(n);
+    if (n.children.length > 0) result.push(...collectAllSessions(n.children));
+  }
+  return result;
+}
+
 export function TreeNodeComponent(props: {
   node: TreeNode;
   depth: number;
@@ -141,6 +151,10 @@ export function TreeNodeComponent(props: {
       if (isSubagentParent() && !expanded()) {
         props.toggleExpanded(props.node.id);
       }
+    } else if (e.metaKey || e.ctrlKey) {
+      // Ctrl+Click on folder: select all sessions under it
+      const sessions = collectAllSessions(props.node.children);
+      for (const s of sessions) toggleSelected(s.id);
     } else {
       props.toggleExpanded(props.node.id);
     }

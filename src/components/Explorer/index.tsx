@@ -193,6 +193,12 @@ export function Explorer(props: {
 
   function handleNodeContextMenu(e: MouseEvent, node: TreeNode) {
     setSessionMenu(null);
+    // If there are selected sessions, show selection menu instead of node menu
+    if (selectionCount() > 0) {
+      setNodeMenu(null);
+      setSelectionMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
     setSelectionMenu(null);
     setNodeMenu({ pos: { x: e.clientX, y: e.clientY }, node });
   }
