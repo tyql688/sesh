@@ -35,7 +35,7 @@ export function EditorArea(props: {
   // Refresh trigger: bumped on mount and whenever sessions change
   const [recentVersion, setRecentVersion] = createSignal(0);
   const [recentSessions] = createResource(recentVersion, () =>
-    listRecentSessions(30)
+    listRecentSessions(100)
       .catch(() => [])
       .then((list) =>
         list
