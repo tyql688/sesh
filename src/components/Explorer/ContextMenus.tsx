@@ -1,6 +1,6 @@
 import type { MenuItemDef } from "../ContextMenu";
 import type { TreeNode } from "../../lib/types";
-import { getProviderConfig } from "../../lib/providers";
+import { buildResumeCommand } from "../../lib/provider-registry";
 import { openInFolder } from "../../lib/tauri";
 import { toast, toastError } from "../../stores/toast";
 import { selectionCount } from "../../stores/selection";
@@ -38,13 +38,7 @@ export function buildSessionMenuItems(ctx: SessionMenuContext): MenuItemDef[] {
       label: t("contextMenu.copyResumeCommand"),
       onClick: () => {
         const provider = node.provider ?? "claude";
-        let cmd: string;
-        if (provider === "cc-mirror" && providerLabel) {
-          cmd = `${providerLabel} --resume ${node.id}`;
-        } else {
-          const config = getProviderConfig(provider);
-          cmd = config.resumeCommand(node.id);
-        }
+        const cmd = buildResumeCommand(provider, node.id, providerLabel);
         void navigator.clipboard
           .writeText(cmd)
           .then(() => toast(t("toast.cmdCopied")));
