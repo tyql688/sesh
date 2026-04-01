@@ -220,4 +220,6 @@ pub struct TrashMeta {
     pub original_path: String,
     pub trashed_at: i64,
     pub trash_file: String,
+    #[serde(default)]
+    pub project_name: String,
 }

@@ -374,6 +374,20 @@ fn codex_project_path_from_session_meta() {
     assert_eq!(session.meta.project_path, "/home/user/my-project");
 }
 
+#[test]
+fn codex_subagent_detected() {
+    let provider = CodexProvider::new().expect("home dir must be available");
+    let path = fixtures_dir().join("codex_subagent.jsonl");
+    let session = provider
+        .parse_session_file(&path)
+        .expect("codex subagent fixture must parse");
+
+    assert!(session.meta.is_sidechain);
+    assert_eq!(session.meta.parent_id.as_deref(), Some("codex-parent-001"));
+    assert_eq!(session.meta.title, "Faraday");
+    assert_eq!(session.meta.id, "codex-sub-001");
+}
+
 // ---------------------------------------------------------------------------
 // Kimi parser tests
 // ---------------------------------------------------------------------------

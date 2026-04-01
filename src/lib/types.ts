@@ -98,4 +98,5 @@ export interface TrashMeta {
   original_path: string;
   trashed_at: number;
   trash_file: string;
+  project_name: string;
 }
