@@ -124,17 +124,17 @@ impl Database {
     }
 
     pub fn clear_all(&self) -> Result<(), rusqlite::Error> {
-        self.with_transaction(|conn| {
-            conn.execute_batch("DELETE FROM favorites; DELETE FROM sessions; DELETE FROM meta;")?;
-            // Rebuild FTS index (clears orphaned FTS data after session delete)
-            conn.execute_batch("INSERT INTO sessions_fts(sessions_fts) VALUES('rebuild');")?;
-            Ok(())
-        })?;
-        // Checkpoint WAL + vacuum to reclaim disk space
-        {
-            let conn = self.lock_write()?;
-            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;");
-        }
+        // Lock BOTH connections — VACUUM needs exclusive access (no readers)
+        let _read_guard = self.lock_read()?;
+        let write_guard = self.lock_write()?;
+        write_guard.execute_batch(
+            "DELETE FROM favorites;
+             DELETE FROM sessions;
+             DELETE FROM meta;
+             INSERT INTO sessions_fts(sessions_fts) VALUES('rebuild');
+             PRAGMA wal_checkpoint(TRUNCATE);
+             VACUUM;",
+        )?;
         Ok(())
     }
 
