@@ -408,6 +408,7 @@ impl CodexProvider {
             model: model.or(model_provider),
             cc_version,
             git_branch,
+            parent_id: None,
         };
 
         Some(ParsedSession {

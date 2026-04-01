@@ -114,6 +114,7 @@ impl CursorProvider {
                 model: None,
                 cc_version: None,
                 git_branch: None,
+                parent_id: None,
             },
             messages: Vec::new(),
             content_text: truncate_to_bytes(&content_parts.join("\n"), FTS_CONTENT_LIMIT),

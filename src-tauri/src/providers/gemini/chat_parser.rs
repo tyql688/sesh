@@ -278,6 +278,7 @@ impl GeminiProvider {
             model,
             cc_version: None,
             git_branch: None,
+            parent_id: None,
         };
 
         Some(ParsedSession {

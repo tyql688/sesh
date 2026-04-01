@@ -218,6 +218,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         model,
         cc_version,
         git_branch,
+        parent_id: None,
     };
 
     Some(ParsedSession {

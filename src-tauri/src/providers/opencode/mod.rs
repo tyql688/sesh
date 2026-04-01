@@ -267,6 +267,7 @@ impl SessionProvider for OpenCodeProvider {
                             model: session_model,
                             cc_version: version.filter(|v| !v.is_empty()),
                             git_branch: session_branch,
+                            parent_id: None,
                         },
                         messages: Vec::new(),
                         content_text: truncate_to_bytes(&content_text, FTS_CONTENT_LIMIT),
@@ -474,7 +475,10 @@ impl SessionProvider for OpenCodeProvider {
                     }
 
                     // Emit text message first (with token usage on last text msg of this turn)
-                    let msg_model = msg_json.get("modelID").and_then(|m| m.as_str()).map(|s| s.to_string());
+                    let msg_model = msg_json
+                        .get("modelID")
+                        .and_then(|m| m.as_str())
+                        .map(|s| s.to_string());
 
                     if !text_parts.is_empty() {
                         messages.push(Message {

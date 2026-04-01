@@ -201,6 +201,18 @@ impl Database {
             write_conn.execute_batch("ALTER TABLE sessions ADD COLUMN git_branch TEXT;")?;
         }
 
+        // Migration: add parent_id column if not exists
+        let has_parent_id: bool = {
+            let mut stmt = write_conn.prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'parent_id'",
+            )?;
+            let count: i64 = stmt.query_row([], |row| row.get(0))?;
+            count > 0
+        };
+        if !has_parent_id {
+            write_conn.execute_batch("ALTER TABLE sessions ADD COLUMN parent_id TEXT;")?;
+        }
+
         let read_conn = Connection::open(&db_path)?;
         read_conn.pragma_update(None, "journal_mode", "WAL")?;
         read_conn.pragma_update(None, "query_only", "ON")?;

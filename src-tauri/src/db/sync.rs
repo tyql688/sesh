@@ -153,8 +153,8 @@ fn upsert_session_on(
     conn.execute(
         "INSERT INTO sessions (id, provider, title, project_path, project_name,
             created_at, updated_at, message_count, file_size_bytes, source_path, content_text, is_sidechain,
-            variant_name, model, cc_version, git_branch)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+            variant_name, model, cc_version, git_branch, parent_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
          ON CONFLICT(id) DO UPDATE SET
             provider = excluded.provider,
             title = CASE WHEN sessions.title_custom = 1 THEN sessions.title ELSE excluded.title END,
@@ -170,7 +170,8 @@ fn upsert_session_on(
             variant_name = excluded.variant_name,
             model = excluded.model,
             cc_version = excluded.cc_version,
-            git_branch = excluded.git_branch",
+            git_branch = excluded.git_branch,
+            parent_id = excluded.parent_id",
         params![
             meta.id,
             provider_str,
@@ -188,6 +189,7 @@ fn upsert_session_on(
             meta.model,
             meta.cc_version,
             meta.git_branch,
+            meta.parent_id,
         ],
     )?;
     Ok(())
