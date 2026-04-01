@@ -217,14 +217,17 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let full_content = state.content_parts.join("\n");
     let content_text = truncate_to_bytes(&full_content, FTS_CONTENT_LIMIT);
 
-    let title = custom_title.or(ai_title).or(subagent_title).unwrap_or_else(|| {
-        session_title(
-            state
-                .first_user_message
-                .as_deref()
-                .or(summary_text.as_deref()),
-        )
-    });
+    let title = custom_title
+        .or(ai_title)
+        .or(subagent_title)
+        .unwrap_or_else(|| {
+            session_title(
+                state
+                    .first_user_message
+                    .as_deref()
+                    .or(summary_text.as_deref()),
+            )
+        });
 
     let meta = crate::models::SessionMeta {
         id: session_id,

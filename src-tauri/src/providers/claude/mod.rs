@@ -77,8 +77,7 @@ impl ClaudeProvider {
                                     Err(_) => continue,
                                 };
                                 let sub_path = sub_entry.path();
-                                if sub_path.extension().and_then(|e| e.to_str()) == Some("jsonl")
-                                {
+                                if sub_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
                                     all_files.push(sub_path);
                                 }
                             }
