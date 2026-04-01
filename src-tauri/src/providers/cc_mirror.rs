@@ -95,8 +95,23 @@ impl CcMirrorProvider {
                 };
                 for file_entry in files.flatten() {
                     let file_path = file_entry.path();
+                    let is_dir = file_path.is_dir();
                     if file_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
                         all_files.push((file_path, variant.name.clone()));
+                    } else if is_dir {
+                        let subagents_dir = file_path.join("subagents");
+                        if subagents_dir.is_dir() {
+                            if let Ok(sub_entries) = fs::read_dir(&subagents_dir) {
+                                for sub_entry in sub_entries.flatten() {
+                                    let sub_path = sub_entry.path();
+                                    if sub_path.extension().and_then(|e| e.to_str())
+                                        == Some("jsonl")
+                                    {
+                                        all_files.push((sub_path, variant.name.clone()));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
