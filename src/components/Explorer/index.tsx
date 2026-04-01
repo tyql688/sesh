@@ -108,7 +108,13 @@ export function Explorer(props: {
     if (!sessionId || props.tree.length === 0) return;
     for (const provider of props.tree) {
       for (const project of provider.children) {
-        if (project.children.some((s) => s.id === sessionId)) {
+        // Check direct sessions and their subagent children
+        const found =
+          project.children.some((s) => s.id === sessionId) ||
+          project.children.some((s) =>
+            s.children.some((c) => c.id === sessionId),
+          );
+        if (found) {
           setExpandedIds((prev) => {
             const next = new Set(prev);
             next.add(provider.id);
