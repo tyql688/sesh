@@ -163,6 +163,17 @@ impl SessionProvider for CcMirrorProvider {
         let path = PathBuf::from(source_path);
         let parsed = parser::parse_session_file(&path)
             .ok_or_else(|| ProviderError::Parse("failed to parse session file".to_string()))?;
-        Ok(parsed.messages)
+
+        // Resolve persisted outputs only at display time, not during indexing
+        let messages = parsed
+            .messages
+            .into_iter()
+            .map(|mut msg| {
+                msg.content = parser::resolve_persisted_outputs(&msg.content);
+                msg
+            })
+            .collect();
+
+        Ok(messages)
     }
 }

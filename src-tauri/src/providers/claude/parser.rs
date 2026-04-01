@@ -41,7 +41,8 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         tool_use_id_map: HashMap::new(),
     };
     let mut summary_text: Option<String> = None;
-    let mut title_override: Option<String> = None;
+    let mut custom_title: Option<String> = None;
+    let mut ai_title: Option<String> = None;
     let mut first_timestamp: Option<String> = None;
     let mut last_timestamp: Option<String> = None;
     let mut cwd: Option<String> = None;
@@ -148,11 +149,20 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
             "system" => {
                 handle_system_message(&entry, &mut state, timestamp);
             }
-            "custom-title" | "ai-title" => {
+            "custom-title" => {
                 flush_pending(&mut state);
                 if let Some(t) = entry.get("title").and_then(|t| t.as_str()) {
                     if !t.trim().is_empty() {
-                        title_override = Some(t.to_string());
+                        custom_title = Some(t.to_string());
+                    }
+                }
+                continue;
+            }
+            "ai-title" => {
+                flush_pending(&mut state);
+                if let Some(t) = entry.get("title").and_then(|t| t.as_str()) {
+                    if !t.trim().is_empty() {
+                        ai_title = Some(t.to_string());
                     }
                 }
                 continue;
@@ -183,7 +193,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let full_content = state.content_parts.join("\n");
     let content_text = truncate_to_bytes(&full_content, FTS_CONTENT_LIMIT);
 
-    let title = title_override.unwrap_or_else(|| {
+    let title = custom_title.or(ai_title).unwrap_or_else(|| {
         session_title(
             state
                 .first_user_message
@@ -289,7 +299,7 @@ fn handle_tool_result(msg: &Value, state: &mut ParseState, timestamp: &Option<St
             if result_item.get("type").and_then(|t| t.as_str()) != Some("tool_result") {
                 continue;
             }
-            let result_text = resolve_persisted_outputs(&extract_tool_result_content(result_item));
+            let result_text = extract_tool_result_content(result_item);
             if result_text.trim().is_empty() {
                 continue;
             }
@@ -473,7 +483,14 @@ fn handle_system_message(entry: &Value, state: &mut ParseState, timestamp: Optio
                 .and_then(|m| m.get("preTokens"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
-            format!("[compact_boundary] {}k tokens", pre_tokens / 1000)
+            if pre_tokens < 1000 {
+                format!("[compact_boundary] {} tokens", pre_tokens)
+            } else {
+                format!(
+                    "[compact_boundary] {:.1}k tokens",
+                    pre_tokens as f64 / 1000.0
+                )
+            }
         }
         "microcompact_boundary" => {
             let metadata = entry.get("microcompactMetadata");
@@ -486,9 +503,9 @@ fn handle_system_message(entry: &Value, state: &mut ParseState, timestamp: Optio
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             format!(
-                "[microcompact_boundary] {}k tokens saved {}k",
-                pre_tokens / 1000,
-                tokens_saved / 1000
+                "[microcompact_boundary] {:.1}k tokens saved {:.1}k",
+                pre_tokens as f64 / 1000.0,
+                tokens_saved as f64 / 1000.0
             )
         }
         "stop_hook_summary" => {
@@ -685,7 +702,8 @@ fn is_tool_result_message(message: &Value) -> bool {
 
 /// Resolve `<persisted-output>` tags by reading the referenced external file.
 /// Falls back to keeping the original content (with preview) if the file can't be read.
-fn resolve_persisted_outputs(content: &str) -> String {
+/// Only paths under `~/.claude/` are allowed to prevent arbitrary file reads.
+pub fn resolve_persisted_outputs(content: &str) -> String {
     const TAG_START: &str = "<persisted-output>";
     const TAG_END: &str = "</persisted-output>";
 
@@ -712,12 +730,24 @@ fn resolve_persisted_outputs(content: &str) -> String {
                     if let Some(rest) = trimmed.strip_prefix("Full output saved to: ") {
                         Some(rest.trim().to_string())
                     } else if trimmed.contains("saved to: ") {
-                        trimmed.split("saved to: ").nth(1).map(|p| p.trim().to_string())
+                        trimmed
+                            .split("saved to: ")
+                            .nth(1)
+                            .map(|p| p.trim().to_string())
                     } else {
                         None
                     }
                 })
-                .and_then(|path| std::fs::read_to_string(&path).ok());
+                .and_then(|path| {
+                    // Only allow reading files under ~/.claude/ to prevent arbitrary file access
+                    let canonical = std::fs::canonicalize(&path).ok()?;
+                    let claude_dir = dirs::home_dir()?.join(".claude");
+                    let claude_canonical = std::fs::canonicalize(&claude_dir).ok()?;
+                    if !canonical.starts_with(&claude_canonical) {
+                        return None;
+                    }
+                    std::fs::read_to_string(&canonical).ok()
+                });
 
             match file_content {
                 Some(full) => result.push_str(&full),
