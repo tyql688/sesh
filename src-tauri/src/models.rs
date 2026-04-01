@@ -53,8 +53,12 @@ impl Provider {
     }
 
     /// All known providers in display order.
+    /// The compile-time assertion below ensures this list stays in sync with the enum.
     pub fn all() -> &'static [Provider] {
-        &[
+        // SAFETY: update EXPECTED_COUNT when adding a new Provider variant.
+        // If they mismatch, this will fail at compile time.
+        const EXPECTED_COUNT: usize = 7;
+        const ALL: [Provider; EXPECTED_COUNT] = [
             Provider::Claude,
             Provider::Codex,
             Provider::Gemini,
@@ -62,7 +66,8 @@ impl Provider {
             Provider::OpenCode,
             Provider::Kimi,
             Provider::CcMirror,
-        ]
+        ];
+        &ALL
     }
 }
 
