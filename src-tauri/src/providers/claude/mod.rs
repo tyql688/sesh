@@ -137,4 +137,17 @@ impl SessionProvider for ClaudeProvider {
 
         Ok(messages)
     }
+
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        let normalized = source_path.replace('\\', "/");
+        normalized.contains("/.claude/projects/") && !normalized.contains("/.cc-mirror/")
+    }
+
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("claude --resume {session_id}"))
+    }
+
+    fn sort_order(&self) -> u32 {
+        0
+    }
 }

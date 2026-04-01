@@ -88,4 +88,16 @@ impl SessionProvider for CodexProvider {
 
         Ok(parsed.messages)
     }
+
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path.replace('\\', "/").contains("/.codex/sessions/")
+    }
+
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("codex resume {session_id}"))
+    }
+
+    fn sort_order(&self) -> u32 {
+        2
+    }
 }

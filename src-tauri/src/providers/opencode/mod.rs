@@ -533,4 +533,62 @@ impl SessionProvider for OpenCodeProvider {
 
         Ok(messages)
     }
+
+    fn is_shared_source(&self) -> bool {
+        true
+    }
+
+    fn delete_from_source(&self, source_path: &str, session_id: &str) -> Result<(), ProviderError> {
+        let conn = Connection::open(source_path)?;
+        let _ = conn.execute(
+            "DELETE FROM part WHERE session_id = ?1",
+            params![session_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM message WHERE session_id = ?1",
+            params![session_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM todo WHERE session_id = ?1",
+            params![session_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM session_share WHERE session_id = ?1",
+            params![session_id],
+        );
+        // Delete child sessions (subagents)
+        let child_ids: Vec<String> = conn
+            .prepare("SELECT id FROM session WHERE parent_id = ?1")
+            .and_then(|mut stmt| {
+                let rows = stmt.query_map(params![session_id], |row| row.get(0))?;
+                Ok(rows.filter_map(|r| r.ok()).collect())
+            })
+            .unwrap_or_default();
+        for cid in &child_ids {
+            let _ = conn.execute("DELETE FROM part WHERE session_id = ?1", params![cid]);
+            let _ = conn.execute("DELETE FROM message WHERE session_id = ?1", params![cid]);
+            let _ = conn.execute("DELETE FROM todo WHERE session_id = ?1", params![cid]);
+            let _ = conn.execute(
+                "DELETE FROM session_share WHERE session_id = ?1",
+                params![cid],
+            );
+            let _ = conn.execute("DELETE FROM session WHERE id = ?1", params![cid]);
+        }
+        let _ = conn.execute("DELETE FROM session WHERE id = ?1", params![session_id]);
+        Ok(())
+    }
+
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path
+            .replace('\\', "/")
+            .contains("/opencode/opencode.db")
+    }
+
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("opencode -s {session_id}"))
+    }
+
+    fn sort_order(&self) -> u32 {
+        5
+    }
 }

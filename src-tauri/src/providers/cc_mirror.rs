@@ -191,4 +191,24 @@ impl SessionProvider for CcMirrorProvider {
 
         Ok(messages)
     }
+
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        let normalized = source_path.replace('\\', "/");
+        normalized.contains("/.cc-mirror/") && normalized.contains("/config/projects/")
+    }
+
+    fn resume_command(&self, session_id: &str, variant_name: Option<&str>) -> Option<String> {
+        variant_name.map(|name| format!("{name} --resume {session_id}"))
+    }
+
+    fn display_key(&self, variant_name: Option<&str>) -> String {
+        match variant_name {
+            Some(vn) => format!("cc-mirror:{vn}"),
+            None => "cc-mirror".to_string(),
+        }
+    }
+
+    fn sort_order(&self) -> u32 {
+        1
+    }
 }
