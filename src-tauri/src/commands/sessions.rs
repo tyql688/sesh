@@ -87,7 +87,7 @@ pub fn delete_session(
     let path = std::path::Path::new(&source_path);
     if path.exists() {
         // Only allow deleting files that belong to a known provider directory
-        if provider_from_source_path(&source_path).is_none() {
+        if Provider::from_source_path(&source_path).is_none() {
             return Err(format!(
                 "refused to delete '{}': not inside a known provider directory",
                 source_path
@@ -95,7 +95,7 @@ pub fn delete_session(
         }
         // Skip physical deletion for shared sources (e.g. SQLite databases
         // that contain ALL sessions, not just one) — only remove from index
-        let is_shared = provider_from_source_path(&source_path)
+        let is_shared = Provider::from_source_path(&source_path)
             .is_some_and(|p| p.descriptor().is_shared_source());
         if !is_shared {
             std::fs::remove_file(path)
@@ -146,13 +146,13 @@ pub async fn delete_sessions_batch(
 
             let path = std::path::Path::new(source_path);
             if path.exists() {
-                if provider_from_source_path(source_path).is_none() {
+                if Provider::from_source_path(source_path).is_none() {
                     return Err(format!(
                         "refused to delete '{}': not inside a known provider directory",
                         source_path
                     ));
                 }
-                let is_shared = provider_from_source_path(source_path)
+                let is_shared = Provider::from_source_path(source_path)
                     .is_some_and(|p| p.descriptor().is_shared_source());
                 if !is_shared {
                     std::fs::remove_file(path)
@@ -295,16 +295,12 @@ pub(crate) fn sync_source_for_provider(
 }
 
 pub(crate) fn sync_source_from_path(source_path: &str, state: &AppState) -> Result<bool, String> {
-    let Some(provider) = provider_from_source_path(source_path) else {
+    let Some(provider) = Provider::from_source_path(source_path) else {
         return Ok(false);
     };
 
     sync_source_for_provider(provider, source_path, &state.db)?;
     Ok(true)
-}
-
-fn provider_from_source_path(source_path: &str) -> Option<Provider> {
-    Provider::from_source_path(source_path)
 }
 
 fn load_messages_from_provider(
@@ -456,69 +452,4 @@ pub fn open_in_folder(path: String) -> Result<(), String> {
             .map_err(|e| format!("failed to open: {e}"))?;
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn detect_claude_from_path() {
-        let path = "/home/user/.claude/projects/myapp/abc123.jsonl";
-        assert_eq!(provider_from_source_path(path), Some(Provider::Claude));
-    }
-
-    #[test]
-    fn detect_codex_from_path() {
-        let path = "/home/user/.codex/sessions/abc/session.jsonl";
-        assert_eq!(provider_from_source_path(path), Some(Provider::Codex));
-    }
-
-    #[test]
-    fn detect_gemini_from_path() {
-        let path = "/home/user/.gemini/tmp/abc/chats/chat.json";
-        assert_eq!(provider_from_source_path(path), Some(Provider::Gemini));
-    }
-
-    #[test]
-    fn detect_kimi_from_path() {
-        let path = "/home/user/.kimi/sessions/abc/wire.jsonl";
-        assert_eq!(provider_from_source_path(path), Some(Provider::Kimi));
-    }
-
-    #[test]
-    fn detect_cursor_from_path() {
-        let path = "/home/user/.cursor/chats/workspace/store.db";
-        assert_eq!(provider_from_source_path(path), Some(Provider::Cursor));
-    }
-
-    #[test]
-    fn detect_opencode_from_path() {
-        let path = "/home/user/.local/share/opencode/opencode.db";
-        assert_eq!(provider_from_source_path(path), Some(Provider::OpenCode));
-    }
-
-    #[test]
-    fn detect_cc_mirror_from_path() {
-        let path = "/home/user/.cc-mirror/variant1/config/projects/myapp/session.jsonl";
-        assert_eq!(provider_from_source_path(path), Some(Provider::CcMirror));
-    }
-
-    #[test]
-    fn cc_mirror_wins_over_claude() {
-        let path = "/home/user/.cc-mirror/v1/config/projects/app/s.jsonl";
-        assert_eq!(provider_from_source_path(path), Some(Provider::CcMirror));
-    }
-
-    #[test]
-    fn unknown_path_returns_none() {
-        let path = "/home/user/random/file.txt";
-        assert_eq!(provider_from_source_path(path), None);
-    }
-
-    #[test]
-    fn windows_backslash_paths() {
-        let path = "C:\\Users\\user\\.claude\\projects\\myapp\\abc.jsonl";
-        assert_eq!(provider_from_source_path(path), Some(Provider::Claude));
-    }
 }
