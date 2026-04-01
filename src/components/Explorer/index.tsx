@@ -102,35 +102,34 @@ export function Explorer(props: {
     }
   });
 
-  // Reveal active session: expand parent nodes and scroll into view
+  // Reveal active session: expand ancestor nodes and scroll into view.
+  // Handles arbitrary nesting depth (provider → project → time group → session → subagent).
   createEffect(() => {
     const sessionId = props.activeSessionId;
     if (!sessionId || props.tree.length === 0) return;
-    for (const provider of props.tree) {
-      for (const project of provider.children) {
-        // Check direct sessions and their subagent children
-        const found =
-          project.children.some((s) => s.id === sessionId) ||
-          project.children.some((s) =>
-            s.children.some((c) => c.id === sessionId),
-          );
-        if (found) {
-          setExpandedIds((prev) => {
-            const next = new Set(prev);
-            next.add(provider.id);
-            next.add(project.id);
-            return next;
-          });
-          requestAnimationFrame(() => {
-            const el = document.querySelector(
-              `[data-session-id="${sessionId}"]`,
-            );
-            el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-          });
-          return;
-        }
+
+    // DFS: find the path of ancestor node IDs leading to the target session
+    function findPath(nodes: TreeNode[], target: string): string[] | null {
+      for (const node of nodes) {
+        if (node.id === target) return [];
+        const sub = findPath(node.children, target);
+        if (sub !== null) return [node.id, ...sub];
       }
+      return null;
     }
+
+    const path = findPath(props.tree, sessionId);
+    if (!path) return;
+
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of path) next.add(id);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-session-id="${sessionId}"]`);
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   });
 
   function toggleExpanded(nodeId: string) {
