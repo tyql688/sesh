@@ -62,6 +62,51 @@ pub trait ProviderDescriptor: Send + Sync {
     /// CLI command name for the security whitelist (e.g. "claude", "agent").
     /// Empty string if dynamic (e.g. cc-mirror variants).
     fn cli_command(&self) -> &'static str;
+
+    /// SVG icon for HTML export. Returns a complete `<svg>` element or empty string.
+    fn avatar_svg(&self) -> &'static str {
+        ""
+    }
+}
+
+impl Provider {
+    /// Get the descriptor for this provider (static metadata).
+    pub fn descriptor(&self) -> &'static dyn ProviderDescriptor {
+        match self {
+            Provider::Claude => &crate::providers::claude::Descriptor,
+            Provider::Codex => &crate::providers::codex::Descriptor,
+            Provider::Gemini => &crate::providers::gemini::Descriptor,
+            Provider::Cursor => &crate::providers::cursor::Descriptor,
+            Provider::OpenCode => &crate::providers::opencode::Descriptor,
+            Provider::Kimi => &crate::providers::kimi::Descriptor,
+            Provider::CcMirror => &crate::providers::cc_mirror::Descriptor,
+        }
+    }
+
+    /// Identify which provider owns a source path.
+    pub fn from_source_path(source_path: &str) -> Option<Provider> {
+        Provider::all()
+            .iter()
+            .find(|p| p.descriptor().owns_source_path(source_path))
+            .cloned()
+    }
+
+    /// Parse a display key (as produced by `descriptor().display_key()`) back to a provider and label.
+    /// Handles cc-mirror variants like "cc-mirror:cczai" → (CcMirror, "cczai").
+    pub fn parse_display_key(display_key: &str) -> Option<(Provider, String)> {
+        // Direct match: covers most providers
+        if let Some(p) = Provider::parse(display_key) {
+            let label = p.label().to_string();
+            return Some((p, label));
+        }
+        // Custom formats: e.g. "cc-mirror:variant"
+        for p in Provider::all() {
+            if let Some(label) = p.descriptor().try_parse_display_key(display_key) {
+                return Some((p.clone(), label));
+            }
+        }
+        None
+    }
 }
 
 /// Move a source file to the trash directory. Shared helper for `trash_session` implementations.
@@ -157,5 +202,110 @@ pub trait SessionProvider: Send + Sync {
         timestamp: i64,
     ) -> Result<TrashResult, ProviderError> {
         move_to_trash(source_path, trash_dir, timestamp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_source_path() {
+        let cases = [
+            (
+                "/home/user/.claude/projects/foo/abc.jsonl",
+                Some(Provider::Claude),
+            ),
+            (
+                "/home/user/.codex/sessions/xyz.jsonl",
+                Some(Provider::Codex),
+            ),
+            (
+                "/home/user/.gemini/tmp/proj/chats/session.json",
+                Some(Provider::Gemini),
+            ),
+            (
+                "/home/user/.cursor/chats/uuid/store.db",
+                Some(Provider::Cursor),
+            ),
+            (
+                "/home/user/.local/share/opencode/opencode.db",
+                Some(Provider::OpenCode),
+            ),
+            (
+                "/home/user/.kimi/sessions/hash/uuid/wire.jsonl",
+                Some(Provider::Kimi),
+            ),
+            (
+                "/home/user/.cc-mirror/variant/config/projects/foo/abc.jsonl",
+                Some(Provider::CcMirror),
+            ),
+            ("/home/user/random/file.txt", None),
+            // cc-mirror path should NOT match claude
+            (
+                "/home/user/.cc-mirror/cczai/config/projects/foo/abc.jsonl",
+                Some(Provider::CcMirror),
+            ),
+        ];
+        for (path, expected) in &cases {
+            assert_eq!(
+                Provider::from_source_path(path).as_ref(),
+                expected.as_ref(),
+                "from_source_path({path})"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_display_key() {
+        // Regular providers
+        assert_eq!(
+            Provider::parse_display_key("claude"),
+            Some((Provider::Claude, "Claude Code".to_string()))
+        );
+        assert_eq!(
+            Provider::parse_display_key("codex"),
+            Some((Provider::Codex, "Codex".to_string()))
+        );
+        // CC-Mirror variants
+        assert_eq!(
+            Provider::parse_display_key("cc-mirror:cczai"),
+            Some((Provider::CcMirror, "cczai".to_string()))
+        );
+        // Unknown
+        assert_eq!(Provider::parse_display_key("unknown"), None);
+    }
+
+    #[test]
+    fn test_display_key_roundtrip() {
+        // Regular providers roundtrip through parse_display_key
+        for p in Provider::all() {
+            if *p == Provider::CcMirror {
+                continue; // cc-mirror needs variant_name
+            }
+            let key = p.descriptor().display_key(None);
+            let parsed = Provider::parse_display_key(&key);
+            assert!(parsed.is_some(), "display_key roundtrip failed for {:?}", p);
+            assert_eq!(parsed.unwrap().0, *p);
+        }
+        // CC-Mirror with variant
+        let key = Provider::CcMirror.descriptor().display_key(Some("cczai"));
+        let parsed = Provider::parse_display_key(&key);
+        assert_eq!(parsed, Some((Provider::CcMirror, "cczai".to_string())));
+    }
+
+    #[test]
+    fn test_descriptor_sort_order_unique() {
+        let mut orders: Vec<u32> = Provider::all()
+            .iter()
+            .map(|p| p.descriptor().sort_order())
+            .collect();
+        orders.sort();
+        orders.dedup();
+        assert_eq!(
+            orders.len(),
+            Provider::all().len(),
+            "sort_order values must be unique"
+        );
     }
 }
