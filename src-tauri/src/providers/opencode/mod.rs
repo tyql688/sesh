@@ -355,6 +355,7 @@ impl SessionProvider for OpenCodeProvider {
                             tool_name: None,
                             tool_input: None,
                             token_usage: None,
+                            model: None,
                         });
                     }
 
@@ -372,6 +373,7 @@ impl SessionProvider for OpenCodeProvider {
                                         tool_name: None,
                                         tool_input: None,
                                         token_usage: None,
+                                        model: None,
                                     });
                                 }
                             }
@@ -412,6 +414,7 @@ impl SessionProvider for OpenCodeProvider {
                                             tool_name: None,
                                             tool_input: None,
                                             token_usage: None,
+                                            model: None,
                                         });
                                     }
                                 }
@@ -462,6 +465,7 @@ impl SessionProvider for OpenCodeProvider {
                                     tool_name: Some(capitalize_tool(&tool_name)),
                                     tool_input,
                                     token_usage: None,
+                                    model: None,
                                 });
                             }
                             // Skip step-start, step-finish, reasoning, snapshot, patch, etc.
@@ -470,6 +474,8 @@ impl SessionProvider for OpenCodeProvider {
                     }
 
                     // Emit text message first (with token usage on last text msg of this turn)
+                    let msg_model = msg_json.get("modelID").and_then(|m| m.as_str()).map(|s| s.to_string());
+
                     if !text_parts.is_empty() {
                         messages.push(Message {
                             role: MessageRole::Assistant,
@@ -482,6 +488,7 @@ impl SessionProvider for OpenCodeProvider {
                             } else {
                                 None
                             },
+                            model: msg_model.clone(),
                         });
                     }
 
@@ -512,6 +519,7 @@ impl SessionProvider for OpenCodeProvider {
                             tool_name: None,
                             tool_input: None,
                             token_usage,
+                            model: msg_model,
                         });
                     }
                 }

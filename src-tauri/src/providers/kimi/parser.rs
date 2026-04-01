@@ -140,6 +140,7 @@ impl KimiProvider {
                             tool_name: None,
                             tool_input: None,
                             token_usage: None,
+                            model: None,
                         });
                     }
                 }
@@ -157,6 +158,7 @@ impl KimiProvider {
                                     tool_name: None,
                                     tool_input: None,
                                     token_usage: None,
+                                    model: None,
                                 });
                             }
                         }
@@ -171,6 +173,7 @@ impl KimiProvider {
                                     tool_name: None,
                                     tool_input: None,
                                     token_usage: None,
+                                    model: None,
                                 });
                             }
                         }
@@ -202,6 +205,7 @@ impl KimiProvider {
                         tool_name: Some(display_name.to_string()),
                         tool_input,
                         token_usage: None,
+                        model: None,
                     });
                 }
                 "ToolResult" => {
@@ -227,6 +231,7 @@ impl KimiProvider {
                         tool_name: None,
                         tool_input: None,
                         token_usage: None,
+                        model: None,
                     });
                 }
                 "StatusUpdate" => {

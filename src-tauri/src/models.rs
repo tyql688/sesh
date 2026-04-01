@@ -145,6 +145,8 @@ pub struct Message {
     pub tool_name: Option<String>,
     pub tool_input: Option<String>,
     pub token_usage: Option<TokenUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

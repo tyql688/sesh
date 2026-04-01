@@ -151,6 +151,7 @@ impl GeminiProvider {
                                 tool_name: None,
                                 tool_input: None,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                     }
@@ -174,6 +175,11 @@ impl GeminiProvider {
                     // Attach token usage to text msg only if no tool calls follow
                     token_usage: if !has_tools {
                         token_usage.clone()
+                    } else {
+                        None
+                    },
+                    model: if role == MessageRole::Assistant {
+                        msg.model.clone()
                     } else {
                         None
                     },
@@ -238,6 +244,7 @@ impl GeminiProvider {
                         } else {
                             None
                         },
+                        model: None,
                     });
                 }
             }

@@ -41,6 +41,7 @@ export interface Message {
   tool_name: string | null;
   tool_input: string | null;
   token_usage: TokenUsage | null;
+  model?: string;
 }
 
 export interface SessionDetail {
