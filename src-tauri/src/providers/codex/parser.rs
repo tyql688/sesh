@@ -40,6 +40,10 @@ impl CodexProvider {
         // Map call_id -> message index for merging function_call_output into function_call
         let mut call_id_map: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
+        let mut model: Option<String> = None;
+        let mut model_provider: Option<String> = None;
+        let mut cc_version: Option<String> = None;
+        let mut git_branch: Option<String> = None;
 
         for line in reader.lines() {
             let line = match line {
@@ -74,6 +78,25 @@ impl CodexProvider {
                     }
                     if let Some(c) = payload.get("cwd").and_then(|v| v.as_str()) {
                         cwd = Some(c.to_string());
+                    }
+                    if let Some(v) = payload.get("cli_version").and_then(|v| v.as_str()) {
+                        if !v.is_empty() {
+                            cc_version = Some(v.to_string());
+                        }
+                    }
+                    if let Some(m) = payload.get("model_provider").and_then(|v| v.as_str()) {
+                        if !m.is_empty() {
+                            model_provider = Some(m.to_string());
+                        }
+                    }
+                    if let Some(b) = payload
+                        .get("git")
+                        .and_then(|g| g.get("branch"))
+                        .and_then(|v| v.as_str())
+                    {
+                        if !b.is_empty() && b != "HEAD" {
+                            git_branch = Some(b.to_string());
+                        }
                     }
                 }
                 "response_item" => {
@@ -282,6 +305,16 @@ impl CodexProvider {
                         _ => continue,
                     }
                 }
+                "turn_context" => {
+                    // Extract actual model name (e.g. "gpt-5.4") from turn_context
+                    if model.is_none() {
+                        if let Some(m) = payload.get("model").and_then(|v| v.as_str()) {
+                            if !m.is_empty() {
+                                model = Some(m.to_string());
+                            }
+                        }
+                    }
+                }
                 "event_msg" => {
                     let event_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     // agent_message is a duplicate of response_item/message/assistant — skip
@@ -359,9 +392,9 @@ impl CodexProvider {
             source_path: path.to_string_lossy().to_string(),
             is_sidechain: false,
             variant_name: None,
-            model: None,
-            cc_version: None,
-            git_branch: None,
+            model: model.or(model_provider),
+            cc_version,
+            git_branch,
         };
 
         Some(ParsedSession {

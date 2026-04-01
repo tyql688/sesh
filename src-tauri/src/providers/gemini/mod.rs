@@ -56,6 +56,7 @@ struct ChatMessage {
     tool_calls: Option<Vec<serde_json::Value>>,
     thoughts: Option<Vec<serde_json::Value>>,
     tokens: Option<serde_json::Value>,
+    model: Option<String>,
 }
 
 impl GeminiProvider {

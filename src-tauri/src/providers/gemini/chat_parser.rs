@@ -34,11 +34,22 @@ impl GeminiProvider {
         let mut messages = Vec::new();
         let mut first_user_message: Option<String> = None;
         let mut content_parts: Vec<String> = Vec::new();
+        let mut model: Option<String> = None;
 
         for msg in &chat.messages {
             let role = match msg.msg_type.as_deref() {
                 Some("user") => MessageRole::User,
-                Some("model") | Some("gemini") | Some("assistant") => MessageRole::Assistant,
+                Some("model") | Some("gemini") | Some("assistant") => {
+                    // Extract model from the first assistant message that has it
+                    if model.is_none() {
+                        if let Some(m) = &msg.model {
+                            if !m.is_empty() {
+                                model = Some(m.clone());
+                            }
+                        }
+                    }
+                    MessageRole::Assistant
+                }
                 _ => continue,
             };
 
@@ -257,7 +268,7 @@ impl GeminiProvider {
             source_path: path.to_string_lossy().to_string(),
             is_sidechain: false,
             variant_name: None,
-            model: None,
+            model,
             cc_version: None,
             git_branch: None,
         };
