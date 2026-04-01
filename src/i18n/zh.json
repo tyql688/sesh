@@ -102,6 +102,7 @@
     "noBlockedFolders": "无屏蔽文件夹",
     "unblock": "取消屏蔽"
   },
+  "system": { "turnDuration": "轮次", "compact": "压缩", "microcompact": "微压缩", "hooks": "钩子", "apiError": "API 错误" },
   "blocked": { "hint": "右键项目文件夹，选择「屏蔽此文件夹」" },
   "trash": {
     "title": "回收站",
