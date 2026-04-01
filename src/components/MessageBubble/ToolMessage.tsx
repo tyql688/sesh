@@ -177,6 +177,13 @@ function toolIcon(name: string): string {
   return TOOL_ICONS[name] || "⚙";
 }
 
+/** Dispatch a custom event to open a subagent session by description match. */
+function openSubagentByDescription(description: string) {
+  window.dispatchEvent(
+    new CustomEvent("open-subagent", { detail: { description } }),
+  );
+}
+
 export function ToolMessage(props: { message: Message }) {
   const [expanded, setExpanded] = createSignal(false);
   const [previewSrc, setPreviewSrc] = createSignal<string | null>(null);
@@ -211,6 +218,18 @@ export function ToolMessage(props: { message: Message }) {
         </Show>
         <Show when={summary()}>
           <span class="msg-tool-summary">{summary()}</span>
+        </Show>
+        <Show when={name() === "Agent" && summary()}>
+          <button
+            class="msg-tool-subagent-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              openSubagentByDescription(summary());
+            }}
+            title="Open subagent session"
+          >
+            ↗
+          </button>
         </Show>
         <Show when={hasInput() || hasOutput()}>
           <span class="tool-expand-indicator">{expanded() ? "▾" : "▸"}</span>

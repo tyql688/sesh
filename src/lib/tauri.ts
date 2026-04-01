@@ -80,6 +80,12 @@ export async function exportSession(
   });
 }
 
+export async function getChildSessions(
+  parentId: string,
+): Promise<SessionMeta[]> {
+  return invoke<SessionMeta[]>("get_child_sessions", { parentId });
+}
+
 export async function getIndexStats(): Promise<IndexStats> {
   return invoke<IndexStats>("get_index_stats");
 }

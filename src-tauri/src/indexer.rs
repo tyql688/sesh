@@ -129,9 +129,8 @@ impl Indexer {
                     })
                     .unwrap_or_else(|| "(No Project)".to_string());
                 // Separate top-level sessions from subagents
-                let (top_sessions, _): (Vec<_>, Vec<_>) = sessions
-                    .iter()
-                    .partition(|s| s.parent_id.is_none());
+                let (top_sessions, _): (Vec<_>, Vec<_>) =
+                    sessions.iter().partition(|s| s.parent_id.is_none());
 
                 let session_nodes: Vec<TreeNode> = top_sessions
                     .iter()
@@ -168,6 +167,9 @@ impl Indexer {
                     .collect();
 
                 let count = session_nodes.len() as u32;
+                if count == 0 {
+                    continue; // Skip projects with no top-level sessions
+                }
                 provider_total += count;
 
                 project_nodes.push(TreeNode {

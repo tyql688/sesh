@@ -61,6 +61,7 @@ pub fn run() {
             commands::sync_sources,
             commands::get_tree,
             commands::get_session_detail,
+            commands::get_child_sessions,
             commands::search_sessions,
             commands::rename_session,
             commands::delete_session,

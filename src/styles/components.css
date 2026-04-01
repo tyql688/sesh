@@ -624,6 +624,24 @@
   color: var(--accent);
   text-decoration: none;
 }
+.msg-tool-subagent-link {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 4px;
+  margin-left: 4px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.msg-tool-subagent-link:hover {
+  opacity: 1;
+  background: var(--bg-subtle);
+}
+
 .tool-expand-indicator {
   margin-left: auto;
   font-size: 10px;

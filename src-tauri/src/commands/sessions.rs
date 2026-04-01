@@ -51,6 +51,17 @@ pub fn get_session_detail(
 }
 
 #[tauri::command]
+pub fn get_child_sessions(
+    parent_id: String,
+    state: State<AppState>,
+) -> Result<Vec<SessionMeta>, String> {
+    state
+        .db
+        .get_child_sessions(&parent_id)
+        .map_err(|e| format!("db error: {e}"))
+}
+
+#[tauri::command]
 pub fn delete_session(
     session_id: String,
     source_path: String,
