@@ -221,7 +221,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  width: 280px;
+  width: 520px;
+  max-width: 90%;
   margin-top: 8px;
 }
 
