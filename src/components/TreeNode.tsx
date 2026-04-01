@@ -97,11 +97,17 @@ export function TreeNodeComponent(props: {
   ) => void;
 }) {
   const { t } = useI18n();
-  const isLeaf = () => props.node.node_type === "session";
+  const hasChildren = () => props.node.children.length > 0;
+  const isLeaf = () => props.node.node_type === "session" && !hasChildren();
   const expanded = () => props.isNodeExpanded(props.node.id);
 
+  const isSession = () => props.node.node_type === "session";
+
   const handleClick = (e: MouseEvent) => {
-    if (isLeaf()) {
+    if (isSession() && hasChildren()) {
+      props.onSessionClick(e, props.node, props.parentProjectLabel ?? "");
+      props.toggleExpanded(props.node.id);
+    } else if (isLeaf()) {
       props.onSessionClick(e, props.node, props.parentProjectLabel ?? "");
     } else {
       props.toggleExpanded(props.node.id);
@@ -111,7 +117,7 @@ export function TreeNodeComponent(props: {
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isLeaf()) {
+    if (isSession()) {
       props.onSessionContextMenu(e, props.node, props.parentProjectLabel ?? "");
     } else {
       props.onNodeContextMenu(e, props.node);
