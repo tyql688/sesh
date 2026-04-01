@@ -116,14 +116,21 @@ export function TreeNodeComponent(props: {
   const hasChildren = () => props.node.children.length > 0;
   const isSession = () => props.node.node_type === "session";
   const isSubagentParent = () => isSession() && hasChildren();
-  // Project folder where all direct session children are sidechain (orphans)
-  const isOrphanFolder = () =>
-    props.node.node_type === "project" &&
-    props.node.project_path &&
-    props.node.children.length > 0 &&
-    props.node.children.every(
-      (c) => c.node_type !== "session" || c.is_sidechain,
-    );
+  // Project folder where ALL session descendants are sidechain (orphans)
+  const isOrphanFolder = () => {
+    if (props.node.node_type !== "project" || !props.node.project_path)
+      return false;
+    function collectSessions(nodes: TreeNode[]): TreeNode[] {
+      const result: TreeNode[] = [];
+      for (const n of nodes) {
+        if (n.node_type === "session") result.push(n);
+        else result.push(...collectSessions(n.children));
+      }
+      return result;
+    }
+    const sessions = collectSessions(props.node.children);
+    return sessions.length > 0 && sessions.every((s) => s.is_sidechain);
+  };
   const isLeaf = () => props.node.node_type === "session" && !hasChildren();
   const expanded = () => props.isNodeExpanded(props.node.id);
 
