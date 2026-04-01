@@ -54,6 +54,22 @@ export function ChatIcon() {
   );
 }
 
+export function ClockIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      viewBox="0 0 24 24"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
 export function formatSessionLabel(raw: string, fallback = "Untitled"): string {
   let label = raw;
   label = label.replace(/^##\s*TASK:\s*/i, "");
@@ -163,12 +179,36 @@ export function TreeNodeComponent(props: {
         <Show when={props.node.node_type === "provider" && props.node.provider}>
           <ProviderDot provider={props.node.provider!} />
         </Show>
-        <Show when={props.node.node_type === "project"}>
+        <Show
+          when={props.node.node_type === "project" && props.node.project_path}
+        >
           <span class="tree-node-icon">
             <FolderIcon />
           </span>
         </Show>
-        <Show when={props.node.node_type === "session"}>
+        <Show
+          when={props.node.node_type === "project" && !props.node.project_path}
+        >
+          <span class="tree-node-icon tree-node-icon-time">
+            <ClockIcon />
+          </span>
+        </Show>
+        <Show
+          when={
+            props.node.node_type === "session" &&
+            isSession() &&
+            props.node.is_sidechain &&
+            !isSubagentParent()
+          }
+        >
+          <span class="tree-node-icon tree-node-icon-orphan">⤷</span>
+        </Show>
+        <Show
+          when={
+            props.node.node_type === "session" &&
+            !(props.node.is_sidechain && !isSubagentParent())
+          }
+        >
           <span class="tree-node-icon">
             <ChatIcon />
           </span>
