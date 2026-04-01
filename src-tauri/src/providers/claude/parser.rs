@@ -207,7 +207,37 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
 
     let session_id = path.file_stem()?.to_string_lossy().to_string();
 
-    let project_path = cwd.unwrap_or_default();
+    // Subagents inherit project_path from parent session's cwd (first entry in parent JSONL).
+    // Their own cwd may differ (e.g. subagent ran in src-tauri/ subfolder).
+    // We derive the parent's project path from the file system path instead.
+    let project_path = if parent_id.is_some() {
+        // Path: .../{project_dir}/{parent_id}/subagents/agent-xxx.jsonl
+        // Parent JSONL: .../{project_dir}/{parent_id}.jsonl
+        // We need the project_dir's cwd, which we can't get here.
+        // But the parent session's project_path is stored by its own cwd.
+        // Best effort: walk up to the project directory and read the parent session's cwd.
+        path.parent() // subagents/
+            .and_then(|p| p.parent()) // {parent_id}/
+            .and_then(|p| p.parent()) // {project_dir}/
+            .and_then(|project_dir| {
+                // Read parent session's first line to get its cwd
+                let parent_jsonl =
+                    project_dir.join(format!("{}.jsonl", parent_id.as_ref().unwrap()));
+                let file = std::fs::File::open(&parent_jsonl).ok()?;
+                let reader = std::io::BufReader::new(file);
+                use std::io::BufRead;
+                let first_line = reader.lines().next()?.ok()?;
+                let entry: serde_json::Value = serde_json::from_str(&first_line).ok()?;
+                entry
+                    .get("cwd")
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string())
+            })
+            .or(cwd)
+            .unwrap_or_default()
+    } else {
+        cwd.unwrap_or_default()
+    };
     let project_name = project_name_from_path(&project_path);
 
     let created_at = parse_rfc3339_timestamp(first_timestamp.as_deref());
