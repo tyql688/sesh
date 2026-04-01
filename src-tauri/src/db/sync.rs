@@ -131,7 +131,7 @@ impl Database {
         // Checkpoint WAL before vacuum so WAL file gets truncated too
         {
             let conn = self.lock_write()?;
-            let _ = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE");
+            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
         }
         self.vacuum()
     }
