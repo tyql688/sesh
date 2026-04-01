@@ -186,7 +186,7 @@ impl Indexer {
                                 count: 0,
                                 provider: Some(provider_enum.clone()),
                                 updated_at: Some(orphan.updated_at),
-                                is_sidechain: orphan.is_sidechain,
+                                is_sidechain: true,
                                 project_path: None,
                             });
                         }

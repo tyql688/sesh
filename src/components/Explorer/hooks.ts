@@ -14,20 +14,23 @@ export function filterBlockedFolders(tree: TreeNode[]): TreeNode[] {
     .filter((provider) => provider.children.length > 0);
 }
 
-/** Remove orphan subagents (is_sidechain=true at top level of a project) from tree. */
+/** Remove orphan subagents (is_sidechain=true without parent) from tree at any depth. */
 export function filterOrphanSubagents(tree: TreeNode[]): TreeNode[] {
-  return tree.map((provider) => ({
-    ...provider,
-    children: provider.children.map((project) => ({
-      ...project,
-      children: project.children.filter(
-        (session) =>
-          session.node_type !== "session" ||
-          !session.is_sidechain ||
-          session.children.length > 0, // keep if it has its own children
-      ),
-    })),
-  }));
+  function filterChildren(nodes: TreeNode[]): TreeNode[] {
+    return nodes
+      .filter(
+        (node) =>
+          node.node_type !== "session" ||
+          !node.is_sidechain ||
+          node.children.length > 0,
+      )
+      .map((node) =>
+        node.children.length > 0
+          ? { ...node, children: filterChildren(node.children) }
+          : node,
+      );
+  }
+  return filterChildren(tree);
 }
 
 export function applyTimeGrouping(
