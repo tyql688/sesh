@@ -228,7 +228,7 @@ export function ToolMessage(props: { message: Message }) {
             }}
             title="Open subagent session"
           >
-            ↗
+            ↗ Open
           </button>
         </Show>
         <Show when={hasInput() || hasOutput()}>
