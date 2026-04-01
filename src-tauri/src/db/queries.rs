@@ -147,6 +147,18 @@ impl Database {
         )
     }
 
+    /// Returns (id, source_path) pairs for all children of a given parent session.
+    pub fn list_children(&self, parent_id: &str) -> Result<Vec<(String, String)>, rusqlite::Error> {
+        let conn = self.lock_read()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, source_path FROM sessions WHERE parent_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![parent_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
     pub fn add_favorite(&self, session_id: &str) -> Result<(), rusqlite::Error> {
         let conn = self.lock_write()?;
         let now = std::time::SystemTime::now()
