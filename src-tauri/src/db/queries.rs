@@ -107,10 +107,6 @@ impl Database {
         Ok(())
     }
 
-    pub fn vacuum(&self) -> Result<(), rusqlite::Error> {
-        let conn = self.lock_write()?;
-        conn.execute_batch("VACUUM")
-    }
 
     pub fn db_size_bytes(&self) -> u64 {
         std::fs::metadata(&self.db_path)
@@ -158,10 +154,7 @@ impl Database {
     }
 
     /// Returns full SessionMeta for all children of a given parent session.
-    pub fn get_child_sessions(
-        &self,
-        parent_id: &str,
-    ) -> Result<Vec<SessionMeta>, rusqlite::Error> {
+    pub fn get_child_sessions(&self, parent_id: &str) -> Result<Vec<SessionMeta>, rusqlite::Error> {
         let conn = self.lock_read()?;
         let mut stmt = conn.prepare(
             "SELECT id, provider, title, project_path, project_name,

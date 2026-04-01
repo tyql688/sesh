@@ -126,14 +126,16 @@ impl Database {
     pub fn clear_all(&self) -> Result<(), rusqlite::Error> {
         self.with_transaction(|conn| {
             conn.execute_batch("DELETE FROM favorites; DELETE FROM sessions; DELETE FROM meta;")?;
+            // Rebuild FTS index (clears orphaned FTS data after session delete)
+            conn.execute_batch("INSERT INTO sessions_fts(sessions_fts) VALUES('rebuild');")?;
             Ok(())
         })?;
-        // Checkpoint WAL before vacuum so WAL file gets truncated too
+        // Checkpoint WAL + vacuum to reclaim disk space
         {
             let conn = self.lock_write()?;
-            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;");
         }
-        self.vacuum()
+        Ok(())
     }
 
     pub fn delete_session(&self, id: &str) -> Result<(), rusqlite::Error> {
