@@ -21,7 +21,8 @@ pub fn get_resume_command(
         .flatten()
         .and_then(|s| s.variant_name);
 
-    p.resume_command(&safe_id, variant_name.as_deref())
+    p.descriptor()
+        .resume_command(&safe_id, variant_name.as_deref())
         .ok_or_else(|| format!("{} session missing variant name", provider))
 }
 
@@ -56,8 +57,9 @@ pub fn open_in_terminal(
 
     let cmd_name = parts[0];
     // Security: only allow known CLI commands or discovered cc-mirror variants.
-    let is_allowed =
-        Provider::cli_commands().contains(&cmd_name) || is_known_cc_mirror_variant(cmd_name);
+    let is_allowed = Provider::all().iter().any(|p| {
+        !p.descriptor().cli_command().is_empty() && p.descriptor().cli_command() == cmd_name
+    }) || is_known_cc_mirror_variant(cmd_name);
 
     if !is_allowed {
         return Err(format!("command rejected: unknown provider '{cmd_name}'"));
@@ -94,6 +96,7 @@ pub fn resume_session(
     let variant_name = session.as_ref().and_then(|s| s.variant_name.clone());
 
     let cmd = p
+        .descriptor()
         .resume_command(&safe_id, variant_name.as_deref())
         .ok_or_else(|| format!("{} session missing variant name, cannot resume", provider))?;
 

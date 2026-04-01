@@ -14,6 +14,28 @@ use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 
 use tools::*;
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path.replace('\\', "/").contains("/.cursor/chats/")
+    }
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("agent --resume={session_id}"))
+    }
+    fn display_key(&self, _variant_name: Option<&str>) -> String {
+        "cursor".into()
+    }
+    fn sort_order(&self) -> u32 {
+        4
+    }
+    fn color(&self) -> &'static str {
+        "#3b82f6"
+    }
+    fn cli_command(&self) -> &'static str {
+        "agent"
+    }
+}
+
 pub struct CursorProvider {
     home_dir: PathBuf,
 }

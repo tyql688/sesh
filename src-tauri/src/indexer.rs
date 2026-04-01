@@ -68,6 +68,7 @@ impl Indexer {
         for session in sessions {
             let display_key = session
                 .provider
+                .descriptor()
                 .display_key(session.variant_name.as_deref());
             let project_key = if session.project_path.is_empty() {
                 String::new()
@@ -211,8 +212,16 @@ impl Indexer {
 
         // Sort providers by their declared sort_order, then by id
         tree.sort_by(|a, b| {
-            let order_a = a.provider.as_ref().map(|p| p.sort_order()).unwrap_or(99);
-            let order_b = b.provider.as_ref().map(|p| p.sort_order()).unwrap_or(99);
+            let order_a = a
+                .provider
+                .as_ref()
+                .map(|p| p.descriptor().sort_order())
+                .unwrap_or(99);
+            let order_b = b
+                .provider
+                .as_ref()
+                .map(|p| p.descriptor().sort_order())
+                .unwrap_or(99);
             order_a.cmp(&order_b).then(a.id.cmp(&b.id))
         });
 

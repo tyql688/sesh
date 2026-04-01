@@ -418,7 +418,7 @@ fn tool_summary(name: &str, input: &str) -> String {
 }
 
 fn provider_color(provider: &Provider) -> &'static str {
-    provider.color()
+    provider.descriptor().color()
 }
 
 fn user_avatar_svg() -> &'static str {

@@ -14,6 +14,31 @@ use crate::models::{Message, Provider};
 use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 use crate::trash_state::active_shared_deletions_by_source;
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn is_shared_source(&self) -> bool {
+        true
+    }
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path.replace('\\', "/").contains("/.gemini/tmp/")
+    }
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("gemini --resume {session_id}"))
+    }
+    fn display_key(&self, _variant_name: Option<&str>) -> String {
+        "gemini".into()
+    }
+    fn sort_order(&self) -> u32 {
+        3
+    }
+    fn color(&self) -> &'static str {
+        "#f59e0b"
+    }
+    fn cli_command(&self) -> &'static str {
+        "gemini"
+    }
+}
+
 use orphan::chat_session_ids;
 
 pub struct GeminiProvider {

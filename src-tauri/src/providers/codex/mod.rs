@@ -9,6 +9,28 @@ use walkdir::WalkDir;
 use crate::models::{Message, Provider};
 use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path.replace('\\', "/").contains("/.codex/sessions/")
+    }
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("codex resume {session_id}"))
+    }
+    fn display_key(&self, _variant_name: Option<&str>) -> String {
+        "codex".into()
+    }
+    fn sort_order(&self) -> u32 {
+        2
+    }
+    fn color(&self) -> &'static str {
+        "#10b981"
+    }
+    fn cli_command(&self) -> &'static str {
+        "codex"
+    }
+}
+
 pub struct CodexProvider {
     home_dir: PathBuf,
 }

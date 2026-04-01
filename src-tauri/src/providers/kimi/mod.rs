@@ -10,6 +10,28 @@ use walkdir::WalkDir;
 use crate::models::{Message, Provider};
 use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path.replace('\\', "/").contains("/.kimi/sessions/")
+    }
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("kimi --session {session_id}"))
+    }
+    fn display_key(&self, _variant_name: Option<&str>) -> String {
+        "kimi".into()
+    }
+    fn sort_order(&self) -> u32 {
+        6
+    }
+    fn color(&self) -> &'static str {
+        "#6366f1"
+    }
+    fn cli_command(&self) -> &'static str {
+        "kimi"
+    }
+}
+
 pub struct KimiProvider {
     kimi_dir: PathBuf,
 }

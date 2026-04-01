@@ -8,6 +8,37 @@ use crate::models::{Message, Provider};
 use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 use crate::providers::claude::parser;
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        let p = source_path.replace('\\', "/");
+        p.contains("/.cc-mirror/") && p.contains("/config/projects/")
+    }
+    fn resume_command(&self, session_id: &str, variant_name: Option<&str>) -> Option<String> {
+        variant_name.map(|name| format!("{name} --resume {session_id}"))
+    }
+    fn display_key(&self, variant_name: Option<&str>) -> String {
+        match variant_name {
+            Some(vn) => format!("cc-mirror:{vn}"),
+            None => "cc-mirror".into(),
+        }
+    }
+    fn try_parse_display_key(&self, display_key: &str) -> Option<String> {
+        display_key
+            .strip_prefix("cc-mirror:")
+            .map(|v| v.to_string())
+    }
+    fn sort_order(&self) -> u32 {
+        1
+    }
+    fn color(&self) -> &'static str {
+        "#f472b6"
+    }
+    fn cli_command(&self) -> &'static str {
+        ""
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct VariantMeta {
     name: String,

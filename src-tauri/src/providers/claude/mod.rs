@@ -9,6 +9,29 @@ use rayon::prelude::*;
 use crate::models::{Message, Provider};
 use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        let p = source_path.replace('\\', "/");
+        p.contains("/.claude/projects/") && !p.contains("/.cc-mirror/")
+    }
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("claude --resume {session_id}"))
+    }
+    fn display_key(&self, _variant_name: Option<&str>) -> String {
+        "claude".into()
+    }
+    fn sort_order(&self) -> u32 {
+        0
+    }
+    fn color(&self) -> &'static str {
+        "#8b5cf6"
+    }
+    fn cli_command(&self) -> &'static str {
+        "claude"
+    }
+}
+
 pub struct ClaudeProvider {
     home_dir: PathBuf,
 }

@@ -10,6 +10,33 @@ use crate::models::{Message, MessageRole, Provider, SessionMeta};
 use crate::provider::{ParsedSession, ProviderError, SessionProvider};
 use crate::provider_utils::{session_title, truncate_to_bytes, FTS_CONTENT_LIMIT};
 
+pub struct Descriptor;
+impl crate::provider::ProviderDescriptor for Descriptor {
+    fn is_shared_source(&self) -> bool {
+        true
+    }
+    fn owns_source_path(&self, source_path: &str) -> bool {
+        source_path
+            .replace('\\', "/")
+            .contains("/opencode/opencode.db")
+    }
+    fn resume_command(&self, session_id: &str, _variant_name: Option<&str>) -> Option<String> {
+        Some(format!("opencode -s {session_id}"))
+    }
+    fn display_key(&self, _variant_name: Option<&str>) -> String {
+        "opencode".into()
+    }
+    fn sort_order(&self) -> u32 {
+        5
+    }
+    fn color(&self) -> &'static str {
+        "#06b6d4"
+    }
+    fn cli_command(&self) -> &'static str {
+        "opencode"
+    }
+}
+
 pub struct OpenCodeProvider {
     db_path: PathBuf,
 }

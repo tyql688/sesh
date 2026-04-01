@@ -71,8 +71,8 @@ pub fn delete_session(
     if let Ok(children) = state.db.list_children(&session_id) {
         for (_child_id, child_source) in &children {
             let child_path = std::path::Path::new(child_source);
-            let child_shared =
-                Provider::from_source_path(child_source).is_some_and(|p| p.is_shared_source());
+            let child_shared = Provider::from_source_path(child_source)
+                .is_some_and(|p| p.descriptor().is_shared_source());
             if child_path.exists() && !child_shared {
                 let _ = std::fs::remove_file(child_path);
                 // Also try to remove the .meta.json file
@@ -95,8 +95,8 @@ pub fn delete_session(
         }
         // Skip physical deletion for shared sources (e.g. SQLite databases
         // that contain ALL sessions, not just one) — only remove from index
-        let is_shared =
-            provider_from_source_path(&source_path).is_some_and(|p| p.is_shared_source());
+        let is_shared = provider_from_source_path(&source_path)
+            .is_some_and(|p| p.descriptor().is_shared_source());
         if !is_shared {
             std::fs::remove_file(path)
                 .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
@@ -133,7 +133,7 @@ pub async fn delete_sessions_batch(
                 for (_child_id, child_source) in &children {
                     let child_path = std::path::Path::new(child_source.as_str());
                     let child_shared = Provider::from_source_path(child_source)
-                        .is_some_and(|p| p.is_shared_source());
+                        .is_some_and(|p| p.descriptor().is_shared_source());
                     if child_path.exists() && !child_shared {
                         let _ = std::fs::remove_file(child_path);
                         let meta_path = child_path.with_extension("meta.json");
@@ -152,8 +152,8 @@ pub async fn delete_sessions_batch(
                         source_path
                     ));
                 }
-                let is_shared =
-                    provider_from_source_path(source_path).is_some_and(|p| p.is_shared_source());
+                let is_shared = provider_from_source_path(source_path)
+                    .is_some_and(|p| p.descriptor().is_shared_source());
                 if !is_shared {
                     std::fs::remove_file(path)
                         .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;

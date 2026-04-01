@@ -29,6 +29,73 @@ pub struct ParsedSession {
     pub content_text: String,
 }
 
+/// Static metadata for a provider. Implemented by zero-sized descriptor structs
+/// in each provider module. Accessed via `Provider::descriptor()`.
+pub trait ProviderDescriptor: Send + Sync {
+    /// Whether source files contain multiple sessions.
+    fn is_shared_source(&self) -> bool {
+        false
+    }
+
+    /// Check if a source file path belongs to this provider.
+    fn owns_source_path(&self, source_path: &str) -> bool;
+
+    /// Build the CLI resume command for a session.
+    fn resume_command(&self, session_id: &str, variant_name: Option<&str>) -> Option<String>;
+
+    /// Key used to group sessions in the tree.
+    fn display_key(&self, variant_name: Option<&str>) -> String;
+
+    /// Try to parse a display key as belonging to this provider.
+    /// Returns the display label if the key matches a custom format.
+    /// Default: None (handled by Provider::parse fallback).
+    fn try_parse_display_key(&self, _display_key: &str) -> Option<String> {
+        None
+    }
+
+    /// Sort order for provider groups in the tree.
+    fn sort_order(&self) -> u32;
+
+    /// Provider brand color (hex).
+    fn color(&self) -> &'static str;
+
+    /// CLI command name for the security whitelist (e.g. "claude", "agent").
+    /// Empty string if dynamic (e.g. cc-mirror variants).
+    fn cli_command(&self) -> &'static str;
+}
+
+/// Move a source file to the trash directory. Shared helper for `trash_session` implementations.
+pub fn move_to_trash(
+    source_path: &Path,
+    trash_dir: &Path,
+    timestamp: i64,
+) -> Result<TrashResult, ProviderError> {
+    let base_name = source_path.file_name().map_or_else(
+        || "session".to_string(),
+        |f| f.to_string_lossy().to_string(),
+    );
+    let base_name = base_name.replace(['/', '\\'], "_");
+    let file_name = if let Some(dot_pos) = base_name.rfind('.') {
+        format!(
+            "{}_{}{}",
+            &base_name[..dot_pos],
+            timestamp,
+            &base_name[dot_pos..]
+        )
+    } else {
+        format!("{base_name}_{timestamp}")
+    };
+    let dest = trash_dir.join(&file_name);
+    std::fs::rename(source_path, &dest)
+        .or_else(|_| {
+            std::fs::copy(source_path, &dest).and_then(|_| std::fs::remove_file(source_path))
+        })
+        .map_err(ProviderError::Io)?;
+    Ok(TrashResult::Moved {
+        trash_file: file_name,
+    })
+}
+
 /// Create a provider instance by enum variant. Returns None if HOME is unavailable.
 pub fn make_provider(provider: &Provider) -> Option<Box<dyn SessionProvider>> {
     match provider {
@@ -72,7 +139,7 @@ pub trait SessionProvider: Send + Sync {
     ) -> Result<Vec<Message>, ProviderError>;
 
     /// Delete a session's data from its shared source file.
-    /// Only called for providers where `Provider::is_shared_source()` returns true.
+    /// Only called for providers where `descriptor().is_shared_source()` returns true.
     fn delete_from_source(
         &self,
         _source_path: &str,
@@ -89,29 +156,6 @@ pub trait SessionProvider: Send + Sync {
         trash_dir: &Path,
         timestamp: i64,
     ) -> Result<TrashResult, ProviderError> {
-        let base_name = source_path.file_name().map_or_else(
-            || "session".to_string(),
-            |f| f.to_string_lossy().to_string(),
-        );
-        let base_name = base_name.replace(['/', '\\'], "_");
-        let file_name = if let Some(dot_pos) = base_name.rfind('.') {
-            format!(
-                "{}_{}{}",
-                &base_name[..dot_pos],
-                timestamp,
-                &base_name[dot_pos..]
-            )
-        } else {
-            format!("{base_name}_{timestamp}")
-        };
-        let dest = trash_dir.join(&file_name);
-        std::fs::rename(source_path, &dest)
-            .or_else(|_| {
-                std::fs::copy(source_path, &dest).and_then(|_| std::fs::remove_file(source_path))
-            })
-            .map_err(ProviderError::Io)?;
-        Ok(TrashResult::Moved {
-            trash_file: file_name,
-        })
+        move_to_trash(source_path, trash_dir, timestamp)
     }
 }
