@@ -267,7 +267,7 @@ impl SessionProvider for OpenCodeProvider {
                             model: session_model,
                             cc_version: version.filter(|v| !v.is_empty()),
                             git_branch: session_branch,
-                            parent_id: None,
+                            parent_id: parent_id.clone(),
                         },
                         messages: Vec::new(),
                         content_text: truncate_to_bytes(&content_text, FTS_CONTENT_LIMIT),
