@@ -14,23 +14,31 @@ export function filterBlockedFolders(tree: TreeNode[]): TreeNode[] {
     .filter((provider) => provider.children.length > 0);
 }
 
-/** Remove orphan subagents (is_sidechain=true without parent) from tree at any depth. */
+/** Remove orphan subagents (is_sidechain=true without parent) and prune empty containers. */
 export function filterOrphanSubagents(tree: TreeNode[]): TreeNode[] {
-  function filterChildren(nodes: TreeNode[]): TreeNode[] {
+  function prune(nodes: TreeNode[]): TreeNode[] {
     return nodes
-      .filter(
-        (node) =>
-          node.node_type !== "session" ||
-          !node.is_sidechain ||
-          node.children.length > 0,
-      )
-      .map((node) =>
-        node.children.length > 0
-          ? { ...node, children: filterChildren(node.children) }
-          : node,
-      );
+      .map((node) => ({
+        ...node,
+        children: prune(node.children),
+      }))
+      .filter((node) => {
+        // Remove orphan sidechain sessions (no children of their own)
+        if (
+          node.node_type === "session" &&
+          node.is_sidechain &&
+          node.children.length === 0
+        ) {
+          return false;
+        }
+        // Remove empty non-session containers (projects/providers with no children left)
+        if (node.node_type !== "session" && node.children.length === 0) {
+          return false;
+        }
+        return true;
+      });
   }
-  return filterChildren(tree);
+  return prune(tree);
 }
 
 export function applyTimeGrouping(
