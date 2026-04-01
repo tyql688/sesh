@@ -91,9 +91,9 @@ pub fn delete_session(
                 source_path
             ));
         }
-        // Skip physical deletion for SQLite database files (Cursor store.db, OpenCode opencode.db)
+        // Skip physical deletion for shared SQLite database files (OpenCode opencode.db)
         // — these contain ALL sessions, not just one; only remove from index
-        if !source_path.ends_with(".db") {
+        if !source_path.ends_with("/opencode.db") {
             std::fs::remove_file(path)
                 .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
         }
@@ -146,8 +146,8 @@ pub async fn delete_sessions_batch(
                         source_path
                     ));
                 }
-                if source_path.ends_with(".db") {
-                    // Skip physical deletion for SQLite-based providers — just remove from index
+                if source_path.ends_with("/opencode.db") {
+                    // Skip physical deletion for shared DB — just remove from index
                 } else {
                     std::fs::remove_file(path)
                         .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;
