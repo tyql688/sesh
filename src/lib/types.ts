@@ -23,6 +23,7 @@ export interface SessionMeta {
   model?: string;
   cc_version?: string;
   git_branch?: string;
+  parent_id?: string;
 }
 
 export type MessageRole = "user" | "assistant" | "tool" | "system";
