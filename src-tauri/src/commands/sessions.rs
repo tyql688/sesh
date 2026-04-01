@@ -51,11 +51,37 @@ pub fn get_session_detail(
 }
 
 #[tauri::command]
+pub fn get_child_sessions(
+    parent_id: String,
+    state: State<AppState>,
+) -> Result<Vec<SessionMeta>, String> {
+    state
+        .db
+        .get_child_sessions(&parent_id)
+        .map_err(|e| format!("db error: {e}"))
+}
+
+#[tauri::command]
 pub fn delete_session(
     session_id: String,
     source_path: String,
     state: State<AppState>,
 ) -> Result<(), String> {
+    // Cascade: delete child subagent files
+    if let Ok(children) = state.db.list_children(&session_id) {
+        for (_child_id, child_source) in &children {
+            let child_path = std::path::Path::new(child_source);
+            if child_path.exists() && !child_source.ends_with(".db") {
+                let _ = std::fs::remove_file(child_path);
+                // Also try to remove the .meta.json file
+                let meta_path = child_path.with_extension("meta.json");
+                if meta_path.exists() {
+                    let _ = std::fs::remove_file(&meta_path);
+                }
+            }
+        }
+    }
+
     let path = std::path::Path::new(&source_path);
     if path.exists() {
         // Only allow deleting files that belong to a known provider directory
@@ -71,6 +97,14 @@ pub fn delete_session(
             std::fs::remove_file(path)
                 .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
         }
+    }
+
+    // Clean up subagents directory if it exists
+    let session_dir = std::path::Path::new(&source_path).with_extension("");
+    let subagents_dir = session_dir.join("subagents");
+    if subagents_dir.is_dir() {
+        let _ = std::fs::remove_dir_all(&subagents_dir);
+        let _ = std::fs::remove_dir(&session_dir);
     }
 
     state
@@ -90,6 +124,20 @@ pub async fn delete_sessions_batch(
     tokio::task::spawn_blocking(move || {
         let mut deleted: u32 = 0;
         for (session_id, source_path) in &items {
+            // Cascade: delete child subagent files
+            if let Ok(children) = state.db.list_children(session_id) {
+                for (_child_id, child_source) in &children {
+                    let child_path = std::path::Path::new(child_source.as_str());
+                    if child_path.exists() && !child_source.ends_with(".db") {
+                        let _ = std::fs::remove_file(child_path);
+                        let meta_path = child_path.with_extension("meta.json");
+                        if meta_path.exists() {
+                            let _ = std::fs::remove_file(&meta_path);
+                        }
+                    }
+                }
+            }
+
             let path = std::path::Path::new(source_path);
             if path.exists() {
                 if provider_from_source_path(source_path).is_none() {
@@ -105,6 +153,15 @@ pub async fn delete_sessions_batch(
                         .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;
                 }
             }
+
+            // Clean up subagents directory if it exists
+            let session_dir = std::path::Path::new(source_path).with_extension("");
+            let subagents_dir = session_dir.join("subagents");
+            if subagents_dir.is_dir() {
+                let _ = std::fs::remove_dir_all(&subagents_dir);
+                let _ = std::fs::remove_dir(&session_dir);
+            }
+
             state
                 .db
                 .delete_session(session_id)
@@ -298,6 +355,10 @@ fn build_fallback_meta(
         source_path: source_path.to_string(),
         is_sidechain: false,
         variant_name: None,
+        model: None,
+        cc_version: None,
+        git_branch: None,
+        parent_id: None,
     }
 }
 

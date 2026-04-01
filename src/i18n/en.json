@@ -90,6 +90,8 @@
     "clearIndexConfirm": "Clear the entire index? Sessions will be re-scanned on next rebuild.",
     "timeGrouping": "Group by Time",
     "timeGroupingDesc": "Group sessions by today, this week, this month, and older",
+    "showOrphans": "Show Orphan Subagents",
+    "showOrphansDesc": "Show subagent sessions whose parent session is missing from the tree",
     "checkUpdate": "Check for Updates",
     "updateAvailable": "Update available",
     "updateConfirm": "Download and install now?",
@@ -102,6 +104,7 @@
     "noBlockedFolders": "No blocked folders",
     "unblock": "Unblock"
   },
+  "system": { "turnDuration": "Turn", "compact": "Compact", "microcompact": "Microcompact", "hooks": "Hooks", "apiError": "API Error" },
   "blocked": { "hint": "Right-click a project folder and select \"Block This Folder\"" },
   "trash": {
     "title": "Trash",

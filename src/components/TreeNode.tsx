@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
 import type { TreeNode } from "../lib/types";
 import { useI18n } from "../i18n/index";
-import { isSelected } from "../stores/selection";
+import { isSelected, toggleSelected } from "../stores/selection";
 import { ProviderDot } from "../lib/icons";
 
 // Re-exports for backward compatibility
@@ -54,6 +54,22 @@ export function ChatIcon() {
   );
 }
 
+export function ClockIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      viewBox="0 0 24 24"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
 export function formatSessionLabel(raw: string, fallback = "Untitled"): string {
   let label = raw;
   label = label.replace(/^##\s*TASK:\s*/i, "");
@@ -77,6 +93,16 @@ export function formatSessionLabel(raw: string, fallback = "Untitled"): string {
   return label || fallback;
 }
 
+/** Recursively collect all session node IDs under a tree node. */
+function collectAllSessions(nodes: TreeNode[]): TreeNode[] {
+  const result: TreeNode[] = [];
+  for (const n of nodes) {
+    if (n.node_type === "session") result.push(n);
+    if (n.children.length > 0) result.push(...collectAllSessions(n.children));
+  }
+  return result;
+}
+
 export function TreeNodeComponent(props: {
   node: TreeNode;
   depth: number;
@@ -97,12 +123,38 @@ export function TreeNodeComponent(props: {
   ) => void;
 }) {
   const { t } = useI18n();
-  const isLeaf = () => props.node.node_type === "session";
+  const hasChildren = () => props.node.children.length > 0;
+  const isSession = () => props.node.node_type === "session";
+  const isSubagentParent = () => isSession() && hasChildren();
+  // Project folder where ALL session descendants are sidechain (orphans)
+  const isOrphanFolder = () => {
+    if (props.node.node_type !== "project" || !props.node.project_path)
+      return false;
+    function collectSessions(nodes: TreeNode[]): TreeNode[] {
+      const result: TreeNode[] = [];
+      for (const n of nodes) {
+        if (n.node_type === "session") result.push(n);
+        else result.push(...collectSessions(n.children));
+      }
+      return result;
+    }
+    const sessions = collectSessions(props.node.children);
+    return sessions.length > 0 && sessions.every((s) => s.is_sidechain);
+  };
+  const isLeaf = () => props.node.node_type === "session" && !hasChildren();
   const expanded = () => props.isNodeExpanded(props.node.id);
 
   const handleClick = (e: MouseEvent) => {
-    if (isLeaf()) {
+    if (isSession()) {
       props.onSessionClick(e, props.node, props.parentProjectLabel ?? "");
+      // Auto-expand parent sessions that have subagents
+      if (isSubagentParent() && !expanded()) {
+        props.toggleExpanded(props.node.id);
+      }
+    } else if (e.metaKey || e.ctrlKey) {
+      // Ctrl+Click on folder: select all sessions under it
+      const sessions = collectAllSessions(props.node.children);
+      for (const s of sessions) toggleSelected(s.id);
     } else {
       props.toggleExpanded(props.node.id);
     }
@@ -111,7 +163,7 @@ export function TreeNodeComponent(props: {
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isLeaf()) {
+    if (isSession()) {
       props.onSessionContextMenu(e, props.node, props.parentProjectLabel ?? "");
     } else {
       props.onNodeContextMenu(e, props.node);
@@ -135,33 +187,64 @@ export function TreeNodeComponent(props: {
     return props.node.label;
   };
 
-  const nodeSelected = () => isLeaf() && isSelected(props.node.id);
+  const nodeSelected = () => isSession() && isSelected(props.node.id);
 
   return (
     <div class="tree-node-wrapper">
       <button
-        class={`tree-node tree-node-${props.node.node_type}${isLeaf() && props.activeSessionId === props.node.id ? " active" : ""}${nodeSelected() ? " selected" : ""}`}
+        class={`tree-node tree-node-${props.node.node_type}${isSession() && props.activeSessionId === props.node.id ? " active" : ""}${nodeSelected() ? " selected" : ""}`}
         style={{ "padding-left": `${props.depth * 16 + 8}px` }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        data-session-id={isLeaf() ? props.node.id : undefined}
+        data-session-id={isSession() ? props.node.id : undefined}
       >
-        <Show when={!isLeaf()}>
+        <Show when={!isLeaf() && !isSubagentParent()}>
           <ChevronIcon expanded={expanded()} />
         </Show>
-        <Show when={isLeaf()}>
+        <Show when={isLeaf() || isSubagentParent()}>
           <span class="tree-node-icon-spacer" />
         </Show>
 
         <Show when={props.node.node_type === "provider" && props.node.provider}>
           <ProviderDot provider={props.node.provider!} />
         </Show>
-        <Show when={props.node.node_type === "project"}>
+        <Show
+          when={
+            props.node.node_type === "project" &&
+            props.node.project_path &&
+            !isOrphanFolder()
+          }
+        >
           <span class="tree-node-icon">
             <FolderIcon />
           </span>
         </Show>
-        <Show when={props.node.node_type === "session"}>
+        <Show when={isOrphanFolder()}>
+          <span class="tree-node-icon tree-node-icon-orphan-folder">⤷</span>
+        </Show>
+        <Show
+          when={props.node.node_type === "project" && !props.node.project_path}
+        >
+          <span class="tree-node-icon tree-node-icon-time">
+            <ClockIcon />
+          </span>
+        </Show>
+        <Show
+          when={
+            props.node.node_type === "session" &&
+            isSession() &&
+            props.node.is_sidechain &&
+            !isSubagentParent()
+          }
+        >
+          <span class="tree-node-icon tree-node-icon-orphan">⤷</span>
+        </Show>
+        <Show
+          when={
+            props.node.node_type === "session" &&
+            !(props.node.is_sidechain && !isSubagentParent())
+          }
+        >
           <span class="tree-node-icon">
             <ChatIcon />
           </span>
@@ -188,7 +271,26 @@ export function TreeNodeComponent(props: {
         </Show>
       </button>
 
-      <Show when={expanded() && !isLeaf()}>
+      {/* Subagent children always visible under parent session */}
+      <Show when={isSubagentParent()}>
+        <For each={props.node.children}>
+          {(child) => (
+            <TreeNodeComponent
+              node={child}
+              depth={props.depth + 1}
+              activeSessionId={props.activeSessionId}
+              parentProjectLabel={projectLabel()}
+              isNodeExpanded={props.isNodeExpanded}
+              toggleExpanded={props.toggleExpanded}
+              onSessionContextMenu={props.onSessionContextMenu}
+              onNodeContextMenu={props.onNodeContextMenu}
+              onSessionClick={props.onSessionClick}
+            />
+          )}
+        </For>
+      </Show>
+      {/* Provider/project children use expand/collapse */}
+      <Show when={expanded() && !isLeaf() && !isSubagentParent()}>
         <For each={props.node.children}>
           {(child) => (
             <TreeNodeComponent

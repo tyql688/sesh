@@ -124,15 +124,24 @@ impl Database {
     }
 
     pub fn clear_all(&self) -> Result<(), rusqlite::Error> {
+        // Delete all data and rebuild FTS index.
+        // Note: VACUUM is impossible while two connections are open,
+        // so free pages remain in the file but get reused by subsequent writes.
         self.with_transaction(|conn| {
-            conn.execute_batch("DELETE FROM favorites; DELETE FROM sessions; DELETE FROM meta;")?;
-            Ok(())
-        })?;
-        self.vacuum()
+            conn.execute_batch(
+                "DELETE FROM favorites;
+                 DELETE FROM sessions;
+                 DELETE FROM meta;
+                 INSERT INTO sessions_fts(sessions_fts) VALUES('rebuild');",
+            )
+        })
     }
 
+    /// Delete this session and all its children from DB.
     pub fn delete_session(&self, id: &str) -> Result<(), rusqlite::Error> {
         let conn = self.lock_write()?;
+        conn.execute("DELETE FROM favorites WHERE session_id IN (SELECT id FROM sessions WHERE parent_id = ?1)", params![id])?;
+        conn.execute("DELETE FROM sessions WHERE parent_id = ?1", params![id])?;
         conn.execute("DELETE FROM favorites WHERE session_id = ?1", params![id])?;
         conn.execute("DELETE FROM sessions WHERE id = ?1", params![id])?;
         Ok(())
@@ -153,8 +162,8 @@ fn upsert_session_on(
     conn.execute(
         "INSERT INTO sessions (id, provider, title, project_path, project_name,
             created_at, updated_at, message_count, file_size_bytes, source_path, content_text, is_sidechain,
-            variant_name)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            variant_name, model, cc_version, git_branch, parent_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
          ON CONFLICT(id) DO UPDATE SET
             provider = excluded.provider,
             title = CASE WHEN sessions.title_custom = 1 THEN sessions.title ELSE excluded.title END,
@@ -167,7 +176,11 @@ fn upsert_session_on(
             source_path = excluded.source_path,
             content_text = excluded.content_text,
             is_sidechain = excluded.is_sidechain,
-            variant_name = excluded.variant_name",
+            variant_name = excluded.variant_name,
+            model = excluded.model,
+            cc_version = excluded.cc_version,
+            git_branch = excluded.git_branch,
+            parent_id = excluded.parent_id",
         params![
             meta.id,
             provider_str,
@@ -182,6 +195,10 @@ fn upsert_session_on(
             content_text,
             meta.is_sidechain as i64,
             meta.variant_name,
+            meta.model,
+            meta.cc_version,
+            meta.git_branch,
+            meta.parent_id,
         ],
     )?;
     Ok(())

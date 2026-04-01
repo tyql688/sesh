@@ -12,6 +12,7 @@ import { useI18n } from "../../i18n/index";
 import {
   terminalApp,
   timeGrouping,
+  showOrphans,
   addBlockedFolder,
 } from "../../stores/settings";
 import { ContextMenu } from "../ContextMenu";
@@ -28,6 +29,7 @@ import { errorMessage } from "../../lib/errors";
 import {
   filterBlockedFolders,
   applyTimeGrouping,
+  filterOrphanSubagents,
   buildSessionMeta,
 } from "./hooks";
 import {
@@ -69,8 +71,9 @@ export function Explorer(props: {
 }) {
   const { t } = useI18n();
   const displayTree = createMemo(() => {
-    const filtered = filterBlockedFolders(props.tree);
-    return timeGrouping() ? applyTimeGrouping(filtered, t) : filtered;
+    let tree = filterBlockedFolders(props.tree);
+    if (!showOrphans()) tree = filterOrphanSubagents(tree);
+    return timeGrouping() ? applyTimeGrouping(tree, t) : tree;
   });
   const [expandedIds, setExpandedIds] = createSignal<Set<string>>(new Set());
   const [initialized, setInitialized] = createSignal(false);
@@ -102,29 +105,36 @@ export function Explorer(props: {
     }
   });
 
-  // Reveal active session: expand parent nodes and scroll into view
+  // Reveal active session: expand ancestor nodes and scroll into view.
+  // Must search displayTree (not props.tree) because time grouping inserts
+  // intermediate nodes with different IDs.
   createEffect(() => {
     const sessionId = props.activeSessionId;
-    if (!sessionId || props.tree.length === 0) return;
-    for (const provider of props.tree) {
-      for (const project of provider.children) {
-        if (project.children.some((s) => s.id === sessionId)) {
-          setExpandedIds((prev) => {
-            const next = new Set(prev);
-            next.add(provider.id);
-            next.add(project.id);
-            return next;
-          });
-          requestAnimationFrame(() => {
-            const el = document.querySelector(
-              `[data-session-id="${sessionId}"]`,
-            );
-            el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-          });
-          return;
-        }
+    const tree = displayTree();
+    if (!sessionId || tree.length === 0) return;
+
+    // DFS: find the path of ancestor node IDs leading to the target session
+    function findPath(nodes: TreeNode[], target: string): string[] | null {
+      for (const node of nodes) {
+        if (node.id === target) return [];
+        const sub = findPath(node.children, target);
+        if (sub !== null) return [node.id, ...sub];
       }
+      return null;
     }
+
+    const path = findPath(tree, sessionId);
+    if (!path) return;
+
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of path) next.add(id);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-session-id="${sessionId}"]`);
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   });
 
   function toggleExpanded(nodeId: string) {
@@ -183,6 +193,12 @@ export function Explorer(props: {
 
   function handleNodeContextMenu(e: MouseEvent, node: TreeNode) {
     setSessionMenu(null);
+    // If there are selected sessions, show selection menu instead of node menu
+    if (selectionCount() > 0) {
+      setNodeMenu(null);
+      setSelectionMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
     setSelectionMenu(null);
     setNodeMenu({ pos: { x: e.clientX, y: e.clientY }, node });
   }

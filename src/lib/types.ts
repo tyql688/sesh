@@ -20,6 +20,10 @@ export interface SessionMeta {
   source_path: string;
   is_sidechain: boolean;
   variant_name?: string;
+  model?: string;
+  cc_version?: string;
+  git_branch?: string;
+  parent_id?: string;
 }
 
 export type MessageRole = "user" | "assistant" | "tool" | "system";
@@ -38,6 +42,7 @@ export interface Message {
   tool_name: string | null;
   tool_input: string | null;
   token_usage: TokenUsage | null;
+  model?: string;
 }
 
 export interface SessionDetail {

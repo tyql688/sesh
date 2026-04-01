@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -27,6 +27,17 @@ struct ParseState {
     tool_use_id_map: HashMap<String, usize>,
 }
 
+/// Extract parent session ID from subagent path.
+/// Path pattern: .../{parent_session_id}/subagents/agent-{agentId}.jsonl
+fn parent_id_from_path(path: &Path) -> Option<String> {
+    let parent = path.parent()?; // subagents/
+    if parent.file_name()?.to_str()? != "subagents" {
+        return None;
+    }
+    let session_dir = parent.parent()?; // {parent_session_id}/
+    Some(session_dir.file_name()?.to_str()?.to_string())
+}
+
 pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let file = File::open(path).ok()?;
     let metadata = fs::metadata(path).ok()?;
@@ -41,10 +52,25 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         tool_use_id_map: HashMap::new(),
     };
     let mut summary_text: Option<String> = None;
+    let mut custom_title: Option<String> = None;
+    let mut ai_title: Option<String> = None;
     let mut first_timestamp: Option<String> = None;
     let mut last_timestamp: Option<String> = None;
     let mut cwd: Option<String> = None;
     let mut is_sidechain = false;
+    let parent_id = parent_id_from_path(path);
+    let subagent_title = parent_id.as_ref().and_then(|_| {
+        let meta_path = path.with_extension("meta.json");
+        let meta_content = fs::read_to_string(&meta_path).ok()?;
+        let meta_json: Value = serde_json::from_str(&meta_content).ok()?;
+        meta_json
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(|s| s.to_string())
+    });
+    let mut model: Option<String> = None;
+    let mut cc_version: Option<String> = None;
+    let mut git_branch: Option<String> = None;
 
     for line in reader.lines() {
         let line = match line {
@@ -87,6 +113,24 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
             is_sidechain = true;
         }
 
+        // Extract cc_version from the first entry that has it
+        if cc_version.is_none() {
+            if let Some(v) = entry.get("version").and_then(|v| v.as_str()) {
+                if !v.is_empty() {
+                    cc_version = Some(v.to_string());
+                }
+            }
+        }
+
+        // Extract git_branch from the first entry that has it (filter out "HEAD")
+        if git_branch.is_none() {
+            if let Some(b) = entry.get("gitBranch").and_then(|b| b.as_str()) {
+                if !b.is_empty() && b != "HEAD" {
+                    git_branch = Some(b.to_string());
+                }
+            }
+        }
+
         // Extract timestamp
         if let Some(ts) = entry.get("timestamp").and_then(|t| t.as_str()) {
             if first_timestamp.is_none() {
@@ -105,10 +149,43 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                 handle_user_message(&entry, &mut state, timestamp);
             }
             "assistant" => {
+                // Extract model from the first assistant message that has it
+                if model.is_none() {
+                    if let Some(m) = entry
+                        .get("message")
+                        .and_then(|msg| msg.get("model"))
+                        .and_then(|m| m.as_str())
+                    {
+                        if !m.is_empty() {
+                            model = Some(m.to_string());
+                        }
+                    }
+                }
                 handle_assistant_message(&entry, &mut state, timestamp);
             }
             "summary" => {
                 handle_summary(&entry, &mut summary_text, &mut state);
+                continue;
+            }
+            "system" => {
+                handle_system_message(&entry, &mut state, timestamp);
+            }
+            "custom-title" => {
+                flush_pending(&mut state);
+                if let Some(t) = entry.get("title").and_then(|t| t.as_str()) {
+                    if !t.trim().is_empty() {
+                        custom_title = Some(t.to_string());
+                    }
+                }
+                continue;
+            }
+            "ai-title" => {
+                flush_pending(&mut state);
+                if let Some(t) = entry.get("title").and_then(|t| t.as_str()) {
+                    if !t.trim().is_empty() {
+                        ai_title = Some(t.to_string());
+                    }
+                }
                 continue;
             }
             // Skip all other types
@@ -121,13 +198,51 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
 
     flush_pending(&mut state);
 
+    // Subagent files detected by path are always sidechains
+    let is_sidechain = is_sidechain || parent_id.is_some();
+
     if state.messages.is_empty() {
         return None;
     }
 
     let session_id = path.file_stem()?.to_string_lossy().to_string();
 
-    let project_path = cwd.unwrap_or_default();
+    // Subagents inherit project_path from parent session's cwd (first entry in parent JSONL).
+    // Their own cwd may differ (e.g. subagent ran in src-tauri/ subfolder).
+    // We derive the parent's project path from the file system path instead.
+    let project_path = if parent_id.is_some() {
+        // Path: .../{project_dir}/{parent_id}/subagents/agent-xxx.jsonl
+        // Parent JSONL: .../{project_dir}/{parent_id}.jsonl
+        // We need the project_dir's cwd, which we can't get here.
+        // But the parent session's project_path is stored by its own cwd.
+        // Best effort: walk up to the project directory and read the parent session's cwd.
+        path.parent() // subagents/
+            .and_then(|p| p.parent()) // {parent_id}/
+            .and_then(|p| p.parent()) // {project_dir}/
+            .and_then(|project_dir| {
+                // Read parent session to find first line with cwd
+                // (first line may be file-history-snapshot without cwd)
+                let parent_jsonl =
+                    project_dir.join(format!("{}.jsonl", parent_id.as_ref().unwrap()));
+                let file = std::fs::File::open(&parent_jsonl).ok()?;
+                let reader = std::io::BufReader::new(file);
+                use std::io::BufRead;
+                for line in reader.lines().take(10).flatten() {
+                    if let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) {
+                        if let Some(c) = entry.get("cwd").and_then(|c| c.as_str()) {
+                            if !c.is_empty() {
+                                return Some(c.to_string());
+                            }
+                        }
+                    }
+                }
+                None
+            })
+            .or(cwd)
+            .unwrap_or_default()
+    } else {
+        cwd.unwrap_or_default()
+    };
     let project_name = project_name_from_path(&project_path);
 
     let created_at = parse_rfc3339_timestamp(first_timestamp.as_deref());
@@ -137,12 +252,17 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let full_content = state.content_parts.join("\n");
     let content_text = truncate_to_bytes(&full_content, FTS_CONTENT_LIMIT);
 
-    let title = session_title(
-        state
-            .first_user_message
-            .as_deref()
-            .or(summary_text.as_deref()),
-    );
+    let title = custom_title
+        .or(ai_title)
+        .or(subagent_title)
+        .unwrap_or_else(|| {
+            session_title(
+                state
+                    .first_user_message
+                    .as_deref()
+                    .or(summary_text.as_deref()),
+            )
+        });
 
     let meta = crate::models::SessionMeta {
         id: session_id,
@@ -157,6 +277,10 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         source_path: path.to_string_lossy().to_string(),
         is_sidechain,
         variant_name: None,
+        model,
+        cc_version,
+        git_branch,
+        parent_id,
     };
 
     Some(ParsedSession {
@@ -256,6 +380,7 @@ fn handle_tool_result(msg: &Value, state: &mut ParseState, timestamp: &Option<St
                     tool_name: use_id.map(std::string::ToString::to_string),
                     tool_input: None,
                     token_usage: None,
+                    model: None,
                 });
             }
         }
@@ -269,6 +394,12 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
         Some(m) => m,
         None => return,
     };
+
+    // Extract per-message model
+    let per_message_model = msg
+        .get("model")
+        .and_then(|m| m.as_str())
+        .map(|s| s.to_string());
 
     // Extract token usage for this assistant turn
     let turn_usage = extract_token_usage(msg);
@@ -291,6 +422,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                                 tool_name: None,
                                 tool_input: None,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                     }
@@ -314,6 +446,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                             tool_name: None,
                             tool_input: None,
                             token_usage: None,
+                            model: per_message_model.clone(),
                         });
                         text_parts.clear();
                     }
@@ -328,6 +461,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                         tool_name: Some(name.to_string()),
                         tool_input: input,
                         token_usage: None,
+                        model: None,
                     });
                     // Record tool_use_id for merging results later
                     if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
@@ -348,6 +482,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                 tool_name: None,
                 tool_input: None,
                 token_usage: None,
+                model: per_message_model,
             });
         }
     } else {
@@ -362,6 +497,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                 tool_name: None,
                 tool_input: None,
                 token_usage: None,
+                model: per_message_model,
             });
         }
     }
@@ -389,6 +525,116 @@ fn handle_summary(entry: &Value, summary_text: &mut Option<String>, state: &mut 
         }
     }
     flush_pending(state);
+}
+
+/// Handle a "system" line: emit human-readable summaries of system subtypes.
+fn handle_system_message(entry: &Value, state: &mut ParseState, timestamp: Option<String>) {
+    flush_pending(state);
+
+    let subtype = match entry.get("subtype").and_then(|s| s.as_str()) {
+        Some(s) => s,
+        None => return,
+    };
+
+    let content = match subtype {
+        "turn_duration" => {
+            let duration_ms = entry
+                .get("durationMs")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let message_count = entry
+                .get("messageCount")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!(
+                "[turn_duration] {:.1}s, {} messages",
+                duration_ms / 1000.0,
+                message_count
+            )
+        }
+        "compact_boundary" => {
+            let pre_tokens = entry
+                .get("compactMetadata")
+                .and_then(|m| m.get("preTokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            if pre_tokens < 1000 {
+                format!("[compact_boundary] {} tokens", pre_tokens)
+            } else {
+                format!(
+                    "[compact_boundary] {:.1}k tokens",
+                    pre_tokens as f64 / 1000.0
+                )
+            }
+        }
+        "microcompact_boundary" => {
+            let metadata = entry.get("microcompactMetadata");
+            let pre_tokens = metadata
+                .and_then(|m| m.get("preTokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let tokens_saved = metadata
+                .and_then(|m| m.get("tokensSaved"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!(
+                "[microcompact_boundary] {:.1}k tokens saved {:.1}k",
+                pre_tokens as f64 / 1000.0,
+                tokens_saved as f64 / 1000.0
+            )
+        }
+        "stop_hook_summary" => {
+            let hook_count = entry.get("hookCount").and_then(|v| v.as_u64()).unwrap_or(0);
+            let hook_details: Vec<String> = entry
+                .get("hookInfos")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .map(|h| {
+                            let cmd = h
+                                .get("command")
+                                .and_then(|c| c.as_str())
+                                .unwrap_or("unknown");
+                            let ms = h.get("durationMs").and_then(|d| d.as_u64()).unwrap_or(0);
+                            format!("{cmd} ({ms}ms)")
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            format!(
+                "[stop_hook_summary] {} hooks: {}",
+                hook_count,
+                hook_details.join(", ")
+            )
+        }
+        "api_error" => {
+            let code = entry
+                .get("cause")
+                .and_then(|c| c.get("code"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("Unknown");
+            let retry = entry
+                .get("retryAttempt")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let max_retries = entry
+                .get("maxRetries")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!("[api_error] {code} (retry {retry}/{max_retries})")
+        }
+        _ => return,
+    };
+
+    state.messages.push(Message {
+        role: MessageRole::System,
+        content,
+        timestamp,
+        tool_name: None,
+        tool_input: None,
+        token_usage: None,
+        model: None,
+    });
 }
 
 /// Flush any pending user message that was waiting for an image-source merge.
@@ -432,6 +678,7 @@ fn append_user_message(
         tool_name: None,
         tool_input: None,
         token_usage: None,
+        model: None,
     });
 }
 
@@ -528,6 +775,80 @@ fn is_tool_result_message(message: &Value) -> bool {
             .all(|item| item.get("type").and_then(|t| t.as_str()) == Some("tool_result")),
         _ => false,
     }
+}
+
+/// Resolve `<persisted-output>` tags by reading the referenced external file.
+/// Falls back to keeping the original content (with preview) if the file can't be read.
+/// Only paths under `~/.claude/` are allowed to prevent arbitrary file reads.
+pub fn resolve_persisted_outputs(content: &str) -> String {
+    const TAG_START: &str = "<persisted-output>";
+    const TAG_END: &str = "</persisted-output>";
+
+    if !content.contains(TAG_START) {
+        return content.to_string();
+    }
+
+    let mut result = String::new();
+    let mut remaining = content;
+
+    while let Some(start_pos) = remaining.find(TAG_START) {
+        // Add everything before the tag
+        result.push_str(&remaining[..start_pos]);
+
+        let after_tag_start = &remaining[start_pos + TAG_START.len()..];
+        if let Some(end_pos) = after_tag_start.find(TAG_END) {
+            let inner = &after_tag_start[..end_pos];
+
+            // Extract file path from "Full output saved to: /path"
+            let file_content = inner
+                .lines()
+                .find_map(|line| {
+                    let trimmed = line.trim();
+                    if let Some(rest) = trimmed.strip_prefix("Full output saved to: ") {
+                        Some(rest.trim().to_string())
+                    } else if trimmed.contains("saved to: ") {
+                        trimmed
+                            .split("saved to: ")
+                            .nth(1)
+                            .map(|p| p.trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|path| {
+                    let canonical = std::fs::canonicalize(&path).ok()?;
+                    let home = dirs::home_dir()?;
+                    let allowed = [home.join(".claude"), home.join(".cc-mirror")];
+                    if !allowed.iter().any(|base| {
+                        std::fs::canonicalize(base)
+                            .ok()
+                            .is_some_and(|b| canonical.starts_with(&b))
+                    }) {
+                        return None;
+                    }
+                    std::fs::read_to_string(&canonical).ok()
+                });
+
+            match file_content {
+                Some(full) => result.push_str(&full),
+                None => {
+                    // Keep the original tag content as fallback
+                    result.push_str(TAG_START);
+                    result.push_str(inner);
+                    result.push_str(TAG_END);
+                }
+            }
+
+            remaining = &after_tag_start[end_pos + TAG_END.len()..];
+        } else {
+            // No closing tag found, keep everything as-is
+            result.push_str(&remaining[start_pos..]);
+            remaining = "";
+        }
+    }
+
+    result.push_str(remaining);
+    result
 }
 
 /// Extract text content from a single tool_result block.

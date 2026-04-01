@@ -40,6 +40,11 @@ impl CodexProvider {
         // Map call_id -> message index for merging function_call_output into function_call
         let mut call_id_map: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
+        let mut model: Option<String> = None;
+        let mut model_provider: Option<String> = None;
+        let mut current_model: Option<String> = None;
+        let mut cc_version: Option<String> = None;
+        let mut git_branch: Option<String> = None;
 
         for line in reader.lines() {
             let line = match line {
@@ -74,6 +79,25 @@ impl CodexProvider {
                     }
                     if let Some(c) = payload.get("cwd").and_then(|v| v.as_str()) {
                         cwd = Some(c.to_string());
+                    }
+                    if let Some(v) = payload.get("cli_version").and_then(|v| v.as_str()) {
+                        if !v.is_empty() {
+                            cc_version = Some(v.to_string());
+                        }
+                    }
+                    if let Some(m) = payload.get("model_provider").and_then(|v| v.as_str()) {
+                        if !m.is_empty() {
+                            model_provider = Some(m.to_string());
+                        }
+                    }
+                    if let Some(b) = payload
+                        .get("git")
+                        .and_then(|g| g.get("branch"))
+                        .and_then(|v| v.as_str())
+                    {
+                        if !b.is_empty() && b != "HEAD" {
+                            git_branch = Some(b.to_string());
+                        }
                     }
                 }
                 "response_item" => {
@@ -112,6 +136,11 @@ impl CodexProvider {
                                 content_parts.push(normalized_text);
                             }
 
+                            let msg_model = if role == MessageRole::Assistant {
+                                current_model.clone()
+                            } else {
+                                None
+                            };
                             messages.push(Message {
                                 role,
                                 content: text,
@@ -119,6 +148,7 @@ impl CodexProvider {
                                 tool_name: None,
                                 tool_input: None,
                                 token_usage: None,
+                                model: msg_model,
                             });
                         }
                         "function_call" => {
@@ -158,6 +188,7 @@ impl CodexProvider {
                                             tool_name: None,
                                             tool_input: None,
                                             token_usage: None,
+                                            model: None,
                                         });
                                         continue;
                                     }
@@ -192,6 +223,7 @@ impl CodexProvider {
                                 tool_name: Some(display_name.to_string()),
                                 tool_input,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                         "function_call_output" => {
@@ -223,6 +255,7 @@ impl CodexProvider {
                                 tool_name: None,
                                 tool_input: None,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                         "custom_tool_call" => {
@@ -250,6 +283,7 @@ impl CodexProvider {
                                 tool_name: Some(display_name.to_string()),
                                 tool_input: input,
                                 token_usage: None,
+                                model: None,
                             });
                         }
                         "custom_tool_call_output" => {
@@ -276,10 +310,22 @@ impl CodexProvider {
                                     tool_name: None,
                                     tool_input: None,
                                     token_usage: None,
+                                    model: None,
                                 });
                             }
                         }
                         _ => continue,
+                    }
+                }
+                "turn_context" => {
+                    // Extract actual model name (e.g. "gpt-5.4") from turn_context
+                    if let Some(m) = payload.get("model").and_then(|v| v.as_str()) {
+                        if !m.is_empty() {
+                            current_model = Some(m.to_string());
+                            if model.is_none() {
+                                model = Some(m.to_string());
+                            }
+                        }
                     }
                 }
                 "event_msg" => {
@@ -359,6 +405,10 @@ impl CodexProvider {
             source_path: path.to_string_lossy().to_string(),
             is_sidechain: false,
             variant_name: None,
+            model: model.or(model_provider),
+            cc_version,
+            git_branch,
+            parent_id: None,
         };
 
         Some(ParsedSession {

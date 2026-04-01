@@ -128,22 +128,75 @@ impl Indexer {
                         }
                     })
                     .unwrap_or_else(|| "(No Project)".to_string());
-                let session_nodes: Vec<TreeNode> = sessions
+                // Separate top-level sessions from subagents
+                let (top_sessions, subagents): (Vec<_>, Vec<_>) =
+                    sessions.iter().partition(|s| s.parent_id.is_none());
+
+                // Collect top-level session IDs for orphan detection
+                let top_ids: std::collections::HashSet<&str> =
+                    top_sessions.iter().map(|s| s.id.as_str()).collect();
+
+                let mut session_nodes: Vec<TreeNode> = top_sessions
                     .iter()
-                    .map(|s| TreeNode {
-                        id: s.id.clone(),
-                        label: s.title.clone(),
-                        node_type: TreeNodeType::Session,
-                        children: Vec::new(),
-                        count: 0,
-                        provider: Some(provider_enum.clone()),
-                        updated_at: Some(s.updated_at),
-                        is_sidechain: s.is_sidechain,
-                        project_path: None,
+                    .map(|s| {
+                        // Find children of this session, sorted by creation time
+                        let mut children: Vec<_> = sessions
+                            .iter()
+                            .filter(|c| c.parent_id.as_deref() == Some(&s.id))
+                            .collect();
+                        children.sort_by_key(|c| c.created_at);
+                        let child_nodes: Vec<TreeNode> = children
+                            .iter()
+                            .map(|c| TreeNode {
+                                id: c.id.clone(),
+                                label: c.title.clone(),
+                                node_type: TreeNodeType::Session,
+                                children: Vec::new(),
+                                count: 0,
+                                provider: Some(provider_enum.clone()),
+                                updated_at: Some(c.updated_at),
+                                is_sidechain: true,
+                                project_path: None,
+                            })
+                            .collect();
+
+                        TreeNode {
+                            id: s.id.clone(),
+                            label: s.title.clone(),
+                            node_type: TreeNodeType::Session,
+                            children: child_nodes,
+                            count: 0,
+                            provider: Some(provider_enum.clone()),
+                            updated_at: Some(s.updated_at),
+                            is_sidechain: s.is_sidechain,
+                            project_path: None,
+                        }
                     })
                     .collect();
 
+                // Add orphan subagents (parent not in this project group) as standalone sessions
+                for orphan in &subagents {
+                    if let Some(ref pid) = orphan.parent_id {
+                        if !top_ids.contains(pid.as_str()) {
+                            session_nodes.push(TreeNode {
+                                id: orphan.id.clone(),
+                                label: orphan.title.clone(),
+                                node_type: TreeNodeType::Session,
+                                children: Vec::new(),
+                                count: 0,
+                                provider: Some(provider_enum.clone()),
+                                updated_at: Some(orphan.updated_at),
+                                is_sidechain: true,
+                                project_path: None,
+                            });
+                        }
+                    }
+                }
+
                 let count = session_nodes.len() as u32;
+                if count == 0 {
+                    continue; // Skip projects with no top-level sessions
+                }
                 provider_total += count;
 
                 project_nodes.push(TreeNode {

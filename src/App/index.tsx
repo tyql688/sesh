@@ -20,7 +20,7 @@ import { FavoritesView } from "../components/FavoritesView";
 import { BlockedView } from "../components/BlockedView";
 import { KeyboardOverlay } from "../components/KeyboardOverlay";
 import { ToastContainer } from "../components/ToastContainer";
-import { trashSession } from "../lib/tauri";
+import { trashSession, getChildSessions } from "../lib/tauri";
 import { isMac, isWindows } from "../lib/platform";
 import { disabledProviders } from "../stores/settings";
 import { toastError } from "../stores/toast";
@@ -132,6 +132,23 @@ export default function App() {
     void sync.coldStart();
 
     document.addEventListener("keydown", handleGlobalKeyDown);
+
+    // Listen for subagent open requests from ToolMessage
+    const handleOpenSubagent = async (e: Event) => {
+      const { description } = (e as CustomEvent).detail;
+      const activeTab = openTabs().find((t) => t.id === activeTabId());
+      if (!activeTab) return;
+      try {
+        const children = await getChildSessions(activeTab.id);
+        const match = children.find((c) => c.title === description);
+        if (match) {
+          openSession(match);
+        }
+      } catch {
+        // silently ignore if query fails
+      }
+    };
+    window.addEventListener("open-subagent", handleOpenSubagent);
 
     unlistenWatcher = await listen<string[]>("sessions-changed", (event) => {
       for (const path of event.payload ?? []) {

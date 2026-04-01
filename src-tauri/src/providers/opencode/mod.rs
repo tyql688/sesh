@@ -116,13 +116,84 @@ impl SessionProvider for OpenCodeProvider {
             }
         }
 
-        let mut stmt = conn.prepare(
+        // Batch: model per session (first assistant message model)
+        let mut model_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        {
+            let has_model_col: bool = conn
+                .prepare("SELECT COUNT(*) FROM pragma_table_info('message') WHERE name = 'data'")
+                .and_then(|mut s| s.query_row([], |row| row.get::<_, i64>(0)))
+                .unwrap_or(0)
+                > 0;
+            if has_model_col {
+                let mut stmt = conn.prepare(
+                    "SELECT session_id, json_extract(data, '$.modelID') FROM message
+                     WHERE json_extract(data, '$.role') = 'assistant'
+                       AND json_extract(data, '$.modelID') IS NOT NULL
+                     GROUP BY session_id",
+                )?;
+                let rows = stmt.query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+                })?;
+                for r in rows.flatten() {
+                    if let Some(m) = r.1 {
+                        model_map.insert(r.0, m);
+                    }
+                }
+            }
+        }
+
+        // Batch: git branch per session from workspace
+        let mut branch_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        {
+            // Check if workspace table exists
+            let has_workspace: bool = conn
+                .prepare(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workspace'",
+                )
+                .and_then(|mut s| s.query_row([], |row| row.get::<_, i64>(0)))
+                .unwrap_or(0)
+                > 0;
+            if has_workspace {
+                let mut stmt = conn.prepare(
+                    "SELECT s.id, w.branch
+                     FROM session s
+                     JOIN project p ON s.project_id = p.id
+                     JOIN workspace w ON p.id = w.id
+                     WHERE w.branch IS NOT NULL AND w.branch != ''",
+                )?;
+                let rows = stmt.query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?;
+                for r in rows.flatten() {
+                    branch_map.insert(r.0, r.1);
+                }
+            }
+        }
+
+        // Check if session table has 'version' column (may not exist in older DBs/test fixtures)
+        let has_version: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('session') WHERE name = 'version'")
+            .and_then(|mut s| s.query_row([], |row| row.get::<_, i64>(0)))
+            .unwrap_or(0)
+            > 0;
+
+        let query = if has_version {
             "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated,
-                    s.parent_id, p.worktree, p.name
+                    s.parent_id, p.worktree, p.name, s.version
              FROM session s
              LEFT JOIN project p ON s.project_id = p.id
-             ORDER BY s.time_updated DESC",
-        )?;
+             ORDER BY s.time_updated DESC"
+        } else {
+            "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated,
+                    s.parent_id, p.worktree, p.name, NULL AS version
+             FROM session s
+             LEFT JOIN project p ON s.project_id = p.id
+             ORDER BY s.time_updated DESC"
+        };
+
+        let mut stmt = conn.prepare(query)?;
 
         let sessions: Vec<ParsedSession> = stmt
             .query_map([], |row| {
@@ -135,6 +206,7 @@ impl SessionProvider for OpenCodeProvider {
                     row.get::<_, Option<String>>(5)?, // parent_id
                     row.get::<_, Option<String>>(6)?, // worktree
                     row.get::<_, Option<String>>(7)?, // project name
+                    row.get::<_, Option<String>>(8)?, // version
                 ))
             })?
             .filter_map(|r| r.ok())
@@ -148,6 +220,7 @@ impl SessionProvider for OpenCodeProvider {
                     parent_id,
                     worktree,
                     project_name,
+                    version,
                 )| {
                     let msg_count = msg_count_map.get(&id).copied().unwrap_or(0);
                     let content_text = content_map.get(&id).cloned().unwrap_or_default();
@@ -169,6 +242,8 @@ impl SessionProvider for OpenCodeProvider {
                     };
 
                     let is_sidechain = parent_id.is_some();
+                    let session_model = model_map.get(&id).cloned();
+                    let session_branch = branch_map.get(&id).cloned();
 
                     ParsedSession {
                         meta: SessionMeta {
@@ -189,6 +264,10 @@ impl SessionProvider for OpenCodeProvider {
                             source_path: self.db_path.to_string_lossy().to_string(),
                             is_sidechain,
                             variant_name: None,
+                            model: session_model,
+                            cc_version: version.filter(|v| !v.is_empty()),
+                            git_branch: session_branch,
+                            parent_id: parent_id.clone(),
                         },
                         messages: Vec::new(),
                         content_text: truncate_to_bytes(&content_text, FTS_CONTENT_LIMIT),
@@ -277,6 +356,7 @@ impl SessionProvider for OpenCodeProvider {
                             tool_name: None,
                             tool_input: None,
                             token_usage: None,
+                            model: None,
                         });
                     }
 
@@ -294,6 +374,7 @@ impl SessionProvider for OpenCodeProvider {
                                         tool_name: None,
                                         tool_input: None,
                                         token_usage: None,
+                                        model: None,
                                     });
                                 }
                             }
@@ -334,6 +415,7 @@ impl SessionProvider for OpenCodeProvider {
                                             tool_name: None,
                                             tool_input: None,
                                             token_usage: None,
+                                            model: None,
                                         });
                                     }
                                 }
@@ -384,6 +466,7 @@ impl SessionProvider for OpenCodeProvider {
                                     tool_name: Some(capitalize_tool(&tool_name)),
                                     tool_input,
                                     token_usage: None,
+                                    model: None,
                                 });
                             }
                             // Skip step-start, step-finish, reasoning, snapshot, patch, etc.
@@ -392,6 +475,11 @@ impl SessionProvider for OpenCodeProvider {
                     }
 
                     // Emit text message first (with token usage on last text msg of this turn)
+                    let msg_model = msg_json
+                        .get("modelID")
+                        .and_then(|m| m.as_str())
+                        .map(|s| s.to_string());
+
                     if !text_parts.is_empty() {
                         messages.push(Message {
                             role: MessageRole::Assistant,
@@ -404,6 +492,7 @@ impl SessionProvider for OpenCodeProvider {
                             } else {
                                 None
                             },
+                            model: msg_model.clone(),
                         });
                     }
 
@@ -434,6 +523,7 @@ impl SessionProvider for OpenCodeProvider {
                             tool_name: None,
                             tool_input: None,
                             token_usage,
+                            model: msg_model,
                         });
                     }
                 }

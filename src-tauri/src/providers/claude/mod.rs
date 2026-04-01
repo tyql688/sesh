@@ -67,6 +67,22 @@ impl ClaudeProvider {
                 let file_path = file_entry.path();
                 if file_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
                     all_files.push(file_path);
+                } else if file_path.is_dir() {
+                    let subagents_dir = file_path.join("subagents");
+                    if subagents_dir.is_dir() {
+                        if let Ok(sub_entries) = fs::read_dir(&subagents_dir) {
+                            for sub_entry in sub_entries {
+                                let sub_entry = match sub_entry {
+                                    Ok(e) => e,
+                                    Err(_) => continue,
+                                };
+                                let sub_path = sub_entry.path();
+                                if sub_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                                    all_files.push(sub_path);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -109,6 +125,16 @@ impl SessionProvider for ClaudeProvider {
         let parsed = parser::parse_session_file(&path)
             .ok_or_else(|| ProviderError::Parse("failed to parse session file".to_string()))?;
 
-        Ok(parsed.messages)
+        // Resolve persisted outputs only at display time, not during indexing
+        let messages = parsed
+            .messages
+            .into_iter()
+            .map(|mut msg| {
+                msg.content = parser::resolve_persisted_outputs(&msg.content);
+                msg
+            })
+            .collect();
+
+        Ok(messages)
     }
 }

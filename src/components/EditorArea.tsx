@@ -10,9 +10,10 @@ import {
 } from "solid-js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { SessionMeta, TreeNode } from "../lib/types";
-import { listRecentSessions } from "../lib/tauri";
+import { listRecentSessions, getChildSessions } from "../lib/tauri";
 import { useI18n } from "../i18n/index";
 import { isPathBlocked } from "../stores/settings";
+import { formatTimestamp } from "../lib/formatters";
 import { TabBar } from "./TabBar";
 import { SessionView } from "./SessionView";
 import { ProviderIcon } from "../lib/icons";
@@ -30,18 +31,42 @@ export function EditorArea(props: {
   tree: TreeNode[];
   onOpenSession: (session: SessionMeta) => void;
 }) {
-  const { t } = useI18n();
-  const activeSession = () =>
-    props.tabs.find((tab) => tab.id === props.activeTabId) ?? null;
-
+  const { t, locale } = useI18n();
   // Refresh trigger: bumped on mount and whenever sessions change
   const [recentVersion, setRecentVersion] = createSignal(0);
   const [recentSessions] = createResource(recentVersion, () =>
-    listRecentSessions(20)
+    listRecentSessions(100)
       .catch(() => [])
       .then((list) =>
-        list.filter((s) => !isPathBlocked(s.project_path)).slice(0, 10),
+        list
+          .filter((s) => !isPathBlocked(s.project_path) && !s.is_sidechain)
+          .slice(0, 10),
       ),
+  );
+  // Child counts per session for badge display
+  const [childCounts, setChildCounts] = createSignal<Record<string, number>>(
+    {},
+  );
+  createEffect(
+    on(
+      () => recentSessions(),
+      async (sessions) => {
+        if (!sessions) return;
+        const counts: Record<string, number> = {};
+        await Promise.all(
+          sessions.map(async (s) => {
+            try {
+              const children = await getChildSessions(s.id);
+              if (children.length > 0) counts[s.id] = children.length;
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
+        setChildCounts(counts);
+      },
+      { defer: true },
+    ),
   );
 
   // Refresh recent sessions when tree changes (covers coldStart, syncFromDisk, manual refresh, all providers)
@@ -101,19 +126,26 @@ export function EditorArea(props: {
                       <div class="editor-empty-session-info">
                         <span class="editor-empty-session-title">
                           {session.title}
-                          <Show when={session.is_sidechain}>
-                            <span class="session-sidechain-badge">⤷</span>
+                        </span>
+                        <span class="editor-empty-session-meta">
+                          <span class="editor-empty-session-path">
+                            {session.project_name || ""}
+                          </span>
+                          <Show when={session.model}>
+                            <span class="editor-empty-session-model">
+                              {session.model}
+                            </span>
+                          </Show>
+                          <Show when={childCounts()[session.id]}>
+                            <span class="editor-empty-session-agents">
+                              🤖 {childCounts()[session.id]}
+                            </span>
                           </Show>
                         </span>
-                        <span class="editor-empty-session-path">
-                          {session.project_path
-                            ? session.project_path
-                                .split("/")
-                                .slice(-2)
-                                .join("/")
-                            : ""}
-                        </span>
                       </div>
+                      <span class="editor-empty-session-time">
+                        {formatTimestamp(session.updated_at, locale())}
+                      </span>
                     </button>
                   )}
                 </For>
@@ -143,15 +175,23 @@ export function EditorArea(props: {
           onCloseTabsToRight={props.onCloseTabsToRight}
         />
         <div class="editor-content">
-          <Show when={activeSession()}>
+          <For each={props.tabs}>
             {(session) => (
-              <SessionView
-                session={session()}
-                onRefreshTree={props.onRefreshTree}
-                onCloseTab={props.onTabClose}
-              />
+              <div
+                class="editor-tab-pane"
+                style={{
+                  display:
+                    session.id === props.activeTabId ? "contents" : "none",
+                }}
+              >
+                <SessionView
+                  session={session}
+                  onRefreshTree={props.onRefreshTree}
+                  onCloseTab={props.onTabClose}
+                />
+              </div>
             )}
-          </Show>
+          </For>
         </div>
       </Show>
     </div>

@@ -15,6 +15,51 @@ import { ToolMessage } from "./ToolMessage";
 export { ProviderIcon } from "../../lib/icons";
 export { formatMcpLabel } from "./ToolMessage";
 
+const SYSTEM_SUBTYPE_CONFIG: Record<
+  string,
+  { icon: string; labelKey: string; cls: string }
+> = {
+  turn_duration: {
+    icon: "\u23F1",
+    labelKey: "system.turnDuration",
+    cls: "sys-duration",
+  },
+  compact_boundary: {
+    icon: "\u2702",
+    labelKey: "system.compact",
+    cls: "sys-compact",
+  },
+  microcompact_boundary: {
+    icon: "\u2702",
+    labelKey: "system.microcompact",
+    cls: "sys-compact",
+  },
+  stop_hook_summary: {
+    icon: "\u2699",
+    labelKey: "system.hooks",
+    cls: "sys-hook",
+  },
+  api_error: { icon: "\u26A0", labelKey: "system.apiError", cls: "sys-error" },
+};
+
+function SystemMessage(props: { content: string }) {
+  const { t } = useI18n();
+  const match = props.content.match(/^\[(\w+)\]\s*(.*)/s);
+  if (match) {
+    const config = SYSTEM_SUBTYPE_CONFIG[match[1]];
+    if (config) {
+      return (
+        <div class={`msg-system msg-system-tag ${config.cls}`}>
+          <span class="sys-icon">{config.icon}</span>
+          <span class="sys-label">{t(config.labelKey)}</span>
+          <span class="sys-detail">{match[2]}</span>
+        </div>
+      );
+    }
+  }
+  return <div class="msg-system">{props.content}</div>;
+}
+
 export function MessageBubble(props: {
   message: Message;
   provider?: Provider;
@@ -70,7 +115,7 @@ export function MessageBubble(props: {
                 content={props.message.content.slice("[thinking]\n".length)}
               />
             ) : (
-              <div class="msg-system">{props.message.content}</div>
+              <SystemMessage content={props.message.content} />
             )
           }
         >
@@ -133,11 +178,17 @@ export function MessageBubble(props: {
           </div>
           <Show
             when={
-              props.message.role === "assistant" && props.message.token_usage
+              props.message.role === "assistant" &&
+              (props.message.token_usage || props.message.model)
             }
           >
             <div class="msg-token-row">
-              <TokenUsageDisplay usage={props.message.token_usage!} />
+              <Show when={props.message.model}>
+                <span class="msg-model-label">{props.message.model}</span>
+              </Show>
+              <Show when={props.message.token_usage}>
+                <TokenUsageDisplay usage={props.message.token_usage!} />
+              </Show>
             </div>
           </Show>
         </Show>
