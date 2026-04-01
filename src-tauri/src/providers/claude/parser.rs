@@ -220,18 +220,25 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
             .and_then(|p| p.parent()) // {parent_id}/
             .and_then(|p| p.parent()) // {project_dir}/
             .and_then(|project_dir| {
-                // Read parent session's first line to get its cwd
+                // Read parent session to find first line with cwd
+                // (first line may be file-history-snapshot without cwd)
                 let parent_jsonl =
                     project_dir.join(format!("{}.jsonl", parent_id.as_ref().unwrap()));
                 let file = std::fs::File::open(&parent_jsonl).ok()?;
                 let reader = std::io::BufReader::new(file);
                 use std::io::BufRead;
-                let first_line = reader.lines().next()?.ok()?;
-                let entry: serde_json::Value = serde_json::from_str(&first_line).ok()?;
-                entry
-                    .get("cwd")
-                    .and_then(|c| c.as_str())
-                    .map(|s| s.to_string())
+                for line in reader.lines().take(10) {
+                    if let Ok(line) = line {
+                        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) {
+                            if let Some(c) = entry.get("cwd").and_then(|c| c.as_str()) {
+                                if !c.is_empty() {
+                                    return Some(c.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                None
             })
             .or(cwd)
             .unwrap_or_default()
