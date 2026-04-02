@@ -154,7 +154,7 @@ pub fn restore_session(trash_id: String, state: State<AppState>) -> Result<(), S
     let action = provider_impl
         .as_ref()
         .map(|p| p.restore_action(&entry))
-        .unwrap_or(crate::provider::RestoreAction::Noop);
+        .unwrap_or_else(|| crate::provider::infer_restore_action(&entry));
 
     let needs_sync = crate::provider::execute_restore(&action, &entry, &trash_dir, &remaining)?;
 
