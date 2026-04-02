@@ -98,9 +98,9 @@ export function setTimeGrouping(v: boolean) {
 
 export { timeGrouping };
 
-// Show orphan subagents toggle (default off)
+// Show subagents toggle (default on)
 const [showOrphans, setShowOrphansSignal] = createSignal<boolean>(
-  localStorage.getItem("cc-session-show-orphans") === "true",
+  localStorage.getItem("cc-session-show-orphans") !== "false",
 );
 
 export function setShowOrphans(v: boolean) {
