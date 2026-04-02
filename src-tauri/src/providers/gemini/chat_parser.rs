@@ -14,34 +14,30 @@ use super::tools::{map_gemini_tool_name, normalize_gemini_message};
 use super::{ChatSession, GeminiProvider};
 
 impl GeminiProvider {
+    /// Parse a chat JSON file and return all sessions found (main + extracted subagent children).
+    /// Returns empty vec if the file is a subagent file (kind == "subagent") or cannot be parsed.
     pub(super) fn parse_chat_file(
         &self,
         path: &PathBuf,
         project_id: &str,
         project_map: &HashMap<String, String>,
-    ) -> Option<ParsedSession> {
-        let content = fs::read_to_string(path).ok()?;
+    ) -> Vec<ParsedSession> {
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => return Vec::new(),
+        };
         let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-        let chat: ChatSession = serde_json::from_str(&content).ok()?;
-
-        let is_subagent = chat.kind.as_deref() == Some("subagent");
-
-        // For subagent sessions, use filename stem as ID (unique per file);
-        // for main/None, use chat.session_id as before.
-        let session_id = if is_subagent {
-            path.file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| chat.session_id.clone())
-        } else {
-            chat.session_id.clone()
+        let chat: ChatSession = match serde_json::from_str(&content) {
+            Ok(c) => c,
+            Err(_) => return Vec::new(),
         };
 
-        // For subagent sessions, parent_id is the original session_id (shared with main session)
-        let parent_id = if is_subagent {
-            Some(chat.session_id.clone())
-        } else {
-            None
-        };
+        // Skip subagent files -- their data comes from parent toolCalls
+        if chat.kind.as_deref() == Some("subagent") {
+            return Vec::new();
+        }
+
+        let session_id = chat.session_id.clone();
 
         let project_path = project_map
             .get(project_id)
@@ -54,12 +50,12 @@ impl GeminiProvider {
         let mut first_user_message: Option<String> = None;
         let mut content_parts: Vec<String> = Vec::new();
         let mut model: Option<String> = None;
+        let mut subagent_sessions: Vec<ParsedSession> = Vec::new();
 
         for msg in &chat.messages {
             let role = match msg.msg_type.as_deref() {
                 Some("user") => MessageRole::User,
                 Some("model") | Some("gemini") | Some("assistant") => {
-                    // Extract model from the first assistant message that has it
                     if model.is_none() {
                         if let Some(m) = &msg.model {
                             if !m.is_empty() {
@@ -88,13 +84,11 @@ impl GeminiProvider {
             let text = match &effective_content {
                 Some(serde_json::Value::String(s)) => normalize_gemini_message(s, &project_path),
                 Some(serde_json::Value::Array(arr)) => {
-                    // If inlineData exists, @path image refs in text are duplicates
                     let has_inline_data = arr.iter().any(|item| item.get("inlineData").is_some());
 
                     let mut parts = Vec::new();
                     for item in arr {
                         if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                            // Filter Gemini context markers
                             let trimmed = text.trim();
                             if trimmed.starts_with("--- Content from referenced files ---")
                                 || trimmed.starts_with("--- End of content ---")
@@ -103,7 +97,6 @@ impl GeminiProvider {
                                 continue;
                             }
                             let normalized = if has_inline_data {
-                                // Strip @path image refs, keep only caption text
                                 strip_at_image_refs(trimmed)
                             } else {
                                 normalize_gemini_message(trimmed, &project_path)
@@ -137,10 +130,7 @@ impl GeminiProvider {
                 text
             };
 
-            let has_thoughts = msg
-                .thoughts
-                .as_ref()
-                .is_some_and(|t| !t.is_empty());
+            let has_thoughts = msg.thoughts.as_ref().is_some_and(|t| !t.is_empty());
             if text.is_empty() && msg.tool_calls.is_none() && !has_thoughts {
                 continue;
             }
@@ -218,7 +208,6 @@ impl GeminiProvider {
                     timestamp: msg.timestamp.clone(),
                     tool_name: None,
                     tool_input: None,
-                    // Attach token usage to text msg only if no tool calls follow
                     token_usage: if !has_tools {
                         token_usage.clone()
                     } else {
@@ -242,6 +231,8 @@ impl GeminiProvider {
                         .or_else(|| tc.get("name").and_then(|n| n.as_str()))
                         .unwrap_or("tool");
                     let name = map_gemini_tool_name(display_name).to_string();
+
+                    let is_agent = name == "Agent";
 
                     // Remap args for Bash: shell_command {command} or run_shell_command {command}
                     let args = match name.as_str() {
@@ -268,7 +259,6 @@ impl GeminiProvider {
                     };
 
                     // Prefer resultDisplay (markdown string) over nested result extraction.
-                    // resultDisplay can be a string or an object (e.g. subagent progress).
                     let result_text = tc
                         .get("resultDisplay")
                         .and_then(|rd| rd.as_str().map(String::from))
@@ -286,14 +276,14 @@ impl GeminiProvider {
 
                     // For Agent-type tools, prepend description to result content
                     let description = tc.get("description").and_then(|d| d.as_str()).unwrap_or("");
-                    let content = if !description.is_empty() && name == "Agent" {
+                    let content = if !description.is_empty() && is_agent {
                         if result_text.is_empty() {
                             description.to_string()
                         } else {
                             format!("{description}\n\n{result_text}")
                         }
                     } else {
-                        result_text
+                        result_text.clone()
                     };
 
                     // Use tool-level timestamp if available, fall back to parent message
@@ -306,10 +296,9 @@ impl GeminiProvider {
                     messages.push(Message {
                         role: MessageRole::Tool,
                         content,
-                        timestamp: tool_timestamp,
-                        tool_name: Some(name),
+                        timestamp: tool_timestamp.clone(),
+                        tool_name: Some(name.clone()),
                         tool_input: args,
-                        // Attach token usage to last tool message
                         token_usage: if i == last_idx {
                             token_usage.clone()
                         } else {
@@ -317,20 +306,105 @@ impl GeminiProvider {
                         },
                         model: None,
                     });
+
+                    // Extract Agent tool calls as child subagent sessions
+                    if is_agent {
+                        let objective = tc
+                            .get("args")
+                            .and_then(|a| a.get("objective"))
+                            .and_then(|o| o.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let result_output = tc
+                            .get("result")
+                            .and_then(|r| r.as_array())
+                            .and_then(|arr| arr.first())
+                            .and_then(|item| item.get("functionResponse"))
+                            .and_then(|fr| fr.get("response"))
+                            .and_then(|resp| resp.get("output"))
+                            .and_then(|o| o.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let tool_description = description;
+                        let tool_display_name = tc
+                            .get("displayName")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("Agent");
+                        let tool_id = tc.get("id").and_then(|id| id.as_str()).unwrap_or("unknown");
+                        let tool_ts = tc
+                            .get("timestamp")
+                            .and_then(|t| t.as_str())
+                            .map(String::from);
+
+                        let title = if !tool_description.is_empty() {
+                            tool_description.to_string()
+                        } else {
+                            tool_display_name.to_string()
+                        };
+
+                        let mut child_messages = Vec::new();
+                        if !objective.is_empty() {
+                            child_messages.push(Message {
+                                role: MessageRole::User,
+                                content: objective.clone(),
+                                timestamp: tool_ts.clone().or_else(|| msg.timestamp.clone()),
+                                tool_name: None,
+                                tool_input: None,
+                                token_usage: None,
+                                model: None,
+                            });
+                        }
+                        if !result_output.is_empty() {
+                            child_messages.push(Message {
+                                role: MessageRole::Assistant,
+                                content: result_output.clone(),
+                                timestamp: tool_ts.clone(),
+                                tool_name: None,
+                                tool_input: None,
+                                token_usage: None,
+                                model: None,
+                            });
+                        }
+
+                        if !child_messages.is_empty() {
+                            let child_content = format!("{objective}\n{result_output}");
+                            subagent_sessions.push(ParsedSession {
+                                meta: SessionMeta {
+                                    id: tool_id.to_string(),
+                                    provider: Provider::Gemini,
+                                    title,
+                                    project_path: project_path.clone(),
+                                    project_name: project_name.clone(),
+                                    created_at: parse_rfc3339_timestamp(tool_ts.as_deref()),
+                                    updated_at: parse_rfc3339_timestamp(tool_ts.as_deref()),
+                                    message_count: child_messages.len() as u32,
+                                    file_size_bytes: 0,
+                                    source_path: path.to_string_lossy().to_string(),
+                                    is_sidechain: true,
+                                    variant_name: None,
+                                    model: None,
+                                    cc_version: None,
+                                    git_branch: None,
+                                    parent_id: Some(session_id.clone()),
+                                },
+                                messages: child_messages,
+                                content_text: truncate_to_bytes(&child_content, FTS_CONTENT_LIMIT),
+                            });
+                        }
+                    }
                 }
             }
         }
 
         if messages.is_empty() {
-            return None;
+            return Vec::new();
         }
 
         let title = session_title(first_user_message.as_deref());
-
         let created_at = parse_rfc3339_timestamp(chat.start_time.as_deref());
-
         let updated_at = parse_rfc3339_timestamp(chat.last_updated.as_deref());
-
         let content_text = truncate_to_bytes(&content_parts.join("\n"), FTS_CONTENT_LIMIT);
 
         let meta = SessionMeta {
@@ -344,18 +418,22 @@ impl GeminiProvider {
             message_count: messages.len() as u32,
             file_size_bytes: file_size,
             source_path: path.to_string_lossy().to_string(),
-            is_sidechain: is_subagent,
+            is_sidechain: false,
             variant_name: None,
             model,
             cc_version: None,
             git_branch: None,
-            parent_id,
+            parent_id: None,
         };
 
-        Some(ParsedSession {
+        let main_session = ParsedSession {
             meta,
             messages,
             content_text,
-        })
+        };
+
+        let mut results = vec![main_session];
+        results.extend(subagent_sessions);
+        results
     }
 }
