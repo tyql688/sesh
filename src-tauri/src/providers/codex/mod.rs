@@ -6,8 +6,10 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::models::{Message, Provider};
-use crate::provider::{ParsedSession, ProviderError, SessionProvider};
+use crate::models::{Message, Provider, SessionMeta};
+use crate::provider::{
+    jsonl_subagents_deletion_plan, DeletionPlan, ParsedSession, ProviderError, SessionProvider,
+};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -100,6 +102,10 @@ impl SessionProvider for CodexProvider {
         Ok(self.parse_session_file(&path).into_iter().collect())
     }
 
+    fn deletion_plan(&self, meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
+        jsonl_subagents_deletion_plan(meta, children)
+    }
+
     fn load_messages(
         &self,
         _session_id: &str,
@@ -112,5 +118,59 @@ impl SessionProvider for CodexProvider {
         })?;
 
         Ok(parsed.messages)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codex_parent_deletion_plan_includes_children() {
+        let provider = CodexProvider {
+            home_dir: PathBuf::from("/tmp"),
+        };
+
+        let parent = SessionMeta {
+            id: "parent".to_string(),
+            provider: Provider::Codex,
+            title: "parent".to_string(),
+            project_path: String::new(),
+            project_name: String::new(),
+            created_at: 0,
+            updated_at: 0,
+            message_count: 0,
+            file_size_bytes: 0,
+            source_path: "/tmp/parent.jsonl".to_string(),
+            is_sidechain: false,
+            variant_name: None,
+            model: None,
+            cc_version: None,
+            git_branch: None,
+            parent_id: None,
+        };
+
+        let child = SessionMeta {
+            id: "child".to_string(),
+            provider: Provider::Codex,
+            title: "child".to_string(),
+            project_path: String::new(),
+            project_name: String::new(),
+            created_at: 0,
+            updated_at: 0,
+            message_count: 0,
+            file_size_bytes: 0,
+            source_path: "/tmp/child.jsonl".to_string(),
+            is_sidechain: true,
+            variant_name: None,
+            model: None,
+            cc_version: None,
+            git_branch: None,
+            parent_id: Some("parent".to_string()),
+        };
+
+        let plan = provider.deletion_plan(&parent, &[child]);
+        assert_eq!(plan.child_plans.len(), 1);
+        assert_eq!(plan.child_plans[0].id, "child");
     }
 }

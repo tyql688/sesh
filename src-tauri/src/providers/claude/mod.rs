@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use rayon::prelude::*;
 
-use crate::models::{Message, Provider};
-use crate::provider::{ParsedSession, ProviderError, SessionProvider};
+use crate::models::{Message, Provider, SessionMeta};
+use crate::provider::{DeletionPlan, ParsedSession, ProviderError, SessionProvider};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -139,6 +139,10 @@ impl SessionProvider for ClaudeProvider {
     fn scan_source(&self, source_path: &str) -> Result<Vec<ParsedSession>, ProviderError> {
         let path = PathBuf::from(source_path);
         Ok(parser::parse_session_file(&path).into_iter().collect())
+    }
+
+    fn deletion_plan(&self, meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
+        crate::provider::jsonl_subagents_deletion_plan(meta, children)
     }
 
     fn load_messages(

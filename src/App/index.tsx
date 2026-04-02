@@ -135,13 +135,14 @@ export default function App() {
 
     // Listen for subagent open requests from ToolMessage
     const handleOpenSubagent = async (e: Event) => {
-      const { description, nickname } = (e as CustomEvent).detail;
+      const { description, nickname, agentId } = (e as CustomEvent).detail;
       const activeTab = openTabs().find((t) => t.id === activeTabId());
       if (!activeTab) return;
       try {
         const children = await getChildSessions(activeTab.id);
         const match = children.find(
           (c) =>
+            (agentId && c.id === agentId) ||
             (nickname && c.title === nickname) ||
             (description &&
               (c.title === description || c.title.startsWith(description))),

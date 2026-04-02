@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 use serde::Deserialize;
 
-use crate::models::{Message, Provider};
-use crate::provider::{ParsedSession, ProviderError, SessionProvider};
+use crate::models::{Message, Provider, SessionMeta};
+use crate::provider::{DeletionPlan, ParsedSession, ProviderError, SessionProvider};
 use crate::providers::claude::parser;
 
 pub struct Descriptor;
@@ -202,6 +202,10 @@ impl SessionProvider for CcMirrorProvider {
             })
             .into_iter()
             .collect())
+    }
+
+    fn deletion_plan(&self, meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
+        crate::provider::jsonl_subagents_deletion_plan(meta, children)
     }
 
     fn load_messages(

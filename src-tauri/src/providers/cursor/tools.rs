@@ -47,11 +47,6 @@ pub fn extract_workspace_path(text: &str) -> Option<String> {
     None
 }
 
-/// Extract text from message content (string or array of parts).
-pub fn extract_text_content(msg: &Value) -> String {
-    extract_text_from_content(msg.get("content"))
-}
-
 pub fn extract_text_from_content(content: Option<&Value>) -> String {
     match content {
         Some(Value::String(s)) => {
@@ -71,12 +66,18 @@ pub fn extract_text_from_content(content: Option<&Value>) -> String {
 pub fn extract_text_from_parts(arr: &[Value]) -> String {
     arr.iter()
         .filter_map(|item| {
-            if item.get("type").and_then(|t| t.as_str()) == Some("text") {
-                item.get("text")
-                    .and_then(|t| t.as_str())
-                    .map(|s| s.to_string())
-            } else {
-                None
+            let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+            match item_type {
+                "text" => {
+                    let text = item.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                    // Filter out redacted reasoning placeholders
+                    if text.trim() == "[REDACTED]" {
+                        None
+                    } else {
+                        Some(text.to_string())
+                    }
+                }
+                _ => None,
             }
         })
         .collect::<Vec<_>>()
@@ -131,23 +132,170 @@ pub fn extract_think_content(text: &str) -> Option<String> {
     }
 }
 
+/// Strip Cursor-style bold-heading thinking blocks from assistant text.
+///
+/// Cursor models emit internal reasoning as `**Bold Title**\n\nParagraph...`
+/// blocks appended to (or replacing) the visible response. This function
+/// removes them and returns only the user-facing text.
+pub fn strip_cursor_thinking(text: &str) -> String {
+    if !text.contains("**") {
+        return text.to_string();
+    }
+    let (visible, _) = split_cursor_thinking(text);
+    visible
+}
+
+/// Extract Cursor-style bold-heading thinking blocks as a single string.
+pub fn extract_cursor_thinking(text: &str) -> Option<String> {
+    if !text.contains("**") {
+        return None;
+    }
+    let (_, thinking) = split_cursor_thinking(text);
+    if thinking.is_empty() {
+        None
+    } else {
+        Some(thinking)
+    }
+}
+
+/// Split text into (visible, thinking) based on `**Title**\n` patterns.
+///
+/// A thinking block starts at `\n**` (or at start-of-string `**`) where
+/// the bold title is closed on the same line, followed by a newline and
+/// English-language reasoning paragraphs.
+fn split_cursor_thinking(text: &str) -> (String, String) {
+    let mut visible = String::new();
+    let mut thinking = String::new();
+
+    // Find the first bold-heading block boundary
+    let first_bold = find_bold_heading_start(text);
+
+    match first_bold {
+        Some(pos) => {
+            let before = text[..pos].trim_end();
+            if !before.is_empty() {
+                visible.push_str(before);
+            }
+            // Everything from the first bold heading onward is thinking
+            let rest = text[pos..].trim();
+            // Strip the ** markers from thinking for cleaner display
+            for line in rest.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("**") && trimmed.ends_with("**") && trimmed.len() > 4 {
+                    // Bold title line → keep as section header without **
+                    if !thinking.is_empty() {
+                        thinking.push('\n');
+                    }
+                    thinking.push_str(&trimmed[2..trimmed.len() - 2]);
+                    thinking.push('\n');
+                } else {
+                    thinking.push_str(line);
+                    thinking.push('\n');
+                }
+            }
+        }
+        None => {
+            visible.push_str(text);
+        }
+    }
+
+    (visible.trim().to_string(), thinking.trim().to_string())
+}
+
+/// Find the byte offset of the first `**Title**\n` pattern that looks like
+/// a Cursor thinking block (bold heading followed by reasoning paragraph).
+fn find_bold_heading_start(text: &str) -> Option<usize> {
+    // Pattern 1: starts at beginning of text
+    if text.starts_with("**") && is_bold_heading_at(text, 0) {
+        return Some(0);
+    }
+
+    // Pattern 2: after \n\n or \n
+    let mut search_from = 0;
+    while let Some(nl_pos) = text[search_from..].find('\n') {
+        let abs_pos = search_from + nl_pos;
+        let after_nl = abs_pos + 1;
+        if after_nl >= text.len() {
+            break;
+        }
+        // Skip additional newlines
+        let mut bold_start = after_nl;
+        while bold_start < text.len() && text.as_bytes()[bold_start] == b'\n' {
+            bold_start += 1;
+        }
+        if bold_start < text.len()
+            && text[bold_start..].starts_with("**")
+            && is_bold_heading_at(text, bold_start)
+        {
+            return Some(after_nl);
+        }
+        search_from = after_nl;
+    }
+
+    None
+}
+
+/// Check if position `pos` in `text` starts a `**Title**\n` bold heading.
+fn is_bold_heading_at(text: &str, pos: usize) -> bool {
+    let rest = &text[pos..];
+    if !rest.starts_with("**") {
+        return false;
+    }
+    let after_open = &rest[2..];
+    // Find closing ** on the same line
+    if let Some(close) = after_open.find("**") {
+        let title = &after_open[..close];
+        // Title should be short (< 80 chars), single line, no nested **
+        if title.len() > 80 || title.contains('\n') {
+            return false;
+        }
+        // After the closing **, there should be a newline (end of heading)
+        let after_close = &after_open[close + 2..];
+        if after_close.is_empty() || after_close.starts_with('\n') {
+            return true;
+        }
+    }
+    false
+}
+
+/// Strip `[REDACTED]` placeholders from text content.
+pub fn strip_redacted(text: &str) -> String {
+    let result = text.replace("[REDACTED]", "");
+    // Clean up leftover blank lines
+    let lines: Vec<&str> = result.lines().filter(|l| !l.trim().is_empty()).collect();
+    lines.join("\n")
+}
+
 /// Map Cursor tool names to canonical display names.
 pub fn map_cursor_tool_name(name: &str) -> &str {
     match name {
         "Shell" | "shell" => "Bash",
         "Write" | "write" => "Write",
-        "Read" | "read" => "Read",
+        "Read" | "read" | "ReadFile" => "Read",
         "StrReplace" | "str_replace" => "Edit",
+        "ApplyPatch" => "Edit",
         "Glob" | "glob" => "Glob",
-        "Grep" | "grep" => "Grep",
+        "Grep" | "grep" | "rg" => "Grep",
         "Delete" | "delete" => "Delete",
         "ReadLints" => "Lint",
+        "Task" | "Subagent" => "Agent",
+        "SemanticSearch" => "Search",
+        "EditNotebook" => "Edit",
+        "WebSearch" => "Search",
+        "WebFetch" => "Read",
+        "TodoWrite" => "Plan",
         _ => name,
     }
 }
 
 /// Remap tool args to match canonical format for frontend display.
 pub fn remap_tool_args(tool_name: &str, args: &Value) -> Option<String> {
+    // ApplyPatch input is raw patch text (a string), not a JSON object.
+    // Extract the file path from the patch header and pass content through.
+    if let Value::String(s) = args {
+        return Some(remap_patch_string(s));
+    }
+
     let obj = args.as_object()?;
     match tool_name {
         "Bash" => {
@@ -207,4 +355,22 @@ pub fn remap_tool_args(tool_name: &str, args: &Value) -> Option<String> {
         }
         _ => Some(args.to_string()),
     }
+}
+
+/// Extract file path from a raw ApplyPatch string and format for display.
+/// Patch format: `*** Begin Patch\n*** Update File: /path\n@@\n-old\n+new\n*** End Patch`
+fn remap_patch_string(patch: &str) -> String {
+    let mut file_path = "";
+    for line in patch.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed
+            .strip_prefix("*** Update File: ")
+            .or_else(|| trimmed.strip_prefix("*** Add File: "))
+            .or_else(|| trimmed.strip_prefix("*** Delete File: "))
+        {
+            file_path = rest.trim();
+            break;
+        }
+    }
+    serde_json::json!({"file_path": file_path, "patch": patch}).to_string()
 }

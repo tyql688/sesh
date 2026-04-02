@@ -156,16 +156,6 @@ impl Database {
         )
     }
 
-    /// Returns (id, source_path) pairs for all children of a given parent session.
-    pub fn list_children(&self, parent_id: &str) -> Result<Vec<(String, String)>, rusqlite::Error> {
-        let conn = self.lock_read()?;
-        let mut stmt = conn.prepare("SELECT id, source_path FROM sessions WHERE parent_id = ?1")?;
-        let rows = stmt.query_map(params![parent_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
-    }
-
     /// Returns full SessionMeta for all children of a given parent session.
     pub fn get_child_sessions(&self, parent_id: &str) -> Result<Vec<SessionMeta>, rusqlite::Error> {
         let conn = self.lock_read()?;
@@ -177,7 +167,20 @@ impl Database {
              ORDER BY created_at",
         )?;
         let rows = stmt.query_map(params![parent_id], row_to_session_meta)?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
+        let mut sessions = Vec::new();
+        for row in rows {
+            match row {
+                Ok(meta) => sessions.push(meta),
+                Err(e) => {
+                    log::warn!(
+                        "failed to map child session row for parent {}: {}",
+                        parent_id,
+                        e
+                    );
+                }
+            }
+        }
+        Ok(sessions)
     }
 
     pub fn add_favorite(&self, session_id: &str) -> Result<(), rusqlite::Error> {

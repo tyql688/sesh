@@ -63,78 +63,47 @@ pub fn trash_session(
         .lock()
         .map_err(|_| "trash meta lock poisoned".to_string())?;
 
-    let src = std::path::Path::new(&resolved_path);
+    let provider_enum = crate::models::Provider::parse(&resolved_provider)
+        .ok_or_else(|| format!("unknown provider: {}", resolved_provider))?;
+    let provider_impl = crate::provider::make_provider(&provider_enum)
+        .ok_or_else(|| "cannot resolve HOME directory — provider unavailable".to_string())?;
 
-    if !src.exists() || resolved_path.is_empty() {
-        // Source already gone — just record and clean up
-        let mut entries = read_trash_meta(&meta_path);
-        entries.push(TrashMeta {
-            id: session_id.clone(),
-            provider: resolved_provider.clone(),
-            title: resolved_title,
-            original_path: resolved_path,
-            trashed_at: now_ts,
-            trash_file: String::new(),
-            project_name: resolved_project.clone(),
-        });
-        trash_children(
-            &session_id,
-            &resolved_provider,
-            &resolved_project,
-            now_ts,
-            &trash_dir,
-            &mut entries,
-            &state,
-        );
-        atomic_write_json(&meta_path, &entries)?;
-        state
-            .db
-            .delete_session(&session_id)
-            .map_err(|e| format!("failed to delete from db: {e}"))?;
-        return Ok(());
-    }
-
-    // Delegate to provider's trash strategy
-    let provider_enum = crate::models::Provider::parse(&resolved_provider);
-    let provider_impl = provider_enum
-        .as_ref()
-        .and_then(crate::provider::make_provider);
-    let result = match &provider_impl {
-        Some(p) => p
-            .trash_session(src, &trash_dir, now_ts)
-            .map_err(|e| format!("failed to trash session: {e}"))?,
-        None => {
-            return Err(format!("unknown provider: {}", resolved_provider));
-        }
-    };
-
-    let trash_file = match &result {
-        crate::provider::TrashResult::Moved { trash_file } => trash_file.clone(),
-        crate::provider::TrashResult::SoftDeleted => String::new(),
-    };
-
-    let mut entries = read_trash_meta(&meta_path);
-    entries.push(TrashMeta {
+    let meta = db_meta.unwrap_or_else(|| crate::models::SessionMeta {
         id: session_id.clone(),
-        provider: resolved_provider.clone(),
-        title: resolved_title,
-        original_path: resolved_path,
-        trashed_at: now_ts,
-        trash_file,
+        provider: provider_enum.clone(),
+        title: resolved_title.clone(),
+        project_path: String::new(),
         project_name: resolved_project.clone(),
+        created_at: 0,
+        updated_at: 0,
+        message_count: 0,
+        file_size_bytes: 0,
+        source_path: resolved_path.clone(),
+        is_sidechain: false,
+        variant_name: None,
+        model: None,
+        cc_version: None,
+        git_branch: None,
+        parent_id: None,
     });
 
-    // Only trash children for dedicated-file providers
-    if matches!(result, crate::provider::TrashResult::Moved { .. }) {
-        trash_children(
-            &session_id,
+    let children = state.db.get_child_sessions(&session_id).unwrap_or_default();
+    let plan = provider_impl.deletion_plan(&meta, &children);
+    let provider_key = crate::db::provider_to_str_pub(&provider_enum);
+
+    let mut entries = read_trash_meta(&meta_path);
+    let records = crate::provider::execute_trash(&plan, &meta, provider_key, &trash_dir, now_ts)?;
+    entries.extend(records);
+
+    // Track shared deletions for shared-file sessions
+    let shared_deletions_path = shared_deletions_path(&trash_dir);
+    if plan.file_action == crate::provider::FileAction::Shared {
+        add_shared_deletion(
+            &shared_deletions_path,
+            &meta.id,
             &resolved_provider,
-            &resolved_project,
-            now_ts,
-            &trash_dir,
-            &mut entries,
-            &state,
-        );
+            &meta.source_path,
+        )?;
     }
 
     atomic_write_json(&meta_path, &entries)?;
@@ -169,62 +138,78 @@ pub fn restore_session(trash_id: String, state: State<AppState>) -> Result<(), S
         .map_err(|_| "trash meta lock poisoned".to_string())?;
 
     let entries = read_trash_meta(&meta_path);
-    let entry = entries
-        .iter()
-        .find(|e| e.id == trash_id)
-        .ok_or_else(|| format!("trash entry not found: {trash_id}"))?
-        .clone();
+    let entry = match entries.iter().find(|e| e.id == trash_id) {
+        Some(e) => e.clone(),
+        None => {
+            // Already restored (e.g. parent restore removed embedded children)
+            drop(lock);
+            return Ok(());
+        }
+    };
 
-    let remaining: Vec<TrashMeta> = entries.into_iter().filter(|e| e.id != trash_id).collect();
+    // Collect children to also restore alongside this parent.
+    let mut child_entries: Vec<TrashMeta> = Vec::new();
+    let remaining: Vec<TrashMeta> = entries
+        .into_iter()
+        .filter(|e| {
+            if e.id == trash_id {
+                return false;
+            }
+            // Match children by parent_id (set during execute_trash)
+            if e.parent_id.as_deref() == Some(&trash_id) {
+                if e.trash_file.is_empty() {
+                    // Embedded child (Kimi): just remove from metadata
+                    return false;
+                }
+                // File-based child: collect for restore
+                child_entries.push(e.clone());
+                return false;
+            }
+            // Legacy: embedded children without parent_id (same path, empty trash_file)
+            if e.trash_file.is_empty()
+                && !entry.trash_file.is_empty()
+                && e.original_path == entry.original_path
+                && e.provider == entry.provider
+                && e.parent_id.is_none()
+            {
+                return false;
+            }
+            true
+        })
+        .collect();
 
-    if entry.trash_file.is_empty() {
-        // SOFT-DELETE (shared file): file was never moved.
-        atomic_write_json(&meta_path, &remaining)?;
+    // Restore parent
+    let provider_enum = crate::models::Provider::parse(&entry.provider);
+    let provider_impl = provider_enum
+        .as_ref()
+        .and_then(crate::provider::make_provider);
+    let action = provider_impl
+        .as_ref()
+        .map(|p| p.restore_action(&entry))
+        .unwrap_or_else(|| crate::provider::infer_restore_action(&entry));
+
+    let needs_sync = crate::provider::execute_restore(&action, &entry, &trash_dir, &remaining)?;
+
+    // Restore file-based children
+    for child in &child_entries {
+        let child_action = provider_impl
+            .as_ref()
+            .map(|p| p.restore_action(child))
+            .unwrap_or_else(|| crate::provider::infer_restore_action(child));
+        let _ = crate::provider::execute_restore(&child_action, child, &trash_dir, &remaining);
+    }
+
+    // For shared deletions, also clean up the tracking file
+    if action == crate::provider::RestoreAction::UndoSharedDeletion {
         remove_shared_deletion(&shared_deletions_path, &entry.id, &entry.original_path)?;
-        drop(lock);
-        sync_source(&entry.provider, &entry.original_path, &state)?;
-        return Ok(());
-    }
-
-    // DEDICATED FILE: move file back
-    let src = trash_dir.join(&entry.trash_file);
-    let dest = std::path::Path::new(&entry.original_path);
-
-    if !src.exists() {
-        // Already restored or deleted externally
-        atomic_write_json(&meta_path, &remaining)?;
-        drop(lock);
-        sync_source(&entry.provider, &entry.original_path, &state)?;
-        return Ok(());
-    }
-
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create parent directory: {e}"))?;
-    }
-
-    // Check if other trash entries reference the same file
-    let others_use_same_file = remaining.iter().any(|e| e.trash_file == entry.trash_file);
-
-    if others_use_same_file {
-        // Copy back, keep trash file for other entries
-        if !dest.exists() {
-            std::fs::copy(&src, dest).map_err(|e| format!("failed to copy file back: {e}"))?;
-        }
-    } else {
-        // Last reference: move back
-        if dest.exists() {
-            let _ = std::fs::remove_file(&src);
-        } else {
-            std::fs::rename(&src, dest)
-                .or_else(|_| std::fs::copy(&src, dest).and_then(|_| std::fs::remove_file(&src)))
-                .map_err(|e| format!("failed to restore file: {e}"))?;
-        }
     }
 
     atomic_write_json(&meta_path, &remaining)?;
     drop(lock);
-    sync_source(&entry.provider, &entry.original_path, &state)?;
+
+    if needs_sync {
+        sync_source(&entry.provider, &entry.original_path, &state)?;
+    }
 
     Ok(())
 }
@@ -246,8 +231,8 @@ pub fn empty_trash() -> Result<(), String> {
                 if let Some(p) = crate::models::Provider::parse(&entry.provider)
                     .and_then(|p| crate::provider::make_provider(&p))
                 {
-                    if let Err(e) = p.delete_from_source(&entry.original_path, &entry.id) {
-                        log::warn!("failed to delete session {} from source: {e}", entry.id);
+                    if let Err(e) = p.purge_from_source(&entry.original_path, &entry.id) {
+                        log::warn!("failed to purge session {} from source: {e}", entry.id);
                     }
                 }
                 add_shared_deletion(
@@ -266,15 +251,17 @@ pub fn empty_trash() -> Result<(), String> {
                 }
             }
 
-            // Also permanently delete subagent directory from original location
+            // Also permanently delete session directory from original location.
+            // Try both patterns: <file>.jsonl → <file>/ (Claude) and parent dir (Kimi/Cursor).
             if !entry.original_path.is_empty() {
-                let original = std::path::Path::new(&entry.original_path);
-                let session_dir = original.with_extension("");
-                let subagents_dir = session_dir.join("subagents");
-                if subagents_dir.is_dir() {
-                    let _ = std::fs::remove_dir_all(&subagents_dir);
-                    let _ = std::fs::remove_dir(&session_dir);
-                }
+                cleanup_session_dir(&entry.original_path);
+            }
+
+            // Provider-specific cleanup (e.g. Cursor store.db)
+            if let Some(p) = crate::models::Provider::parse(&entry.provider)
+                .and_then(|p| crate::provider::make_provider(&p))
+            {
+                p.cleanup_on_permanent_delete(&entry.id);
             }
         }
 
@@ -304,7 +291,7 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
             if let Some(p) = crate::models::Provider::parse(&entry.provider)
                 .and_then(|p| crate::provider::make_provider(&p))
             {
-                let _ = p.delete_from_source(&entry.original_path, &entry.id);
+                let _ = p.purge_from_source(&entry.original_path, &entry.id);
             }
             add_shared_deletion(
                 &shared_deletions_path,
@@ -330,15 +317,16 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
             }
         }
 
-        // Also permanently delete subagent directory from original location
+        // Also permanently delete session directory from original location.
         if !entry.original_path.is_empty() {
-            let original = std::path::Path::new(&entry.original_path);
-            let session_dir = original.with_extension("");
-            let subagents_dir = session_dir.join("subagents");
-            if subagents_dir.is_dir() {
-                let _ = std::fs::remove_dir_all(&subagents_dir);
-                let _ = std::fs::remove_dir(&session_dir);
-            }
+            cleanup_session_dir(&entry.original_path);
+        }
+
+        // Provider-specific cleanup (e.g. Cursor store.db)
+        if let Some(p) = crate::models::Provider::parse(&entry.provider)
+            .and_then(|p| crate::provider::make_provider(&p))
+        {
+            p.cleanup_on_permanent_delete(&entry.id);
         }
     }
 
@@ -348,43 +336,38 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Move child session files (subagents) to the trash directory.
-/// Works for all providers: Claude subagents in `subagents/` dir, Codex subagents as separate JSONL files.
-fn trash_children(
-    parent_id: &str,
-    provider: &str,
-    project_name: &str,
-    now_ts: i64,
-    trash_dir: &std::path::Path,
-    entries: &mut Vec<TrashMeta>,
-    state: &AppState,
-) {
-    let children = match state.db.get_child_sessions(parent_id) {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-    for child in &children {
-        let child_id = &child.id;
-        let child_path = &child.source_path;
-        let child_src = std::path::Path::new(child_path);
-        if !child_src.exists() || child_path.is_empty() {
+/// Remove session directory from original location.
+/// Tries both patterns to cover all providers:
+/// - `<file>.jsonl` → `<file>/` (Claude, Codex, CC-Mirror)
+/// - `parent()` of file (Kimi, Cursor — session UUID dir contains subagents/, state.json)
+///
+/// Safety: only `remove_dir_all` on directories that look session-specific
+/// (contain subagents/, state.json, wire.jsonl, or context.jsonl).
+/// Shared directories like Gemini's `chats/` are NOT removed.
+fn cleanup_session_dir(original_path: &str) {
+    let original = std::path::Path::new(original_path);
+    for candidate in [
+        original.with_extension(""),
+        original.parent().unwrap_or(original).to_path_buf(),
+    ] {
+        if !candidate.is_dir() {
             continue;
         }
-        let child_name = crate::provider::trash_file_name(child_src, now_ts);
-        let child_dest = trash_dir.join(&child_name);
-        let _ = std::fs::rename(child_src, &child_dest).or_else(|_| {
-            std::fs::copy(child_src, &child_dest).and_then(|_| std::fs::remove_file(child_src))
-        });
-        entries.push(TrashMeta {
-            id: child_id.clone(),
-            provider: provider.to_string(),
-            title: child.title.clone(),
-            original_path: child_path.clone(),
-            trashed_at: now_ts,
-            trash_file: child_name,
-            project_name: project_name.to_string(),
-        });
+        if is_session_dir(&candidate) {
+            let _ = std::fs::remove_dir_all(&candidate);
+        } else {
+            // Only remove if empty (safe for shared directories)
+            let _ = std::fs::remove_dir(&candidate);
+        }
     }
+}
+
+/// Check if a directory looks like a session-specific directory (safe to remove_dir_all).
+fn is_session_dir(dir: &std::path::Path) -> bool {
+    dir.join("subagents").is_dir()
+        || dir.join("state.json").is_file()
+        || dir.join("wire.jsonl").is_file()
+        || dir.join("context.jsonl").is_file()
 }
 
 fn sync_source(provider_str: &str, source_path: &str, state: &AppState) -> Result<(), String> {

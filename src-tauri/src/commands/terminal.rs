@@ -14,11 +14,9 @@ pub fn get_resume_command(
     let safe_id = sanitize_session_id(&session_id);
     let p = Provider::parse(&provider).ok_or_else(|| format!("unknown provider '{provider}'"))?;
 
-    let variant_name = state
-        .db
-        .get_session(&session_id)
-        .ok()
-        .flatten()
+    let session = state.db.get_session(&session_id).ok().flatten();
+
+    let variant_name = session
         .and_then(|s| s.variant_name)
         .map(|v| sanitize_session_id(&v));
 
@@ -94,6 +92,7 @@ pub fn resume_session(
     let p = Provider::parse(&provider).ok_or_else(|| format!("unknown provider '{provider}'"))?;
 
     let session = state.db.get_session(&session_id).ok().flatten();
+
     let variant_name = session
         .as_ref()
         .and_then(|s| s.variant_name.clone())

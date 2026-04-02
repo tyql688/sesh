@@ -7,14 +7,13 @@ use std::path::PathBuf;
 use rusqlite::{params, Connection};
 
 use crate::models::{Message, MessageRole, Provider, SessionMeta};
-use crate::provider::{ParsedSession, ProviderError, SessionProvider};
+use crate::provider::{
+    ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
+};
 use crate::provider_utils::{session_title, truncate_to_bytes, FTS_CONTENT_LIMIT};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
-    fn is_shared_file(&self, _source_path: &str) -> bool {
-        true // opencode.db always contains all sessions
-    }
     fn owns_source_path(&self, source_path: &str) -> bool {
         source_path
             .replace('\\', "/")
@@ -564,16 +563,25 @@ impl SessionProvider for OpenCodeProvider {
         Ok(messages)
     }
 
-    fn trash_session(
-        &self,
-        _source_path: &std::path::Path,
-        _trash_dir: &std::path::Path,
-        _timestamp: i64,
-    ) -> Result<crate::provider::TrashResult, ProviderError> {
-        Ok(crate::provider::TrashResult::SoftDeleted)
+    fn deletion_plan(&self, _meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
+        let child_plans = children
+            .iter()
+            .map(|c| ChildPlan {
+                id: c.id.clone(),
+                source_path: c.source_path.clone(),
+                title: c.title.clone(),
+                file_action: FileAction::Shared,
+            })
+            .collect();
+
+        DeletionPlan {
+            file_action: FileAction::Shared,
+            child_plans,
+            cleanup_dirs: Vec::new(),
+        }
     }
 
-    fn delete_from_source(&self, source_path: &str, session_id: &str) -> Result<(), ProviderError> {
+    fn purge_from_source(&self, source_path: &str, session_id: &str) -> Result<(), ProviderError> {
         let mut conn = Connection::open(source_path)?;
         let tx = conn.transaction()?;
 

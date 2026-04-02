@@ -67,44 +67,25 @@ pub fn delete_session(
     source_path: String,
     state: State<AppState>,
 ) -> Result<(), String> {
-    // Cascade: delete child subagent files
-    if let Ok(children) = state.db.list_children(&session_id) {
-        for (_child_id, child_source) in &children {
-            let child_path = std::path::Path::new(child_source);
-            let child_shared = Provider::from_source_path(child_source)
-                .is_some_and(|p| p.descriptor().is_shared_file(child_source));
-            if child_path.exists() && !child_shared {
-                let _ = std::fs::remove_file(child_path);
-                // Also try to remove the .meta.json file
-                let meta_path = child_path.with_extension("meta.json");
-                if meta_path.exists() {
-                    let _ = std::fs::remove_file(&meta_path);
-                }
-            }
-        }
-    }
+    let provider_enum = Provider::from_source_path(&source_path).ok_or_else(|| {
+        format!(
+            "refused to delete '{}': not inside a known provider directory",
+            source_path
+        )
+    })?;
+    let provider_impl = crate::provider::make_provider(&provider_enum)
+        .ok_or_else(|| "cannot resolve HOME directory — provider unavailable".to_string())?;
 
-    let path = std::path::Path::new(&source_path);
-    if path.exists() {
-        let provider = Provider::from_source_path(&source_path).ok_or_else(|| {
-            format!(
-                "refused to delete '{}': not inside a known provider directory",
-                source_path
-            )
-        })?;
-        if !provider.descriptor().is_shared_file(&source_path) {
-            std::fs::remove_file(path)
-                .map_err(|e| format!("failed to delete file '{source_path}': {e}"))?;
-        }
-    }
+    let meta = state
+        .db
+        .get_session(&session_id)
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| build_minimal_meta(&session_id, &source_path, &provider_enum));
 
-    // Clean up subagents directory if it exists
-    let session_dir = std::path::Path::new(&source_path).with_extension("");
-    let subagents_dir = session_dir.join("subagents");
-    if subagents_dir.is_dir() {
-        let _ = std::fs::remove_dir_all(&subagents_dir);
-        let _ = std::fs::remove_dir(&session_dir);
-    }
+    let children = state.db.get_child_sessions(&session_id).unwrap_or_default();
+    let plan = provider_impl.deletion_plan(&meta, &children);
+    crate::provider::execute_purge(&plan, provider_impl.as_ref(), &meta)?;
 
     state
         .db
@@ -123,43 +104,27 @@ pub async fn delete_sessions_batch(
     tokio::task::spawn_blocking(move || {
         let mut deleted: u32 = 0;
         for (session_id, source_path) in &items {
-            // Cascade: delete child subagent files
-            if let Ok(children) = state.db.list_children(session_id) {
-                for (_child_id, child_source) in &children {
-                    let child_path = std::path::Path::new(child_source.as_str());
-                    let child_shared = Provider::from_source_path(child_source)
-                        .is_some_and(|p| p.descriptor().is_shared_file(child_source));
-                    if child_path.exists() && !child_shared {
-                        let _ = std::fs::remove_file(child_path);
-                        let meta_path = child_path.with_extension("meta.json");
-                        if meta_path.exists() {
-                            let _ = std::fs::remove_file(&meta_path);
-                        }
-                    }
-                }
-            }
-
-            let path = std::path::Path::new(source_path);
-            if path.exists() {
-                let provider = Provider::from_source_path(source_path).ok_or_else(|| {
-                    format!(
-                        "refused to delete '{}': not inside a known provider directory",
-                        source_path
-                    )
+            let provider_enum = Provider::from_source_path(source_path).ok_or_else(|| {
+                format!(
+                    "refused to delete '{}': not inside a known provider directory",
+                    source_path
+                )
+            })?;
+            let provider_impl =
+                crate::provider::make_provider(&provider_enum).ok_or_else(|| {
+                    "cannot resolve HOME directory — provider unavailable".to_string()
                 })?;
-                if !provider.descriptor().is_shared_file(source_path) {
-                    std::fs::remove_file(path)
-                        .map_err(|e| format!("failed to delete file {source_path}: {e}"))?;
-                }
-            }
 
-            // Clean up subagents directory if it exists
-            let session_dir = std::path::Path::new(source_path).with_extension("");
-            let subagents_dir = session_dir.join("subagents");
-            if subagents_dir.is_dir() {
-                let _ = std::fs::remove_dir_all(&subagents_dir);
-                let _ = std::fs::remove_dir(&session_dir);
-            }
+            let meta = state
+                .db
+                .get_session(session_id)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| build_minimal_meta(session_id, source_path, &provider_enum));
+
+            let children = state.db.get_child_sessions(session_id).unwrap_or_default();
+            let plan = provider_impl.deletion_plan(&meta, &children);
+            crate::provider::execute_purge(&plan, provider_impl.as_ref(), &meta)?;
 
             state
                 .db
@@ -340,6 +305,27 @@ fn build_fallback_meta(
         created_at: 0,
         updated_at: 0,
         message_count: messages.len() as u32,
+        file_size_bytes: 0,
+        source_path: source_path.to_string(),
+        is_sidechain: false,
+        variant_name: None,
+        model: None,
+        cc_version: None,
+        git_branch: None,
+        parent_id: None,
+    }
+}
+
+fn build_minimal_meta(session_id: &str, source_path: &str, provider: &Provider) -> SessionMeta {
+    SessionMeta {
+        id: session_id.to_string(),
+        provider: provider.clone(),
+        title: String::new(),
+        project_path: String::new(),
+        project_name: String::new(),
+        created_at: 0,
+        updated_at: 0,
+        message_count: 0,
         file_size_bytes: 0,
         source_path: source_path.to_string(),
         is_sidechain: false,

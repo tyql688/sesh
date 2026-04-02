@@ -7,8 +7,10 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::models::{Message, Provider};
-use crate::provider::{ParsedSession, ProviderError, SessionProvider};
+use crate::models::{Message, Provider, SessionMeta};
+use crate::provider::{
+    ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
+};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -117,7 +119,7 @@ impl SessionProvider for KimiProvider {
 
         let sessions: Vec<ParsedSession> = files
             .par_iter()
-            .filter_map(|path| self.parse_session_file(path, &project_map))
+            .flat_map(|path| self.parse_session_with_subagents(path, &project_map))
             .collect();
 
         Ok(sessions)
@@ -126,23 +128,65 @@ impl SessionProvider for KimiProvider {
     fn scan_source(&self, source_path: &str) -> Result<Vec<ParsedSession>, ProviderError> {
         let path = PathBuf::from(source_path);
         let project_map = self.build_project_map();
-        Ok(self
-            .parse_session_file(&path, &project_map)
-            .into_iter()
-            .collect())
+        Ok(self.parse_session_with_subagents(&path, &project_map))
+    }
+
+    fn deletion_plan(&self, meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
+        if meta.parent_id.is_some() {
+            // Child session (subagent): embedded in parent wire.jsonl
+            return DeletionPlan {
+                file_action: FileAction::Skip,
+                child_plans: Vec::new(),
+                cleanup_dirs: Vec::new(),
+            };
+        }
+
+        // Parent session: remove own file, children are embedded (Skip)
+        let child_plans = children
+            .iter()
+            .map(|c| ChildPlan {
+                id: c.id.clone(),
+                source_path: c.source_path.clone(),
+                title: c.title.clone(),
+                file_action: FileAction::Skip,
+            })
+            .collect();
+
+        // Don't include subagents/ in cleanup_dirs — it contains meta.json
+        // files needed for title restoration. permanent_delete_trash and
+        // empty_trash handle subagent directory cleanup separately.
+        DeletionPlan {
+            file_action: FileAction::Remove,
+            child_plans,
+            cleanup_dirs: Vec::new(),
+        }
+    }
+
+    fn restore_action(&self, entry: &crate::models::TrashMeta) -> crate::provider::RestoreAction {
+        if entry.trash_file.is_empty() {
+            // Embedded child — parent file handles it
+            crate::provider::RestoreAction::Noop
+        } else {
+            crate::provider::RestoreAction::MoveBack
+        }
     }
 
     fn load_messages(
         &self,
-        _session_id: &str,
+        session_id: &str,
         source_path: &str,
     ) -> Result<Vec<Message>, ProviderError> {
         let path = PathBuf::from(source_path);
         let project_map = self.build_project_map();
 
-        let parsed = self
-            .parse_session_file(&path, &project_map)
-            .ok_or_else(|| ProviderError::Parse("failed to parse kimi session file".to_string()))?;
+        // Parse parent + subagents, find the one matching session_id
+        let sessions = self.parse_session_with_subagents(&path, &project_map);
+        let parsed = sessions
+            .into_iter()
+            .find(|s| s.meta.id == session_id)
+            .ok_or_else(|| {
+                ProviderError::Parse(format!("session {session_id} not found in {}", source_path))
+            })?;
 
         Ok(parsed.messages)
     }

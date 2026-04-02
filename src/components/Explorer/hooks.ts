@@ -14,24 +14,38 @@ export function filterBlockedFolders(tree: TreeNode[]): TreeNode[] {
     .filter((provider) => provider.children.length > 0);
 }
 
-/** Remove orphan subagents (is_sidechain=true without parent) and prune empty containers. */
+function countSessions(nodes: TreeNode[]): number {
+  let n = 0;
+  for (const node of nodes) {
+    if (node.node_type === "session") n++;
+    else n += countSessions(node.children);
+  }
+  return n;
+}
+
+/** Remove sidechain subagents and update counts. */
 export function filterOrphanSubagents(tree: TreeNode[]): TreeNode[] {
   function prune(nodes: TreeNode[]): TreeNode[] {
     return nodes
-      .map((node) => ({
-        ...node,
-        children: prune(node.children),
-      }))
+      .map((node) => {
+        const children = prune(node.children);
+        // Strip sidechain children from session nodes
+        const filtered =
+          node.node_type === "session"
+            ? children.filter((c) => !c.is_sidechain)
+            : children;
+        return {
+          ...node,
+          children: filtered,
+          count: node.node_type !== "session" ? countSessions(filtered) : 0,
+        };
+      })
       .filter((node) => {
-        // Remove orphan sidechain sessions (no children of their own)
-        if (
-          node.node_type === "session" &&
-          node.is_sidechain &&
-          node.children.length === 0
-        ) {
+        // Remove sidechain sessions at project level
+        if (node.node_type === "session" && node.is_sidechain) {
           return false;
         }
-        // Remove empty non-session containers (projects/providers with no children left)
+        // Remove empty non-session containers
         if (node.node_type !== "session" && node.children.length === 0) {
           return false;
         }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use cc_session_lib::models::MessageRole;
+use cc_session_lib::models::{MessageRole, Provider};
 use cc_session_lib::provider::SessionProvider;
 use cc_session_lib::providers::claude::ClaudeProvider;
 use cc_session_lib::providers::codex::CodexProvider;
@@ -566,6 +566,85 @@ fn kimi_session_id_from_parent_directory() {
 }
 
 // ---------------------------------------------------------------------------
+// Kimi subagent tests (extracted from SubagentEvent in parent wire.jsonl)
+// ---------------------------------------------------------------------------
+
+fn kimi_parent_with_subagents() -> Vec<cc_session_lib::provider::ParsedSession> {
+    let provider = KimiProvider::new().expect("home dir must be available");
+    let path = fixtures_dir()
+        .join("kimi")
+        .join("abc123def456")
+        .join("session-uuid-0001")
+        .join("wire.jsonl");
+    let project_map = HashMap::new();
+    provider.parse_session_with_subagents(&path, &project_map)
+}
+
+#[test]
+fn kimi_subagent_extracted_from_parent() {
+    let sessions = kimi_parent_with_subagents();
+    assert_eq!(
+        sessions.len(),
+        2,
+        "expected 2 sessions (parent + 1 subagent), got {}",
+        sessions.len()
+    );
+}
+
+#[test]
+fn kimi_subagent_is_sidechain() {
+    let sessions = kimi_parent_with_subagents();
+    let sub = sessions
+        .iter()
+        .find(|s| s.meta.is_sidechain)
+        .expect("expected a sidechain session");
+
+    assert_eq!(sub.meta.id, "a1b2c3d4e");
+    assert_eq!(
+        sub.meta.parent_id.as_deref(),
+        Some("session-uuid-0001"),
+        "parent_id must be the parent session UUID"
+    );
+}
+
+#[test]
+fn kimi_subagent_title_from_meta() {
+    let sessions = kimi_parent_with_subagents();
+    let sub = sessions
+        .iter()
+        .find(|s| s.meta.is_sidechain)
+        .expect("expected a sidechain session");
+
+    // When meta.json exists, title comes from description.
+    // Without meta.json, falls back to first user message.
+    assert_eq!(
+        sub.meta.title, "Analyze the project structure of this repo",
+        "subagent title must fall back to first user message when meta.json is absent"
+    );
+}
+
+#[test]
+fn kimi_subagent_messages_parsed() {
+    let sessions = kimi_parent_with_subagents();
+    let sub = sessions
+        .iter()
+        .find(|s| s.meta.is_sidechain)
+        .expect("expected a sidechain session");
+
+    // Expected: User, System(thinking), Tool(Bash), Assistant
+    assert_eq!(
+        sub.messages.len(),
+        4,
+        "expected 4 messages in subagent, got: {:#?}",
+        sub.messages
+    );
+    assert_eq!(sub.messages[0].role, MessageRole::User);
+    assert_eq!(sub.messages[1].role, MessageRole::System); // thinking
+    assert_eq!(sub.messages[2].role, MessageRole::Tool);
+    assert_eq!(sub.messages[3].role, MessageRole::Assistant);
+}
+
+// ---------------------------------------------------------------------------
 // Gemini chat parser tests
 // ---------------------------------------------------------------------------
 
@@ -577,9 +656,12 @@ fn gemini_parsed_session() -> cc_session_lib::provider::ParsedSession {
     let provider = GeminiProvider::new().expect("home dir must be available");
     let path = gemini_fixture_path();
     let project_map = HashMap::new();
-    provider
-        .parse_chat_file_for_test(&path, &project_map)
-        .expect("gemini fixture must parse")
+    let sessions = provider.parse_chat_file_for_test(&path, &project_map);
+    assert!(
+        !sessions.is_empty(),
+        "gemini fixture must parse at least one session"
+    );
+    sessions.into_iter().next().unwrap()
 }
 
 #[test]
@@ -675,106 +757,85 @@ fn gemini_token_usage() {
 }
 
 // ---------------------------------------------------------------------------
-// Cursor CLI parser tests
+// Cursor CLI transcript tests (JSONL-only, no store.db)
 // ---------------------------------------------------------------------------
 
-/// Creates a temporary SQLite database that mimics a Cursor CLI `store.db`.
-///
-/// Returns the path to the `store.db` file inside a UUID-named subdirectory
-/// so that `parse_session_db` can derive a session ID from the parent dir.
-///
-/// Row layout (ordered by rowid):
-///  1. user   – `<user_query>Hello</user_query>` wrapped in content string
-///  2. assistant – plain text reply
-///  3. assistant – tool-call array stored as JSON-array-as-string (Cursor real format)
-///  4. tool   – tool-result array stored as JSON-array-as-string
-fn create_cursor_test_db() -> (tempfile::TempDir, std::path::PathBuf) {
-    use rusqlite::Connection;
-
+/// Create a temporary directory mimicking a main transcript.
+/// Structure: agent-transcripts/<sessionId>/<sessionId>.jsonl
+/// Returns (TempDir, PathBuf to the main transcript JSONL).
+fn create_cursor_main_transcript() -> (tempfile::TempDir, std::path::PathBuf) {
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
-    let session_dir = tmp.path().join("cursor-session-uuid-0001");
-    std::fs::create_dir_all(&session_dir).expect("failed to create temp cursor session dir");
 
-    let db_path = session_dir.join("store.db");
-    let conn = Connection::open(&db_path).expect("failed to create cursor test DB");
+    let session_id = "99be2a56-d4c0-4894-8c40-fe6639015f28";
+    let session_dir = tmp.path().join("agent-transcripts").join(session_id);
+    std::fs::create_dir_all(&session_dir).expect("create session dir");
 
-    conn.execute_batch("CREATE TABLE blobs (data BLOB NOT NULL);")
-        .expect("failed to create blobs table");
+    let jsonl_path = session_dir.join(format!("{session_id}.jsonl"));
 
-    // Row 1: user message with <user_query> tags (Cursor real format)
-    let user_blob = r#"{"role":"user","content":"<user_info>\nWorkspace Path: /home/user/cursor-project\n</user_info>\n<user_query>\nHello, can you help me list files?\n</user_query>"}"#;
+    // Line 1: user message with <user_query> + <user_info>
+    let line1 = r#"{"role":"user","message":{"content":[{"type":"text","text":"<user_info>\nWorkspace Path: /home/user/cursor-project\n</user_info>\n<user_query>\nHello, can you help me list files?\n</user_query>"}]}}"#;
+    // Line 2: assistant plain text
+    let line2 = r#"{"role":"assistant","message":{"content":[{"type":"text","text":"Sure! I can run a shell command to list the files for you."}]}}"#;
+    // Line 3: assistant with tool_use (Shell)
+    let line3 = r#"{"role":"assistant","message":{"content":[{"type":"text","text":"Let me list the files."},{"type":"tool_use","name":"Shell","input":{"command":"ls -la"}}]}}"#;
 
-    // Row 2: assistant plain text reply
-    let assistant_blob = r#"{"role":"assistant","content":"Sure! I can run a shell command to list the files for you."}"#;
+    let content = [line1, line2, line3].join("\n");
+    std::fs::write(&jsonl_path, content).expect("write main transcript JSONL");
 
-    // Row 3: assistant with tool-call — content is a JSON-array serialised as a string
-    // (This matches real Cursor CLI format: "content" is a string that starts with '[')
-    let tool_call_content = r#"[{"type":"tool-call","toolName":"Shell","toolCallId":"c1","args":{"command":"ls -la"}}]"#;
-    let assistant_tool_blob = format!(
-        r#"{{"role":"assistant","content":{}}}"#,
-        serde_json::to_string(tool_call_content).unwrap()
-    );
-
-    // Row 4: tool result — content is a JSON-array serialised as a string
-    let tool_result_content = r#"[{"type":"tool-result","toolCallId":"c1","toolName":"Shell","result":"file.txt\nREADME.md\nmain.rs"}]"#;
-    let tool_blob = format!(
-        r#"{{"role":"tool","content":{}}}"#,
-        serde_json::to_string(tool_result_content).unwrap()
-    );
-
-    for blob in &[
-        user_blob.to_string(),
-        assistant_blob.to_string(),
-        assistant_tool_blob,
-        tool_blob,
-    ] {
-        conn.execute(
-            "INSERT INTO blobs (data) VALUES (CAST(? AS BLOB))",
-            rusqlite::params![blob.as_bytes()],
-        )
-        .expect("failed to insert cursor test row");
-    }
-
-    // Return TempDir to keep it alive; dropped at end of test = cleanup
-    (tmp, db_path)
+    (tmp, jsonl_path)
 }
 
 #[test]
-fn cursor_parses_message_count() {
+fn cursor_main_transcript_parses_meta() {
     let provider = CursorProvider::new().expect("home dir must be available");
-    let (_tmp, db_path) = create_cursor_test_db();
+    let (_tmp, jsonl_path) = create_cursor_main_transcript();
 
-    // Expected messages from load_messages:
-    //  1. User: "Hello, can you help me list files?"  (user_query tag stripped)
-    //  2. Assistant: "Sure! I can run a shell command..."
-    //  3. Tool (Bash): Shell → Bash, content = merged result "file.txt\nREADME.md\nmain.rs"
-    let messages = provider
-        .load_messages("cursor-session-uuid-0001", db_path.to_str().unwrap())
-        .expect("cursor test DB must load messages");
+    let session = provider
+        .parse_transcript_jsonl(&jsonl_path)
+        .expect("main transcript JSONL must parse");
 
+    assert_eq!(session.meta.id, "99be2a56-d4c0-4894-8c40-fe6639015f28");
+    assert!(
+        session.meta.parent_id.is_none(),
+        "main transcript must have no parent_id"
+    );
+    assert!(
+        !session.meta.is_sidechain,
+        "main transcript must not be sidechain"
+    );
+    assert_eq!(session.meta.provider, Provider::Cursor);
+}
+
+#[test]
+fn cursor_main_transcript_message_count() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_main_transcript();
+
+    let session = provider
+        .parse_transcript_jsonl(&jsonl_path)
+        .expect("main transcript JSONL must parse");
+
+    // 1 user + 2 assistant + 1 tool_use = 4
     assert_eq!(
-        messages.len(),
-        3,
-        "expected 3 messages, got: {:#?}",
-        messages
+        session.meta.message_count, 4,
+        "expected 4 messages (1 user + 2 assistant + 1 tool_use)"
     );
 }
 
 #[test]
-fn cursor_user_message_extracted() {
+fn cursor_main_transcript_user_message_extracted() {
     let provider = CursorProvider::new().expect("home dir must be available");
-    let (_tmp, db_path) = create_cursor_test_db();
+    let (_tmp, jsonl_path) = create_cursor_main_transcript();
 
     let messages = provider
-        .load_messages("cursor-session-uuid-0001", db_path.to_str().unwrap())
-        .expect("cursor test DB must load messages");
+        .load_messages("any-id", jsonl_path.to_str().unwrap())
+        .expect("main transcript must load messages");
 
     let user_msg = messages
         .iter()
         .find(|m| m.role == MessageRole::User)
         .expect("expected a User message");
 
-    // <user_query> tags must be stripped, <user_info> block must be discarded
     assert!(
         user_msg.content.contains("Hello"),
         "user content should contain the query text, got: {}",
@@ -793,20 +854,19 @@ fn cursor_user_message_extracted() {
 }
 
 #[test]
-fn cursor_tool_call_merged() {
+fn cursor_main_transcript_tool_call() {
     let provider = CursorProvider::new().expect("home dir must be available");
-    let (_tmp, db_path) = create_cursor_test_db();
+    let (_tmp, jsonl_path) = create_cursor_main_transcript();
 
     let messages = provider
-        .load_messages("cursor-session-uuid-0001", db_path.to_str().unwrap())
-        .expect("cursor test DB must load messages");
+        .load_messages("any-id", jsonl_path.to_str().unwrap())
+        .expect("main transcript must load messages");
 
     let tool_msg = messages
         .iter()
         .find(|m| m.role == MessageRole::Tool)
         .expect("expected a Tool message");
 
-    // Cursor "Shell" must map to canonical "Bash"
     assert_eq!(
         tool_msg.tool_name.as_deref(),
         Some("Bash"),
@@ -814,7 +874,6 @@ fn cursor_tool_call_merged() {
         tool_msg.tool_name
     );
 
-    // tool_input must be remapped to {"command": "ls -la"}
     let input = tool_msg
         .tool_input
         .as_ref()
@@ -830,11 +889,238 @@ fn cursor_tool_call_merged() {
         input
     );
 
-    // Tool result must be merged into the same message via toolCallId
+    // Transcripts don't have tool results
     assert!(
-        tool_msg.content.contains("main.rs"),
-        "tool result must be merged into tool message content, got: {}",
+        tool_msg.content.is_empty(),
+        "no tool results in transcripts, got: {}",
         tool_msg.content
+    );
+}
+
+#[test]
+fn cursor_main_transcript_project_path() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_main_transcript();
+
+    let session = provider
+        .parse_transcript_jsonl(&jsonl_path)
+        .expect("main transcript JSONL must parse");
+
+    assert_eq!(
+        session.meta.project_path, "/home/user/cursor-project",
+        "project_path should be extracted from Workspace Path in user_info"
+    );
+}
+
+#[test]
+fn cursor_main_transcript_variant_name_none() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_main_transcript();
+
+    let session = provider
+        .parse_transcript_jsonl(&jsonl_path)
+        .expect("main transcript JSONL must parse");
+
+    assert!(
+        session.meta.variant_name.is_none(),
+        "variant_name should be None for Cursor"
+    );
+}
+
+/// Create a transcript mimicking Cursor IDE (Composer) output:
+/// no tool_use in assistant messages — only single text parts per line.
+fn create_cursor_ide_transcript() -> (tempfile::TempDir, std::path::PathBuf) {
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+
+    let session_id = "ide-session-001";
+    let session_dir = tmp.path().join("agent-transcripts").join(session_id);
+    std::fs::create_dir_all(&session_dir).expect("create session dir");
+
+    let jsonl_path = session_dir.join(format!("{session_id}.jsonl"));
+
+    let line1 = r#"{"role":"user","message":{"content":[{"type":"text","text":"<user_info>\nWorkspace Path: /home/user/my-app\n</user_info>\n<git_status>\n## main\n M src/app.ts\n</git_status>\n<agent_skills>\nskills here\n</agent_skills>\n<user_query>\nExplain this code\n</user_query>"}]}}"#;
+    let line2 = r#"{"role":"assistant","message":{"content":[{"type":"text","text":"This code does X and Y."}]}}"#;
+    let line3 = r#"{"role":"assistant","message":{"content":[{"type":"text","text":"Let me explain further."}]}}"#;
+
+    let content = [line1, line2, line3].join("\n");
+    std::fs::write(&jsonl_path, content).expect("write IDE transcript");
+
+    (tmp, jsonl_path)
+}
+
+#[test]
+fn cursor_ide_transcript_project_path() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_ide_transcript();
+
+    let session = provider
+        .parse_transcript_jsonl(&jsonl_path)
+        .expect("IDE transcript must parse");
+
+    assert_eq!(session.meta.project_path, "/home/user/my-app");
+}
+
+#[test]
+fn cursor_ide_transcript_strips_system_tags_from_user() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_ide_transcript();
+
+    let messages = provider
+        .load_messages("ide-session-001", jsonl_path.to_str().unwrap())
+        .expect("IDE transcript must load messages");
+
+    let user_msg = messages
+        .iter()
+        .find(|m| m.role == MessageRole::User)
+        .expect("expected a User message");
+
+    assert!(user_msg.content.contains("Explain this code"));
+    assert!(!user_msg.content.contains("<git_status>"));
+    assert!(!user_msg.content.contains("<agent_skills>"));
+}
+
+// ---------------------------------------------------------------------------
+// Cursor CLI subagent transcript tests
+// ---------------------------------------------------------------------------
+
+/// Create a temporary directory mimicking the agent-transcripts subagent structure.
+/// Returns (TempDir, PathBuf to the subagent JSONL).
+fn create_cursor_subagent_transcript() -> (tempfile::TempDir, std::path::PathBuf) {
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+
+    // Structure: agent-transcripts/<parentId>/subagents/<subagentId>.jsonl
+    let parent_id = "af1240f4-165e-4775-a493-d123cc297f3f";
+    let subagent_id = "b5e0cfa0-3b11-405d-a5b6-fa9cfa86982d";
+    let parent_dir = tmp.path().join("agent-transcripts").join(parent_id);
+    let subagents_dir = parent_dir.join("subagents");
+    std::fs::create_dir_all(&subagents_dir).expect("create subagents dir");
+
+    // Create parent transcript (CLI-style: has tool_use, no IDE tags)
+    let parent_jsonl = parent_dir.join(format!("{parent_id}.jsonl"));
+    let parent_line1 = r#"{"role":"user","message":{"content":[{"type":"text","text":"<user_query>\nBuild the project\n</user_query>"}]}}"#;
+    let parent_line2 = r#"{"role":"assistant","message":{"content":[{"type":"text","text":"Starting."},{"type":"tool_use","name":"Shell","input":{"command":"cargo build"}}]}}"#;
+    std::fs::write(&parent_jsonl, format!("{parent_line1}\n{parent_line2}"))
+        .expect("write parent JSONL");
+
+    let jsonl_path = subagents_dir.join(format!("{subagent_id}.jsonl"));
+
+    // Line 1: user message (the Task prompt)
+    let line1 = r#"{"role":"user","message":{"content":[{"type":"text","text":"Analyze the repository structure and report key findings"}]}}"#;
+    // Line 2: assistant with text + tool_use (Read)
+    let line2 = r#"{"role":"assistant","message":{"content":[{"type":"text","text":"I'll analyze the repository structure."},{"type":"tool_use","name":"Read","input":{"path":"/project/src/main.rs"}}]}}"#;
+    // Line 3: assistant with tool_use (Grep)
+    let line3 = r#"{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"fn main","path":"/project/src"}}]}}"#;
+    // Line 4: assistant final response
+    let line4 = r#"{"role":"assistant","message":{"content":[{"type":"text","text":"The repository has a clean Rust structure with main.rs as the entry point."}]}}"#;
+
+    let content = [line1, line2, line3, line4].join("\n");
+    std::fs::write(&jsonl_path, content).expect("write subagent JSONL");
+
+    (tmp, jsonl_path)
+}
+
+#[test]
+fn cursor_subagent_parses_meta() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_subagent_transcript();
+
+    let session = provider
+        .parse_transcript_jsonl(&jsonl_path)
+        .expect("subagent JSONL must parse");
+
+    assert_eq!(session.meta.id, "b5e0cfa0-3b11-405d-a5b6-fa9cfa86982d");
+    assert_eq!(
+        session.meta.parent_id.as_deref(),
+        Some("af1240f4-165e-4775-a493-d123cc297f3f")
+    );
+    assert!(session.meta.is_sidechain);
+    assert_eq!(session.meta.provider, Provider::Cursor);
+}
+
+#[test]
+fn cursor_subagent_message_count() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_subagent_transcript();
+
+    let session = provider
+        .parse_transcript_jsonl(&jsonl_path)
+        .expect("subagent JSONL must parse");
+
+    // 1 user + 3 assistant + 2 tool_use = 6
+    assert_eq!(
+        session.meta.message_count, 6,
+        "expected 6 messages (1 user + 3 assistant + 2 tool_use)"
+    );
+}
+
+#[test]
+fn cursor_subagent_messages_loaded() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_subagent_transcript();
+
+    let messages = provider
+        .load_messages("any-id", jsonl_path.to_str().unwrap())
+        .expect("subagent messages must load");
+
+    // Expected:
+    //  1. User: "Analyze the repository..."
+    //  2. Assistant: "I'll analyze the repository structure."
+    //  3. Tool (Read): path=/project/src/main.rs, no result
+    //  4. Tool (Grep): pattern="fn main", no result
+    //  5. Assistant: "The repository has a clean..."
+    assert_eq!(messages.len(), 5, "got: {:#?}", messages);
+
+    assert_eq!(messages[0].role, MessageRole::User);
+    assert!(messages[0].content.contains("Analyze"));
+
+    assert_eq!(messages[1].role, MessageRole::Assistant);
+    assert!(messages[1].content.contains("analyze the repository"));
+
+    assert_eq!(messages[2].role, MessageRole::Tool);
+    assert_eq!(messages[2].tool_name.as_deref(), Some("Read"));
+    assert!(
+        messages[2].content.is_empty(),
+        "no tool results in transcript"
+    );
+
+    assert_eq!(messages[3].role, MessageRole::Tool);
+    assert_eq!(messages[3].tool_name.as_deref(), Some("Grep"));
+
+    assert_eq!(messages[4].role, MessageRole::Assistant);
+    assert!(messages[4].content.contains("clean Rust structure"));
+}
+
+#[test]
+fn cursor_subagent_tool_names_mapped() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let subagents_dir = tmp
+        .path()
+        .join("agent-transcripts")
+        .join("parent-001")
+        .join("subagents");
+    std::fs::create_dir_all(&subagents_dir).expect("create dirs");
+
+    let jsonl_path = subagents_dir.join("child-001.jsonl");
+    // Test various tool name mappings
+    let line1 = r#"{"role":"user","message":{"content":[{"type":"text","text":"run analysis"}]}}"#;
+    let line2 = r#"{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"ls"}},{"type":"tool_use","name":"Task","input":{"description":"sub-task","prompt":"do stuff"}},{"type":"tool_use","name":"SemanticSearch","input":{"query":"main"}},{"type":"tool_use","name":"ApplyPatch","input":{"patch":"..."}},{"type":"tool_use","name":"Subagent","input":{"prompt":"analyze"}},{"type":"tool_use","name":"ReadFile","input":{"path":"/a.txt"}}]}}"#;
+    std::fs::write(&jsonl_path, format!("{line1}\n{line2}")).expect("write");
+
+    let messages = provider
+        .load_messages("child-001", jsonl_path.to_str().unwrap())
+        .expect("must load");
+
+    let tool_names: Vec<&str> = messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Tool)
+        .map(|m| m.tool_name.as_deref().unwrap_or(""))
+        .collect();
+
+    assert_eq!(
+        tool_names,
+        vec!["Bash", "Agent", "Search", "Edit", "Agent", "Read"]
     );
 }
 
