@@ -5,9 +5,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 
 use crate::models::{Message, Provider, SessionMeta};
-use crate::provider::{
-    DeletionPlan, ParsedSession, ProviderError, SessionProvider,
-};
+use crate::provider::{DeletionPlan, ParsedSession, ProviderError, SessionProvider};
 use crate::providers::claude::parser;
 
 pub struct Descriptor;

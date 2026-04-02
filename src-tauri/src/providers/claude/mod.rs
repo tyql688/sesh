@@ -7,9 +7,7 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 
 use crate::models::{Message, Provider, SessionMeta};
-use crate::provider::{
-    DeletionPlan, ParsedSession, ProviderError, SessionProvider,
-};
+use crate::provider::{DeletionPlan, ParsedSession, ProviderError, SessionProvider};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {

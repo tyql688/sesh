@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -77,33 +76,6 @@ pub fn add_shared_deletion(
     }
 
     Ok(())
-}
-
-pub fn active_shared_deletions_by_source() -> HashMap<String, HashSet<String>> {
-    let Ok(trash_dir) = trash_dir() else {
-        return HashMap::new();
-    };
-
-    let mut by_source: HashMap<String, HashSet<String>> = HashMap::new();
-
-    for entry in read_trash_meta(&trash_meta_path(&trash_dir))
-        .into_iter()
-        .filter(|entry| entry.trash_file.is_empty() && !entry.original_path.is_empty())
-    {
-        by_source
-            .entry(entry.original_path)
-            .or_default()
-            .insert(entry.id);
-    }
-
-    for entry in read_shared_deletions(&shared_deletions_path(&trash_dir)) {
-        by_source
-            .entry(entry.original_path)
-            .or_default()
-            .insert(entry.id);
-    }
-
-    by_source
 }
 
 fn read_json_or_default<T>(path: &Path) -> T

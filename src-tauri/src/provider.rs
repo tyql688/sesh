@@ -227,10 +227,7 @@ pub fn execute_restore(
 /// (Claude, CC-Mirror, and similar).
 /// - Parent: Remove file + Remove children + cleanup session dir
 /// - Child: Remove own file only
-pub fn jsonl_subagents_deletion_plan(
-    meta: &SessionMeta,
-    children: &[SessionMeta],
-) -> DeletionPlan {
+pub fn jsonl_subagents_deletion_plan(meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
     if meta.parent_id.is_some() {
         return DeletionPlan {
             file_action: FileAction::Remove,

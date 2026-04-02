@@ -1,7 +1,5 @@
 mod chat_parser;
 mod images;
-mod logs_parser;
-mod orphan;
 mod tools;
 
 use std::collections::HashMap;
@@ -9,10 +7,13 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde::Deserialize;
+use walkdir::WalkDir;
 
-use crate::models::{Message, Provider, SessionMeta};
-use crate::provider::{DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider};
-use crate::trash_state::active_shared_deletions_by_source;
+use crate::models::{Message, Provider, SessionMeta, TrashMeta};
+use crate::provider::{
+    ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, RestoreAction,
+    SessionProvider,
+};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -39,8 +40,6 @@ impl crate::provider::ProviderDescriptor for Descriptor {
     }
 }
 
-use orphan::chat_session_ids;
-
 pub struct GeminiProvider {
     home_dir: PathBuf,
 }
@@ -51,40 +50,30 @@ struct ProjectsFile {
 }
 
 #[derive(Deserialize)]
-struct LogEntry {
+pub(crate) struct ChatSession {
     #[serde(rename = "sessionId")]
-    session_id: String,
-    #[serde(rename = "type")]
-    entry_type: Option<String>,
-    message: Option<String>,
-    timestamp: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ChatSession {
-    #[serde(rename = "sessionId")]
-    session_id: String,
+    pub session_id: String,
     #[serde(rename = "startTime")]
-    start_time: Option<String>,
+    pub start_time: Option<String>,
     #[serde(rename = "lastUpdated")]
-    last_updated: Option<String>,
-    kind: Option<String>,
-    messages: Vec<ChatMessage>,
+    pub last_updated: Option<String>,
+    pub kind: Option<String>,
+    pub messages: Vec<ChatMessage>,
 }
 
 #[derive(Deserialize)]
-struct ChatMessage {
-    timestamp: Option<String>,
+pub(crate) struct ChatMessage {
+    pub timestamp: Option<String>,
     #[serde(rename = "type")]
-    msg_type: Option<String>,
-    content: Option<serde_json::Value>, // Can be string OR array of {text/inlineData}
+    pub msg_type: Option<String>,
+    pub content: Option<serde_json::Value>,
     #[serde(rename = "displayContent")]
-    display_content: Option<serde_json::Value>,
+    pub display_content: Option<serde_json::Value>,
     #[serde(rename = "toolCalls")]
-    tool_calls: Option<Vec<serde_json::Value>>,
-    thoughts: Option<Vec<serde_json::Value>>,
-    tokens: Option<serde_json::Value>,
-    model: Option<String>,
+    pub tool_calls: Option<Vec<serde_json::Value>>,
+    pub thoughts: Option<Vec<serde_json::Value>>,
+    pub tokens: Option<serde_json::Value>,
+    pub model: Option<String>,
 }
 
 impl GeminiProvider {
@@ -98,7 +87,7 @@ impl GeminiProvider {
         &self,
         path: &PathBuf,
         project_map: &HashMap<String, String>,
-    ) -> Option<crate::provider::ParsedSession> {
+    ) -> Vec<ParsedSession> {
         self.parse_chat_file(path, "", project_map)
     }
 
@@ -127,7 +116,6 @@ impl GeminiProvider {
             Err(_) => return HashMap::new(),
         };
 
-        // File has {"/abs/path": "project-id"}, we reverse to {project-id: "/abs/path"}
         let mut map = HashMap::new();
         for (project_path, project_id) in projects_file.projects {
             map.insert(project_id, project_path);
@@ -135,97 +123,82 @@ impl GeminiProvider {
         map
     }
 
+    /// Collect all chat JSON files under tmp_dir.
+    fn collect_chat_files(&self) -> Vec<(PathBuf, String)> {
+        let tmp_dir = self.tmp_dir();
+        if !tmp_dir.exists() {
+            return Vec::new();
+        }
+
+        let mut results = Vec::new();
+        for entry in WalkDir::new(&tmp_dir)
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+        {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let ext = path.extension().and_then(|e| e.to_str());
+            if ext != Some("json") {
+                continue;
+            }
+
+            // Must be inside a chats/ directory
+            let mut in_chats = false;
+            for ancestor in path.ancestors().skip(1) {
+                if ancestor.file_name().and_then(|n| n.to_str()) == Some("chats") {
+                    in_chats = true;
+                    break;
+                }
+                // Stop at tmp_dir level
+                if ancestor == tmp_dir {
+                    break;
+                }
+            }
+            if !in_chats {
+                continue;
+            }
+
+            // Derive project_id from the directory structure:
+            // tmp_dir/{project_id}/chats/...
+            let relative = path.strip_prefix(&tmp_dir).unwrap_or(path);
+            let project_id = relative
+                .components()
+                .next()
+                .map(|c| c.as_os_str().to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            results.push((path.to_path_buf(), project_id));
+        }
+        results
+    }
+
     fn scan_impl(&self, since_millis: Option<i64>) -> Result<Vec<ParsedSession>, ProviderError> {
         use std::time::{Duration, UNIX_EPOCH};
 
-        let tmp_dir = self.tmp_dir();
-        if !tmp_dir.exists() {
-            return Ok(Vec::new());
-        }
-
         let project_map = self.build_project_map();
-        let shared_deletions = active_shared_deletions_by_source();
+        let chat_files = self.collect_chat_files();
+
         let mut all_sessions = Vec::new();
 
-        let entries: Vec<_> = fs::read_dir(&tmp_dir)?
-            .filter_map(std::result::Result::ok)
-            .filter(|e| e.path().is_dir())
-            .collect();
-
-        // Collect sessions indexed by session_id so chat files can replace log entries
-        let mut session_map: HashMap<String, ParsedSession> = HashMap::new();
-
-        for entry in entries {
-            let project_id = entry.file_name().to_string_lossy().to_string();
-
-            // Parse logs.json
-            let logs_path = entry.path().join("logs.json");
-            if logs_path.exists() {
-                let skip_logs = if let Some(millis) = since_millis {
-                    let threshold = UNIX_EPOCH + Duration::from_millis(millis as u64);
-                    fs::metadata(&logs_path)
-                        .and_then(|m| m.modified())
-                        .map(|mtime| mtime < threshold)
-                        .unwrap_or(false)
-                } else {
-                    false
-                };
-
-                if !skip_logs {
-                    let hidden_ids = shared_deletions
-                        .get(&logs_path.to_string_lossy().to_string())
-                        .cloned()
-                        .unwrap_or_default();
-                    let sessions = self
-                        .parse_logs_json(&project_id, &logs_path, &project_map)
-                        .into_iter()
-                        .filter(|session| !hidden_ids.contains(&session.meta.id))
-                        .collect::<Vec<_>>();
-                    for s in sessions {
-                        session_map.insert(s.meta.id.clone(), s);
-                    }
+        for (chat_path, project_id) in chat_files {
+            // Skip files not modified since threshold
+            if let Some(millis) = since_millis {
+                let threshold = UNIX_EPOCH + Duration::from_millis(millis as u64);
+                let skip = fs::metadata(&chat_path)
+                    .and_then(|m| m.modified())
+                    .map(|mtime| mtime < threshold)
+                    .unwrap_or(false);
+                if skip {
+                    continue;
                 }
             }
 
-            // Parse chats/session-*.json (richer data, replaces logs.json entries)
-            let chats_dir = entry.path().join("chats");
-            if chats_dir.is_dir() {
-                if let Ok(chat_entries) = fs::read_dir(&chats_dir) {
-                    for chat_entry in chat_entries.filter_map(std::result::Result::ok) {
-                        let chat_path = chat_entry.path();
-                        let fname = chat_path
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_default();
-
-                        if !fname.starts_with("session-") || !fname.ends_with(".json") {
-                            continue;
-                        }
-
-                        // Skip files not modified since threshold
-                        if let Some(millis) = since_millis {
-                            let threshold = UNIX_EPOCH + Duration::from_millis(millis as u64);
-                            let skip = fs::metadata(&chat_path)
-                                .and_then(|m| m.modified())
-                                .map(|mtime| mtime < threshold)
-                                .unwrap_or(false);
-                            if skip {
-                                continue;
-                            }
-                        }
-
-                        if let Some(parsed) =
-                            self.parse_chat_file(&chat_path, &project_id, &project_map)
-                        {
-                            // Always replace: chat files have richer data than logs.json
-                            session_map.insert(parsed.meta.id.clone(), parsed);
-                        }
-                    }
-                }
-            }
+            let parsed = self.parse_chat_file(&chat_path, &project_id, &project_map);
+            all_sessions.extend(parsed);
         }
 
-        all_sessions.extend(session_map.into_values());
         Ok(all_sessions)
     }
 }
@@ -246,53 +219,21 @@ impl SessionProvider for GeminiProvider {
     fn scan_source(&self, source_path: &str) -> Result<Vec<ParsedSession>, ProviderError> {
         let path = PathBuf::from(source_path);
         let project_map = self.build_project_map();
-        let file_name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
+
+        if path.extension().is_none_or(|e| e != "json") {
+            return Ok(Vec::new());
+        }
+
+        // Derive project_id from path: .../tmp/{project_id}/chats/...
+        let tmp_dir = self.tmp_dir();
+        let project_id = path
+            .strip_prefix(&tmp_dir)
+            .ok()
+            .and_then(|rel| rel.components().next())
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
             .unwrap_or_default();
 
-        if file_name == "logs.json" {
-            let project_dir = path.parent().map(PathBuf::from);
-            let chat_ids = chat_session_ids(project_dir.as_ref());
-
-            // When chat files exist for this project, they have the full conversation
-            // data. Skip logs.json entirely to avoid creating orphan sessions that
-            // show incomplete data during live watch.
-            if !chat_ids.is_empty() {
-                return Ok(Vec::new());
-            }
-
-            let project_id = path
-                .parent()
-                .and_then(|parent| parent.file_name())
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let hidden_ids = active_shared_deletions_by_source()
-                .remove(source_path)
-                .unwrap_or_default();
-
-            return Ok(self
-                .parse_logs_json(&project_id, &path, &project_map)
-                .into_iter()
-                .filter(|session| !hidden_ids.contains(&session.meta.id))
-                .collect());
-        }
-
-        if file_name.starts_with("session-") && file_name.ends_with(".json") {
-            let project_id = path
-                .parent()
-                .and_then(|parent| parent.parent())
-                .and_then(|parent| parent.file_name())
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_default();
-
-            return Ok(self
-                .parse_chat_file(&path, &project_id, &project_map)
-                .into_iter()
-                .collect());
-        }
-
-        Ok(Vec::new())
+        Ok(self.parse_chat_file(&path, &project_id, &project_map))
     }
 
     fn load_messages(
@@ -303,37 +244,15 @@ impl SessionProvider for GeminiProvider {
         let path = PathBuf::from(source_path);
         let project_map = self.build_project_map();
 
-        let fname = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        // Chat files: .gemini/tmp/<project_id>/chats/session-*.json
-        if fname.starts_with("session-") && fname.ends_with(".json") {
-            let project_id = path
-                .parent()
-                .and_then(|p| p.parent())
-                .and_then(|p| p.file_name())
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-
-            let parsed = self
-                .parse_chat_file(&path, &project_id, &project_map)
-                .ok_or_else(|| {
-                    ProviderError::Parse(format!("session {session_id} not found in {source_path}"))
-                })?;
-
-            return Ok(parsed.messages);
-        }
-
-        // Fallback: logs.json path -- .gemini/tmp/<project_id>/logs.json
+        let tmp_dir = self.tmp_dir();
         let project_id = path
-            .parent()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().to_string())
+            .strip_prefix(&tmp_dir)
+            .ok()
+            .and_then(|rel| rel.components().next())
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let sessions = self.parse_logs_json(&project_id, &path, &project_map);
+        let sessions = self.parse_chat_file(&path, &project_id, &project_map);
 
         let session = sessions
             .into_iter()
@@ -345,25 +264,55 @@ impl SessionProvider for GeminiProvider {
         Ok(session.messages)
     }
 
-    fn deletion_plan(&self, meta: &SessionMeta, _children: &[SessionMeta]) -> DeletionPlan {
-        let is_shared = meta.source_path.ends_with("/logs.json");
+    fn deletion_plan(&self, meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
+        if meta.parent_id.is_some() {
+            // Child from toolCall extraction -- shares parent's file, skip
+            return DeletionPlan {
+                file_action: FileAction::Skip,
+                child_plans: Vec::new(),
+                cleanup_dirs: Vec::new(),
+            };
+        }
+
+        // Main session -- remove file, skip children (they share source), clean up subagent dir
+        let child_plans = children
+            .iter()
+            .map(|c| ChildPlan {
+                id: c.id.clone(),
+                source_path: c.source_path.clone(),
+                title: c.title.clone(),
+                file_action: FileAction::Skip,
+            })
+            .collect();
+
+        let source = PathBuf::from(&meta.source_path);
+        let mut cleanup_dirs = Vec::new();
+        if let Some(chats_dir) = source.parent() {
+            // Subagent files live in chats/{parentSessionId}/
+            let subagent_dir = chats_dir.join(&meta.id);
+            if subagent_dir.is_dir() {
+                cleanup_dirs.push(subagent_dir);
+            }
+            // Also check short ID prefix (first 8 chars)
+            let short_id = &meta.id[..meta.id.len().min(8)];
+            let subagent_dir_short = chats_dir.join(short_id);
+            if subagent_dir_short.is_dir() && !cleanup_dirs.contains(&subagent_dir_short) {
+                cleanup_dirs.push(subagent_dir_short);
+            }
+        }
+
         DeletionPlan {
-            file_action: if is_shared {
-                FileAction::Shared
-            } else {
-                FileAction::Remove
-            },
-            child_plans: Vec::new(),
-            cleanup_dirs: Vec::new(),
+            file_action: FileAction::Remove,
+            child_plans,
+            cleanup_dirs,
         }
     }
 
-    fn purge_from_source(
-        &self,
-        _source_path: &str,
-        _session_id: &str,
-    ) -> Result<(), ProviderError> {
-        // Gemini logs.json: session removal is handled by shared_deletions mechanism
-        Ok(())
+    fn restore_action(&self, entry: &TrashMeta) -> RestoreAction {
+        if entry.trash_file.is_empty() {
+            RestoreAction::Noop // child session, parent restore handles it
+        } else {
+            RestoreAction::MoveBack
+        }
     }
 }

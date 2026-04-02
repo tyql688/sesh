@@ -656,9 +656,12 @@ fn gemini_parsed_session() -> cc_session_lib::provider::ParsedSession {
     let provider = GeminiProvider::new().expect("home dir must be available");
     let path = gemini_fixture_path();
     let project_map = HashMap::new();
-    provider
-        .parse_chat_file_for_test(&path, &project_map)
-        .expect("gemini fixture must parse")
+    let sessions = provider.parse_chat_file_for_test(&path, &project_map);
+    assert!(
+        !sessions.is_empty(),
+        "gemini fixture must parse at least one session"
+    );
+    sessions.into_iter().next().unwrap()
 }
 
 #[test]
