@@ -267,12 +267,12 @@ impl GeminiProvider {
                         _ => tc.get("args").map(std::string::ToString::to_string),
                     };
 
-                    // Prefer resultDisplay (user-friendly markdown) over nested extraction
+                    // Prefer resultDisplay (markdown string) over nested result extraction.
+                    // resultDisplay can be a string or an object (e.g. subagent progress).
                     let result_text = tc
                         .get("resultDisplay")
-                        .and_then(|rd| rd.as_str())
-                        .map(String::from)
-                        .unwrap_or_else(|| {
+                        .and_then(|rd| rd.as_str().map(String::from))
+                        .or_else(|| {
                             tc.get("result")
                                 .and_then(|r| r.as_array())
                                 .and_then(|arr| arr.first())
@@ -280,9 +280,9 @@ impl GeminiProvider {
                                 .and_then(|fr| fr.get("response"))
                                 .and_then(|resp| resp.get("output"))
                                 .and_then(|o| o.as_str())
-                                .unwrap_or("")
-                                .to_string()
-                        });
+                                .map(String::from)
+                        })
+                        .unwrap_or_default();
 
                     // For Agent-type tools, prepend description to result content
                     let description = tc.get("description").and_then(|d| d.as_str()).unwrap_or("");
