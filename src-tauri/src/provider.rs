@@ -660,6 +660,7 @@ mod tests {
             trashed_at: 0,
             trash_file: String::new(),
             project_name: String::new(),
+            parent_id: None,
         };
         assert_eq!(provider.restore_action(&entry), RestoreAction::Noop);
     }
@@ -675,6 +676,7 @@ mod tests {
             trashed_at: 0,
             trash_file: String::new(),
             project_name: String::new(),
+            parent_id: None,
         };
         assert_eq!(
             provider.restore_action(&entry),
@@ -723,6 +725,7 @@ mod tests {
             trashed_at: 0,
             trash_file: "1710000000__s1.jsonl".to_string(),
             project_name: String::new(),
+            parent_id: None,
         };
         assert_eq!(infer_restore_action(&entry), RestoreAction::MoveBack);
     }

@@ -199,6 +199,7 @@ fn cursor_store_dirs() -> Vec<PathBuf> {
 // ── test ─────────────────────────────────────────────────────────────────────
 
 #[test]
+#[ignore] // Uses real local data — run manually: cargo test --test trash_lifecycle_test -- --ignored --nocapture
 fn lifecycle_trash_restore_delete() {
     let db = db();
     let test_providers = [
