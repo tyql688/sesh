@@ -68,6 +68,7 @@ struct ChatSession {
     start_time: Option<String>,
     #[serde(rename = "lastUpdated")]
     last_updated: Option<String>,
+    kind: Option<String>,
     messages: Vec<ChatMessage>,
 }
 
@@ -77,6 +78,8 @@ struct ChatMessage {
     #[serde(rename = "type")]
     msg_type: Option<String>,
     content: Option<serde_json::Value>, // Can be string OR array of {text/inlineData}
+    #[serde(rename = "displayContent")]
+    display_content: Option<serde_json::Value>,
     #[serde(rename = "toolCalls")]
     tool_calls: Option<Vec<serde_json::Value>>,
     thoughts: Option<Vec<serde_json::Value>>,

@@ -24,6 +24,25 @@ impl GeminiProvider {
         let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         let chat: ChatSession = serde_json::from_str(&content).ok()?;
 
+        let is_subagent = chat.kind.as_deref() == Some("subagent");
+
+        // For subagent sessions, use filename stem as ID (unique per file);
+        // for main/None, use chat.session_id as before.
+        let session_id = if is_subagent {
+            path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| chat.session_id.clone())
+        } else {
+            chat.session_id.clone()
+        };
+
+        // For subagent sessions, parent_id is the original session_id (shared with main session)
+        let parent_id = if is_subagent {
+            Some(chat.session_id.clone())
+        } else {
+            None
+        };
+
         let project_path = project_map
             .get(project_id)
             .cloned()
@@ -50,11 +69,23 @@ impl GeminiProvider {
                     }
                     MessageRole::Assistant
                 }
+                Some("info") => MessageRole::System,
                 _ => continue,
             };
 
+            // For user messages, prefer displayContent over content when available
+            let effective_content = if role == MessageRole::User {
+                if let Some(dc) = &msg.display_content {
+                    Some(dc.clone())
+                } else {
+                    msg.content.clone()
+                }
+            } else {
+                msg.content.clone()
+            };
+
             // content can be a string or an array of {text, inlineData}
-            let text = match &msg.content {
+            let text = match &effective_content {
                 Some(serde_json::Value::String(s)) => normalize_gemini_message(s, &project_path),
                 Some(serde_json::Value::Array(arr)) => {
                     // If inlineData exists, @path image refs in text are duplicates
@@ -95,12 +126,23 @@ impl GeminiProvider {
                 _ => String::new(),
             };
 
+            // For info messages, wrap content and don't skip empty
+            let text = if role == MessageRole::System && msg.msg_type.as_deref() == Some("info") {
+                if text.is_empty() {
+                    "[info]".to_string()
+                } else {
+                    format!("[info]\n{text}")
+                }
+            } else {
+                text
+            };
+
             if text.is_empty() && msg.tool_calls.is_none() {
                 continue;
             }
 
             let trimmed = text.trim_start();
-            if !text.is_empty() && is_system_content(trimmed) {
+            if !text.is_empty() && role != MessageRole::System && is_system_content(trimmed) {
                 continue;
             }
 
@@ -221,21 +263,49 @@ impl GeminiProvider {
                         _ => tc.get("args").map(std::string::ToString::to_string),
                     };
 
+                    // Prefer resultDisplay (user-friendly markdown) over nested extraction
                     let result_text = tc
-                        .get("result")
-                        .and_then(|r| r.as_array())
-                        .and_then(|arr| arr.first())
-                        .and_then(|item| item.get("functionResponse"))
-                        .and_then(|fr| fr.get("response"))
-                        .and_then(|resp| resp.get("output"))
-                        .and_then(|o| o.as_str())
-                        .unwrap_or("")
-                        .to_string();
+                        .get("resultDisplay")
+                        .and_then(|rd| rd.as_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| {
+                            tc.get("result")
+                                .and_then(|r| r.as_array())
+                                .and_then(|arr| arr.first())
+                                .and_then(|item| item.get("functionResponse"))
+                                .and_then(|fr| fr.get("response"))
+                                .and_then(|resp| resp.get("output"))
+                                .and_then(|o| o.as_str())
+                                .unwrap_or("")
+                                .to_string()
+                        });
+
+                    // For Agent-type tools, prepend description to result content
+                    let description = tc
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("");
+                    let content = if !description.is_empty() && name == "Agent" {
+                        if result_text.is_empty() {
+                            description.to_string()
+                        } else {
+                            format!("{description}\n\n{result_text}")
+                        }
+                    } else {
+                        result_text
+                    };
+
+                    // Use tool-level timestamp if available, fall back to parent message
+                    let tool_timestamp = tc
+                        .get("timestamp")
+                        .and_then(|t| t.as_str())
+                        .map(String::from)
+                        .or_else(|| msg.timestamp.clone());
 
                     messages.push(Message {
                         role: MessageRole::Tool,
-                        content: result_text,
-                        timestamp: msg.timestamp.clone(),
+                        content,
+                        timestamp: tool_timestamp,
                         tool_name: Some(name),
                         tool_input: args,
                         // Attach token usage to last tool message
@@ -263,7 +333,7 @@ impl GeminiProvider {
         let content_text = truncate_to_bytes(&content_parts.join("\n"), FTS_CONTENT_LIMIT);
 
         let meta = SessionMeta {
-            id: chat.session_id,
+            id: session_id,
             provider: Provider::Gemini,
             title,
             project_path,
@@ -273,12 +343,12 @@ impl GeminiProvider {
             message_count: messages.len() as u32,
             file_size_bytes: file_size,
             source_path: path.to_string_lossy().to_string(),
-            is_sidechain: false,
+            is_sidechain: is_subagent,
             variant_name: None,
             model,
             cc_version: None,
             git_branch: None,
-            parent_id: None,
+            parent_id,
         };
 
         Some(ParsedSession {
