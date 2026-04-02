@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -15,10 +19,7 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            target: aarch64-apple-darwin
-            bundles: dmg,updater
-          - platform: macos-latest
-            target: x86_64-apple-darwin
+            target: universal-apple-darwin
             bundles: dmg,updater
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
@@ -47,8 +48,11 @@ jobs:
         run: npm ci
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+
+      - name: Add macOS targets
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -67,3 +71,115 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-22.04
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - name: Download built release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: List downloaded release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la release-assets
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: CC Session ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          body: |
+            See the [changelog](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md) for details.
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  assemble-latest-json:
+    name: Assemble latest.json
+    runs-on: ubuntu-22.04
+    needs: publish-release
+    permissions:
+      contents: read
+    steps:
+      - name: Download all release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p dl
+          gh release download "$TAG" --dir dl --repo "$GITHUB_REPOSITORY"
+          ls -la dl || true
+      - name: Generate latest.json
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          base_url="https://github.com/$REPO/releases/download/$TAG"
+          mac_url=""; mac_sig=""
+          win_url=""; win_sig=""
+          linux_url=""; linux_sig=""
+          for sig in dl/*.sig; do
+            base=${sig%.sig}
+            fname=$(basename "$base")
+            url="$base_url/$fname"
+            sig_content=$(cat "$sig")
+            case "$fname" in
+              *.tar.gz)
+                mac_url="$url"; mac_sig="$sig_content";;
+              *-Linux-*.AppImage|*-Linux-*.appimage)
+                linux_url="$url"; linux_sig="$sig_content";;
+              *.msi|*.exe)
+                win_url="$url"; win_sig="$sig_content";;
+            esac
+          done
+          tmp_json=$(mktemp)
+          {
+            echo '{'
+            echo "  \"version\": \"$VERSION\","
+            echo "  \"notes\": \"Release $TAG\","
+            echo "  \"pub_date\": \"$PUB_DATE\","
+            echo '  "platforms": {'
+            first=1
+            if [ -n "$mac_url" ] && [ -n "$mac_sig" ]; then
+              for key in darwin-aarch64 darwin-x86_64; do
+                [ $first -eq 0 ] && echo ','
+                echo "    \"$key\": {\"signature\": \"$mac_sig\", \"url\": \"$mac_url\"}"
+                first=0
+              done
+            fi
+            if [ -n "$win_url" ] && [ -n "$win_sig" ]; then
+              [ $first -eq 0 ] && echo ','
+              echo "    \"windows-x86_64\": {\"signature\": \"$win_sig\", \"url\": \"$win_url\"}"
+              first=0
+            fi
+            if [ -n "$linux_url" ] && [ -n "$linux_sig" ]; then
+              [ $first -eq 0 ] && echo ','
+              echo "    \"linux-x86_64\": {\"signature\": \"$linux_sig\", \"url\": \"$linux_url\"}"
+              first=0
+            fi
+            echo '  }'
+            echo '}'
+          } > "$tmp_json"
+          echo "Generated latest.json:" && cat "$tmp_json"
+          mv "$tmp_json" latest.json
+      - name: Upload latest.json to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          gh release upload "$GITHUB_REF_NAME" latest.json --clobber --repo "$GITHUB_REPOSITORY"

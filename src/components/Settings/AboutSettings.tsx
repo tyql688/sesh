@@ -1,4 +1,5 @@
 import { createSignal, onMount } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../../i18n/index";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -74,9 +75,9 @@ export function AboutSettings() {
           href="https://github.com/tyql688/cc-session"
           onClick={(e) => {
             e.preventDefault();
-            import("@tauri-apps/plugin-shell").then(({ open }) =>
-              open("https://github.com/tyql688/cc-session"),
-            );
+            invoke("open_external", {
+              url: "https://github.com/tyql688/cc-session",
+            }).catch((e) => console.error("Failed to open GitHub:", e));
           }}
         >
           cc-session

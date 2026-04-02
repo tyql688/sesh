@@ -50,7 +50,7 @@ pub fn run() {
     };
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -88,6 +88,7 @@ pub fn run() {
             commands::is_favorite,
             commands::read_image_base64,
             commands::open_in_folder,
+            commands::open_external,
         ])
         .setup(|app| {
             // On Windows, hide native decorations so the custom titlebar is the only one.
