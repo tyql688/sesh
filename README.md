@@ -46,7 +46,7 @@ AI coding tools like Claude Code, Codex, and Gemini CLI store session data local
 | Codex CLI   | `~/.codex/sessions/**/*.jsonl`        | JSONL  | FS events  |
 | Gemini CLI  | `~/.gemini/tmp/*/chats/*.json`        |  JSON  | FS events  |
 | Kimi CLI    | `~/.kimi/sessions/**/*.jsonl`         | JSONL  | FS events  |
-| Cursor CLI  | `~/.cursor/chats/**/store.db`         | SQLite |  Polling   |
+| Cursor CLI  | `~/.cursor/projects/*/agent-transcripts/**/*.jsonl` | JSONL  | FS events  |
 | OpenCode    | `~/.local/share/opencode/opencode.db` | SQLite |  Polling   |
 | CC-Mirror   | `~/.cc-mirror/{variant}/config/projects/**/*.jsonl` | JSONL  | FS events  |
 

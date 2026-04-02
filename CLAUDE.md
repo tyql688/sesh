@@ -9,7 +9,7 @@ npm run tauri dev             # Dev with hot reload
 npm run tauri build           # Production build
 npx tauri build --bundles dmg # DMG only
 cd src-tauri && cargo clippy  # Rust lint
-cd src-tauri && cargo test    # Rust tests (21 parser golden tests)
+cd src-tauri && cargo test    # Rust tests (parser + trash lifecycle)
 npx tsc --noEmit              # TS type check
 npm run lint                  # ESLint
 npm run format:check          # Prettier check
@@ -46,8 +46,9 @@ src-tauri/src/
   indexer.rs               # Parallel scan, batch upsert, tree building
   watcher.rs               # notify crate, FS events for JSONL/JSON providers
   models.rs                # Provider, SessionMeta, Message, TokenUsage, TreeNode
-  provider.rs              # ProviderDescriptor trait, SessionProvider trait, TrashResult, make_provider()
+  provider.rs              # ProviderDescriptor trait, SessionProvider trait, TrashResult, make_provider(), execute_trash/restore/purge
   provider_utils.rs        # Shared helpers, FTS_CONTENT_LIMIT constant
+  trash_state.rs           # Trash metadata I/O, shared_deletions tracking
 ```
 
 ## Provider Architecture
@@ -56,6 +57,10 @@ All providers implement `SessionProvider` trait:
 - `scan_all()` → `Vec<ParsedSession>` (meta + content for FTS)
 - `load_messages(session_id, source_path)` → `Vec<Message>` (on-demand)
 - `watch_paths()` → directories for file system watcher
+- `deletion_plan(meta, children)` → `DeletionPlan` (file actions + cleanup dirs)
+- `restore_action(entry)` → `RestoreAction` (MoveBack / UndoSharedDeletion / Noop)
+- `cleanup_on_permanent_delete(session_id)` → provider-specific cleanup hook
+- `purge_from_source(source_path, session_id)` → remove from shared DB/file
 
 Provider constructors return `Option<Self>` (graceful skip if HOME unavailable).
 `Provider::parse(s)` maps string keys to enum variants (renamed from `from_str`).
@@ -83,7 +88,7 @@ Tool names are mapped to canonical names per provider (e.g. Codex `exec_command`
 | Codex       | `~/.codex/sessions/**/*.jsonl`         | JSONL  |
 | Gemini      | `~/.gemini/tmp/*/chats/*.json`         | JSON   |
 | Kimi CLI    | `~/.kimi/sessions/**/*.jsonl`          | JSONL  |
-| Cursor CLI  | `~/.cursor/chats/**/store.db`          | SQLite |
+| Cursor CLI  | `~/.cursor/projects/*/agent-transcripts/**/*.jsonl` | JSONL |
 | OpenCode    | `~/.local/share/opencode/opencode.db`  | SQLite |
 | CC-Mirror   | `~/.cc-mirror/{variant}/config/projects/**/*.jsonl` | JSONL |
 
@@ -95,10 +100,11 @@ WAL mode enables concurrent reads during writes.
 
 ## Testing
 
-- **Rust**: 21 golden tests in `src-tauri/tests/parser_tests.rs` covering Claude, Codex, Kimi parsers
-  - Provider unit tests in `src-tauri/src/provider.rs` (path matching, display key roundtrip)
-  - Test fixtures in `src-tauri/tests/fixtures/`
-  - Run: `cd src-tauri && cargo test`
+- **Rust**: `cd src-tauri && cargo test`
+  - 21 golden tests in `tests/parser_tests.rs` covering Claude, Codex, Kimi parsers
+  - Trash lifecycle test in `tests/trash_lifecycle_test.rs`: full trash → restore → trash → empty-trash cycle for Kimi, Codex, Cursor, OpenCode using **real local data** (requires sessions to exist on disk)
+  - Provider unit tests in `src/provider.rs` (path matching, display key roundtrip)
+  - Test fixtures in `tests/fixtures/`
 - **Frontend**: vitest (`src/stores/search.test.ts`, `src/lib/provider-registry.test.ts`)
   - Run: `npm test`
 
@@ -169,6 +175,24 @@ Three-platform matrix (macOS, Windows, Linux) with:
 - **Projects dir path.** Each variant's sessions are at `{variant-dir}/config/projects/`. Fixed path structure.
 - **Resume command uses variant name.** `{variant-name} --resume {session-id}`. Variant name stored in `SessionMeta.variant_name`. Fallback: `claude --resume {session-id}`.
 - **Terminal validation for variants.** `open_in_terminal` validates that a variant name matches a known variant directory (directory exists with valid `variant.json`) to prevent shell injection.
+
+### Cursor CLI (JSONL Transcripts)
+
+- **Cursor CLI now uses JSONL transcripts**, not store.db blobs. Transcripts at `~/.cursor/projects/<key>/agent-transcripts/<id>/<id>.jsonl`. Subagents under `<id>/subagents/<subid>.jsonl`.
+- **store.db is a CLI session marker**, not content source. Located at `~/.cursor/chats/<hash>/<id>/store.db`. Used by `collect_cli_session_ids()` to distinguish CLI from IDE sessions. Must NOT be deleted during trash (needed for restore identification), only during permanent delete via `cleanup_on_permanent_delete`.
+- **`[REDACTED]` in assistant text.** Cursor redacts extended thinking as `[REDACTED]` placeholder. Strip from visible text via `strip_redacted()`. Standalone `[REDACTED]` text parts are already filtered in `extract_text_from_parts`.
+- **Subagent description matching uses full text.** Previous 120-char prefix matching caused collisions when multiple Tasks reviewed the same repo (shared prefix). Use full prompt text comparison.
+- **Subagent ordering needs explicit tiebreaker.** Parallel Tasks create subagent files in the same second → identical `created_at`. Use `find_subagent_description` match index as `created_at` offset to preserve parent Task order.
+
+### Trash / Restore / Permanent Delete
+
+- **`TrashMeta.parent_id` links children to parents.** Set during `execute_trash` so restore can find and restore all children regardless of filesystem layout (Codex uses flat directories, not subdirectories).
+- **`cleanup_session_dir` must check `is_session_dir()`.** Only `remove_dir_all` on directories containing session-specific files (`subagents/`, `state.json`, `wire.jsonl`, `context.jsonl`). Shared directories like Gemini's `chats/` must NOT be recursively deleted.
+- **`with_extension("")` vs `parent()` for session directory.** Claude/Codex/CC-Mirror: `<id>.jsonl` → `<id>/` via `with_extension("")`. Kimi/Cursor: session dir is `parent()` of the source file (`wire.jsonl` → `<uuid>/`, `<id>.jsonl` → `<id>/`). Both patterns tried in cleanup.
+- **Kimi `subagents/` dir must survive trash.** Contains `meta.json` files needed for child session title restoration. Only deleted during permanent delete, not during trash.
+- **Kimi subagent iteration order must be deterministic.** HashMap iteration is non-deterministic → sort agent_ids before processing to prevent tree "jumping" on rebuild.
+- **Kimi parallel Agent ToolCall args are truncated.** Only the first Agent gets complete JSON. Frontend uses regex fallback to extract `description` from partial JSON, and `agent_id` from tool output text.
+- **`cleanup_on_permanent_delete` trait hook.** Providers override for external cleanup (e.g. Cursor store.db dir). Called during `empty_trash` and `permanent_delete_trash`.
 
 ### General
 
