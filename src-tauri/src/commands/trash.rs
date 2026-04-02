@@ -318,17 +318,35 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
 /// Remove session directory from original location.
 /// Tries both patterns to cover all providers:
 /// - `<file>.jsonl` → `<file>/` (Claude, Codex, CC-Mirror)
-/// - `parent()` of file (Kimi, Cursor)
+/// - `parent()` of file (Kimi, Cursor — session UUID dir contains subagents/, state.json)
+///
+/// Safety: only `remove_dir_all` on directories that look session-specific
+/// (contain subagents/, state.json, wire.jsonl, or context.jsonl).
+/// Shared directories like Gemini's `chats/` are NOT removed.
 fn cleanup_session_dir(original_path: &str) {
     let original = std::path::Path::new(original_path);
     for candidate in [
         original.with_extension(""),
         original.parent().unwrap_or(original).to_path_buf(),
     ] {
-        if candidate.is_dir() {
+        if !candidate.is_dir() {
+            continue;
+        }
+        if is_session_dir(&candidate) {
             let _ = std::fs::remove_dir_all(&candidate);
+        } else {
+            // Only remove if empty (safe for shared directories)
+            let _ = std::fs::remove_dir(&candidate);
         }
     }
+}
+
+/// Check if a directory looks like a session-specific directory (safe to remove_dir_all).
+fn is_session_dir(dir: &std::path::Path) -> bool {
+    dir.join("subagents").is_dir()
+        || dir.join("state.json").is_file()
+        || dir.join("wire.jsonl").is_file()
+        || dir.join("context.jsonl").is_file()
 }
 
 fn sync_source(provider_str: &str, source_path: &str, state: &AppState) -> Result<(), String> {
