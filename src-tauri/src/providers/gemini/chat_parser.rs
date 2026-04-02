@@ -309,7 +309,6 @@ impl GeminiProvider {
                         },
                         model: None,
                     });
-
                 }
             }
         }
