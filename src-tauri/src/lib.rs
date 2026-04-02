@@ -1,13 +1,13 @@
-mod commands;
-mod db;
+pub mod commands;
+pub mod db;
 mod exporter;
-mod indexer;
+pub mod indexer;
 pub mod models;
 pub mod provider;
 pub mod provider_utils;
 pub mod providers;
 mod terminal;
-mod trash_state;
+pub mod trash_state;
 mod watcher;
 
 use std::sync::Arc;

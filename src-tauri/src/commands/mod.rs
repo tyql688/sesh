@@ -2,7 +2,7 @@ mod search;
 mod sessions;
 mod settings;
 mod terminal;
-mod trash;
+pub mod trash;
 
 use std::sync::Arc;
 

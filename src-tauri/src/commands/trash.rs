@@ -147,14 +147,23 @@ pub fn restore_session(trash_id: String, state: State<AppState>) -> Result<(), S
         }
     };
 
-    // Remove the entry itself AND any embedded children (same original_path, empty trash_file)
+    // Session directory prefix: children's source_path lives under the parent's session dir.
+    // e.g. parent: ~/.codex/sessions/abc.jsonl → session dir: ~/.codex/sessions/abc/
+    let session_dir_prefix = {
+        let p = std::path::Path::new(&entry.original_path);
+        let dir = p.with_extension("");
+        format!("{}/", dir.display())
+    };
+
+    // Collect children to also restore (own files under session dir, or embedded with same path)
+    let mut child_entries: Vec<TrashMeta> = Vec::new();
     let remaining: Vec<TrashMeta> = entries
         .into_iter()
         .filter(|e| {
             if e.id == trash_id {
                 return false;
             }
-            // Embedded children share the same original_path and have no trash file
+            // Embedded children: same original_path, empty trash_file (Kimi)
             if e.trash_file.is_empty()
                 && !entry.trash_file.is_empty()
                 && e.original_path == entry.original_path
@@ -162,11 +171,19 @@ pub fn restore_session(trash_id: String, state: State<AppState>) -> Result<(), S
             {
                 return false;
             }
+            // File-based children: source path under parent's session dir (Codex, Cursor, Claude)
+            if !e.trash_file.is_empty()
+                && e.provider == entry.provider
+                && e.original_path.starts_with(&session_dir_prefix)
+            {
+                child_entries.push(e.clone());
+                return false;
+            }
             true
         })
         .collect();
 
-    // Provider decides how to restore
+    // Restore parent
     let provider_enum = crate::models::Provider::parse(&entry.provider);
     let provider_impl = provider_enum
         .as_ref()
@@ -177,6 +194,15 @@ pub fn restore_session(trash_id: String, state: State<AppState>) -> Result<(), S
         .unwrap_or_else(|| crate::provider::infer_restore_action(&entry));
 
     let needs_sync = crate::provider::execute_restore(&action, &entry, &trash_dir, &remaining)?;
+
+    // Restore file-based children
+    for child in &child_entries {
+        let child_action = provider_impl
+            .as_ref()
+            .map(|p| p.restore_action(child))
+            .unwrap_or_else(|| crate::provider::infer_restore_action(child));
+        let _ = crate::provider::execute_restore(&child_action, child, &trash_dir, &remaining);
+    }
 
     // For shared deletions, also clean up the tracking file
     if action == crate::provider::RestoreAction::UndoSharedDeletion {
