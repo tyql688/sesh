@@ -137,7 +137,11 @@ impl GeminiProvider {
                 text
             };
 
-            if text.is_empty() && msg.tool_calls.is_none() {
+            let has_thoughts = msg
+                .thoughts
+                .as_ref()
+                .is_some_and(|t| !t.is_empty());
+            if text.is_empty() && msg.tool_calls.is_none() && !has_thoughts {
                 continue;
             }
 
