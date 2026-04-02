@@ -1,10 +1,20 @@
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::exporter;
 use crate::models::{IndexStats, ProviderInfo};
 
 use super::sessions::load_detail;
 use super::AppState;
+
+/// Open external URL in browser
+#[tauri::command]
+pub async fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    app.opener()
+        .open_url(&url, None::<String>)
+        .map_err(|e| format!("failed to open URL: {e}"))?;
+    Ok(())
+}
 
 #[tauri::command]
 pub fn get_index_stats(state: State<AppState>) -> Result<IndexStats, String> {

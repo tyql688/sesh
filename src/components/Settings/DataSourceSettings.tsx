@@ -1,4 +1,5 @@
 import { createResource, For, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../../i18n/index";
 import type { ProviderInfo } from "../../lib/types";
 import { getProviderPaths } from "../../lib/tauri";
@@ -37,9 +38,7 @@ export function DataSourceSettings(props: {
                       title={t("settings.openInFinder")}
                       onClick={async () => {
                         try {
-                          const { open } =
-                            await import("@tauri-apps/plugin-shell");
-                          await open(info.path);
+                          await invoke("open_external", { url: info.path });
                         } catch (e) {
                           toastError(String(e));
                         }
