@@ -307,8 +307,12 @@ impl GeminiProvider {
                         model: None,
                     });
 
-                    // Extract Agent tool calls as child subagent sessions
-                    if is_agent {
+                    // Extract completed Agent tool calls as child subagent sessions
+                    let is_completed = tc
+                        .get("status")
+                        .and_then(|s| s.as_str())
+                        .is_some_and(|s| s == "success");
+                    if is_agent && is_completed {
                         let objective = tc
                             .get("args")
                             .and_then(|a| a.get("objective"))
