@@ -9,10 +9,9 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use walkdir::WalkDir;
 
-use crate::models::{Message, Provider, SessionMeta, TrashMeta};
+use crate::models::{Message, Provider, SessionMeta};
 use crate::provider::{
-    ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, RestoreAction,
-    SessionProvider,
+    DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
 };
 
 pub struct Descriptor;
@@ -264,55 +263,12 @@ impl SessionProvider for GeminiProvider {
         Ok(session.messages)
     }
 
-    fn deletion_plan(&self, meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
-        if meta.parent_id.is_some() {
-            // Child from toolCall extraction -- shares parent's file, skip
-            return DeletionPlan {
-                file_action: FileAction::Skip,
-                child_plans: Vec::new(),
-                cleanup_dirs: Vec::new(),
-            };
-        }
-
-        // Main session -- remove file, skip children (they share source), clean up subagent dir
-        let child_plans = children
-            .iter()
-            .map(|c| ChildPlan {
-                id: c.id.clone(),
-                source_path: c.source_path.clone(),
-                title: c.title.clone(),
-                file_action: FileAction::Skip,
-            })
-            .collect();
-
-        let source = PathBuf::from(&meta.source_path);
-        let mut cleanup_dirs = Vec::new();
-        if let Some(chats_dir) = source.parent() {
-            // Subagent files live in chats/{parentSessionId}/
-            let subagent_dir = chats_dir.join(&meta.id);
-            if subagent_dir.is_dir() {
-                cleanup_dirs.push(subagent_dir);
-            }
-            // Also check short ID prefix (first 8 chars)
-            let short_id = &meta.id[..meta.id.len().min(8)];
-            let subagent_dir_short = chats_dir.join(short_id);
-            if subagent_dir_short.is_dir() && !cleanup_dirs.contains(&subagent_dir_short) {
-                cleanup_dirs.push(subagent_dir_short);
-            }
-        }
-
+    fn deletion_plan(&self, _meta: &SessionMeta, _children: &[SessionMeta]) -> DeletionPlan {
+        // Each chat file is one session, no children for now
         DeletionPlan {
             file_action: FileAction::Remove,
-            child_plans,
-            cleanup_dirs,
-        }
-    }
-
-    fn restore_action(&self, entry: &TrashMeta) -> RestoreAction {
-        if entry.trash_file.is_empty() {
-            RestoreAction::Noop // child session, parent restore handles it
-        } else {
-            RestoreAction::MoveBack
+            child_plans: Vec::new(),
+            cleanup_dirs: Vec::new(),
         }
     }
 }

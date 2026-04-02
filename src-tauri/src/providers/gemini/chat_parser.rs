@@ -32,16 +32,12 @@ impl GeminiProvider {
             Err(_) => return Vec::new(),
         };
 
-        let is_subagent = chat.kind.as_deref() == Some("subagent");
+        // Skip subagent files for now — focus on stable parent session parsing
+        if chat.kind.as_deref() == Some("subagent") {
+            return Vec::new();
+        }
 
-        // Subagent files: use filename stem as ID (sessionId is shared with parent)
-        let session_id = if is_subagent {
-            path.file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| chat.session_id.clone())
-        } else {
-            chat.session_id.clone()
-        };
+        let session_id = chat.session_id.clone();
 
         let project_path = project_map
             .get(project_id)
@@ -333,16 +329,12 @@ impl GeminiProvider {
             message_count: messages.len() as u32,
             file_size_bytes: file_size,
             source_path: path.to_string_lossy().to_string(),
-            is_sidechain: is_subagent,
+            is_sidechain: false,
             variant_name: None,
             model,
             cc_version: None,
             git_branch: None,
-            parent_id: if is_subagent {
-                Some(chat.session_id.clone())
-            } else {
-                None
-            },
+            parent_id: None,
         };
 
         let main_session = ParsedSession {
