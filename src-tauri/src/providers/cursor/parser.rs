@@ -112,12 +112,16 @@ impl CursorProvider {
 
         let project_name = project_name_from_path(&project_path);
 
-        // For subagents, try to use the description from the parent's Subagent tool_use
-        let title = if is_subagent {
-            self.find_subagent_description(path, first_user_message.as_deref().unwrap_or(""))
-                .unwrap_or_else(|| session_title(first_user_message.as_deref()))
+        // For subagents, try to use the description from the parent's Subagent tool_use.
+        // Also get the match index so we can order children by their Task position.
+        let (title, task_index) = if is_subagent {
+            match self.find_subagent_description(path, first_user_message.as_deref().unwrap_or(""))
+            {
+                Some((desc, idx)) => (desc, idx as i64),
+                None => (session_title(first_user_message.as_deref()), 0),
+            }
         } else {
-            session_title(first_user_message.as_deref())
+            (session_title(first_user_message.as_deref()), 0)
         };
 
         let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
@@ -130,7 +134,8 @@ impl CursorProvider {
                     .unwrap_or_default()
                     .as_secs() as i64
             })
-            .unwrap_or(0);
+            .unwrap_or(0)
+            + task_index; // tiebreaker: preserve parent Task order
         let updated_at = std::fs::metadata(path)
             .ok()
             .and_then(|m| m.modified().ok())
@@ -167,18 +172,20 @@ impl CursorProvider {
 
     /// Find the `description` from the parent transcript's Subagent/Task tool_use
     /// that matches this subagent's first user message (which is the `prompt`).
+    /// Returns (description, match_index) where index preserves Task order.
     fn find_subagent_description(
         &self,
         subagent_path: &Path,
         first_user_msg: &str,
-    ) -> Option<String> {
+    ) -> Option<(String, usize)> {
         let parent_dir = subagent_path.parent()?.parent()?; // subagents/ → <parentId>/
         let parent_id = parent_dir.file_name()?.to_string_lossy();
         let parent_jsonl = parent_dir.join(format!("{parent_id}.jsonl"));
 
         let content = std::fs::read_to_string(&parent_jsonl).ok()?;
-        let match_prefix: String = first_user_msg.chars().take(120).collect();
 
+        // Collect all Task/Subagent tool_uses with their prompts and descriptions
+        let mut candidates: Vec<(String, String)> = Vec::new();
         for line in content.lines() {
             let entry: Value = match serde_json::from_str(line) {
                 Ok(v) => v,
@@ -204,25 +211,27 @@ impl CursorProvider {
                     Some(i) => i,
                     None => continue,
                 };
-                let description = input.get("description").and_then(|d| d.as_str());
-                let prompt = input.get("prompt").and_then(|p| p.as_str());
-
-                if let Some(prompt_text) = prompt {
-                    let prompt_prefix: String = prompt_text.chars().take(120).collect();
-                    if prompt_prefix == match_prefix
-                        || match_prefix.starts_with(&prompt_prefix)
-                        || prompt_prefix.starts_with(&match_prefix)
-                    {
-                        if let Some(desc) = description {
-                            if !desc.is_empty() {
-                                return Some(desc.to_string());
-                            }
-                        }
-                    }
+                let description = input
+                    .get("description")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("");
+                let prompt = input.get("prompt").and_then(|p| p.as_str()).unwrap_or("");
+                if !description.is_empty() && !prompt.is_empty() {
+                    candidates.push((prompt.to_string(), description.to_string()));
                 }
             }
         }
 
+        // Match subagent's first user message against candidates.
+        // Use full text comparison to avoid ambiguity with shared prefixes.
+        for (idx, (prompt, desc)) in candidates.iter().enumerate() {
+            if prompt == first_user_msg
+                || first_user_msg.starts_with(prompt.as_str())
+                || prompt.starts_with(first_user_msg)
+            {
+                return Some((desc.clone(), idx));
+            }
+        }
         None
     }
 

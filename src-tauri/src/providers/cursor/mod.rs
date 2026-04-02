@@ -186,7 +186,9 @@ impl CursorProvider {
                     }
                 }
                 "assistant" => {
-                    let text = extract_text_from_content(msg_content);
+                    let raw_text = extract_text_from_content(msg_content);
+                    // Strip [REDACTED] placeholders from visible text
+                    let text = strip_redacted(&raw_text);
 
                     // Handle <think> tags
                     if let Some(thinking) = extract_think_content(&text) {
@@ -228,7 +230,6 @@ impl CursorProvider {
                             model: None,
                         });
                     }
-
                     let parts = parse_content_array(msg_content);
                     for part in &parts {
                         if part.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
@@ -338,24 +339,16 @@ impl SessionProvider for CursorProvider {
             })
             .collect();
 
-        // Cleanup: agent-transcripts/<sessionId>/ directory (contains subagents/)
+        // Don't include store.db dir (~/.cursor/chats/<hash>/<sessionId>/) in
+        // cleanup_dirs — it's needed for CLI session identification on restore.
+        // Only clean up the transcript session directory (subagents/ already moved).
         let source = PathBuf::from(&meta.source_path);
-        let session_dir = source.parent().map(|p| p.to_path_buf());
-        let mut cleanup_dirs: Vec<PathBuf> =
-            session_dir.filter(|d| d.is_dir()).into_iter().collect();
-
-        // Also clean up store.db under ~/.cursor/chats/<hash>/<sessionId>/
-        let chats_dir = self.chats_dir();
-        if chats_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&chats_dir) {
-                for entry in entries.flatten() {
-                    let candidate = entry.path().join(&meta.id);
-                    if candidate.is_dir() {
-                        cleanup_dirs.push(candidate);
-                    }
-                }
-            }
-        }
+        let cleanup_dirs: Vec<PathBuf> = source
+            .parent()
+            .filter(|d| d.is_dir())
+            .map(|d| d.to_path_buf())
+            .into_iter()
+            .collect();
 
         DeletionPlan {
             file_action: FileAction::Remove,
@@ -370,5 +363,22 @@ impl SessionProvider for CursorProvider {
         source_path: &str,
     ) -> Result<Vec<Message>, ProviderError> {
         self.load_transcript_messages(source_path)
+    }
+
+    fn cleanup_on_permanent_delete(&self, session_id: &str) {
+        // Remove store.db directory under ~/.cursor/chats/<hash>/<sessionId>/
+        let chats_dir = self.chats_dir();
+        if !chats_dir.exists() {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(&chats_dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let candidate = entry.path().join(session_id);
+            if candidate.is_dir() {
+                let _ = std::fs::remove_dir_all(&candidate);
+            }
+        }
     }
 }

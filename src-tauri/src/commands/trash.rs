@@ -230,15 +230,17 @@ pub fn empty_trash() -> Result<(), String> {
                 }
             }
 
-            // Also permanently delete subagent directory from original location
+            // Also permanently delete session directory from original location.
+            // Try both patterns: <file>.jsonl → <file>/ (Claude) and parent dir (Kimi/Cursor).
             if !entry.original_path.is_empty() {
-                let original = std::path::Path::new(&entry.original_path);
-                let session_dir = original.with_extension("");
-                let subagents_dir = session_dir.join("subagents");
-                if subagents_dir.is_dir() {
-                    let _ = std::fs::remove_dir_all(&subagents_dir);
-                    let _ = std::fs::remove_dir(&session_dir);
-                }
+                cleanup_session_dir(&entry.original_path);
+            }
+
+            // Provider-specific cleanup (e.g. Cursor store.db)
+            if let Some(p) = crate::models::Provider::parse(&entry.provider)
+                .and_then(|p| crate::provider::make_provider(&p))
+            {
+                p.cleanup_on_permanent_delete(&entry.id);
             }
         }
 
@@ -294,15 +296,16 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
             }
         }
 
-        // Also permanently delete subagent directory from original location
+        // Also permanently delete session directory from original location.
         if !entry.original_path.is_empty() {
-            let original = std::path::Path::new(&entry.original_path);
-            let session_dir = original.with_extension("");
-            let subagents_dir = session_dir.join("subagents");
-            if subagents_dir.is_dir() {
-                let _ = std::fs::remove_dir_all(&subagents_dir);
-                let _ = std::fs::remove_dir(&session_dir);
-            }
+            cleanup_session_dir(&entry.original_path);
+        }
+
+        // Provider-specific cleanup (e.g. Cursor store.db)
+        if let Some(p) = crate::models::Provider::parse(&entry.provider)
+            .and_then(|p| crate::provider::make_provider(&p))
+        {
+            p.cleanup_on_permanent_delete(&entry.id);
         }
     }
 
@@ -310,6 +313,22 @@ pub fn permanent_delete_trash(trash_id: String) -> Result<(), String> {
     atomic_write_json(&meta_path, &remaining)?;
 
     Ok(())
+}
+
+/// Remove session directory from original location.
+/// Tries both patterns to cover all providers:
+/// - `<file>.jsonl` → `<file>/` (Claude, Codex, CC-Mirror)
+/// - `parent()` of file (Kimi, Cursor)
+fn cleanup_session_dir(original_path: &str) {
+    let original = std::path::Path::new(original_path);
+    for candidate in [
+        original.with_extension(""),
+        original.parent().unwrap_or(original).to_path_buf(),
+    ] {
+        if candidate.is_dir() {
+            let _ = std::fs::remove_dir_all(&candidate);
+        }
+    }
 }
 
 fn sync_source(provider_str: &str, source_path: &str, state: &AppState) -> Result<(), String> {

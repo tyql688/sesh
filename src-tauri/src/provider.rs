@@ -272,11 +272,11 @@ pub fn jsonl_subagents_deletion_plan(meta: &SessionMeta, children: &[SessionMeta
         })
         .collect();
 
-    // Session dir: /path/to/{session_id}/ (contains subagents/)
+    // Session dir: /path/to/{session_id}/ (may contain subagents/, context.jsonl, state.json)
     let source = PathBuf::from(&meta.source_path);
     let session_dir = source.with_extension("");
     let mut cleanup_dirs = Vec::new();
-    if session_dir.join("subagents").is_dir() {
+    if session_dir.is_dir() {
         cleanup_dirs.push(session_dir);
     }
 
@@ -481,6 +481,11 @@ pub trait SessionProvider: Send + Sync {
     ) -> Result<(), ProviderError> {
         Ok(())
     }
+
+    /// Additional cleanup when a session is permanently deleted (empty trash / permanent delete).
+    /// Called after the main file and directory cleanup.
+    /// Default: no-op. Override to clean up provider-specific external data.
+    fn cleanup_on_permanent_delete(&self, _session_id: &str) {}
 }
 
 fn is_shared_source_path(path: &str) -> bool {

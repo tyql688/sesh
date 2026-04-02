@@ -258,6 +258,14 @@ fn is_bold_heading_at(text: &str, pos: usize) -> bool {
     false
 }
 
+/// Strip `[REDACTED]` placeholders from text content.
+pub fn strip_redacted(text: &str) -> String {
+    let result = text.replace("[REDACTED]", "");
+    // Clean up leftover blank lines
+    let lines: Vec<&str> = result.lines().filter(|l| !l.trim().is_empty()).collect();
+    lines.join("\n")
+}
+
 /// Map Cursor tool names to canonical display names.
 pub fn map_cursor_tool_name(name: &str) -> &str {
     match name {
