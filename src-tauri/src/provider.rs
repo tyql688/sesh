@@ -122,8 +122,9 @@ pub fn execute_trash(
     // Cleanup directories
     for dir in &plan.cleanup_dirs {
         if dir.is_dir() {
-            std::fs::remove_dir_all(dir)
-                .map_err(|e| format!("failed to remove cleanup directory {}: {e}", dir.display()))?;
+            std::fs::remove_dir_all(dir).map_err(|e| {
+                format!("failed to remove cleanup directory {}: {e}", dir.display())
+            })?;
         }
     }
 
@@ -176,7 +177,9 @@ pub fn execute_purge(
             FileAction::Shared => {
                 provider
                     .purge_from_source(&child.source_path, &child.id)
-                    .map_err(|e| format!("failed to purge child {} from shared source: {e}", child.id))?;
+                    .map_err(|e| {
+                        format!("failed to purge child {} from shared source: {e}", child.id)
+                    })?;
             }
             FileAction::Skip => {}
         }
@@ -184,8 +187,9 @@ pub fn execute_purge(
 
     for dir in &plan.cleanup_dirs {
         if dir.is_dir() {
-            std::fs::remove_dir_all(dir)
-                .map_err(|e| format!("failed to remove cleanup directory {}: {e}", dir.display()))?;
+            std::fs::remove_dir_all(dir).map_err(|e| {
+                format!("failed to remove cleanup directory {}: {e}", dir.display())
+            })?;
         }
     }
     Ok(())
@@ -464,13 +468,7 @@ pub trait SessionProvider: Send + Sync {
     /// Default: MoveBack for dedicated files, UndoSharedDeletion for shared.
     /// If neither applies (e.g. failed move before metadata write), do no-op.
     fn restore_action(&self, entry: &TrashMeta) -> RestoreAction {
-        if !entry.trash_file.is_empty() {
-            RestoreAction::MoveBack
-        } else if is_shared_source_path(&entry.original_path) {
-            RestoreAction::UndoSharedDeletion
-        } else {
-            RestoreAction::Noop
-        }
+        infer_restore_action(entry)
     }
 
     /// Permanently remove session data from a shared source (DB/file).
@@ -488,6 +486,16 @@ pub trait SessionProvider: Send + Sync {
 fn is_shared_source_path(path: &str) -> bool {
     let normalized = path.replace('\\', "/");
     normalized.ends_with(".db") || normalized.ends_with("/logs.json")
+}
+
+pub fn infer_restore_action(entry: &TrashMeta) -> RestoreAction {
+    if !entry.trash_file.is_empty() {
+        RestoreAction::MoveBack
+    } else if is_shared_source_path(&entry.original_path) {
+        RestoreAction::UndoSharedDeletion
+    } else {
+        RestoreAction::Noop
+    }
 }
 
 #[cfg(test)]
@@ -696,5 +704,19 @@ mod tests {
 
         let err = execute_purge(&plan, &provider, &meta).expect_err("should propagate purge error");
         assert!(err.contains("boom"));
+    }
+
+    #[test]
+    fn test_infer_restore_action_moveback_when_trash_file_exists() {
+        let entry = TrashMeta {
+            id: "s1".to_string(),
+            provider: "legacy-cursor".to_string(),
+            title: "t".to_string(),
+            original_path: "/tmp/agent-transcripts/s1/s1.jsonl".to_string(),
+            trashed_at: 0,
+            trash_file: "1710000000__s1.jsonl".to_string(),
+            project_name: String::new(),
+        };
+        assert_eq!(infer_restore_action(&entry), RestoreAction::MoveBack);
     }
 }
