@@ -94,7 +94,7 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-- Replace providers.ts with provider-registry.ts (#9)
+- `providers.ts` switch/if-else dispatch, replaced by provider-registry.ts (#9)
 
 ## [0.2.1] - 2026-03-30
 
