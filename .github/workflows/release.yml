@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: true
@@ -20,13 +23,13 @@ jobs:
         include:
           - platform: macos-latest
             target: universal-apple-darwin
-            bundles: dmg,updater
+            bundles: dmg
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            bundles: nsis,updater
+            bundles: nsis
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb,updater
+            bundles: appimage,deb
 
     runs-on: ${{ matrix.platform }}
 
