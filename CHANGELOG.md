@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-04-03
+
+### Added
+
+- **Auto-update checker** — 应用启动 2s 后自动检查更新，通过 updater store 状态机管理 idle→checking→available→downloading→ready→error 各阶段
+- **StatusBar update badge** — 状态栏右侧显示更新可用徽标
+
+### Fixed
+
+- **Windows session image paths** — `read_image_base64` 支持 Windows verbatim-path、BOM 剥离、路径规范化
+- **Updater 签名文件未生成** — `tauri.conf.json` 添加 `createUpdaterArtifacts: true`
+- **Release workflow 构建路径** — 统一三平台 Prepare 为 Collect step，合并 assemble-latest-json 到 publish-release，升级 artifact actions v4→v5
+- **Release artifact 下载失败** — 替换 tauri-action 为手动 `npx tauri build`，各平台通过 upload-artifact 上传产物
+
+### Changed
+
+- **AboutSettings** — 使用 updater store 替代本地状态管理更新信息
+
 ## [0.3.1] - 2026-04-03
 
 ### Added
