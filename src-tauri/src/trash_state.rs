@@ -78,6 +78,20 @@ pub fn add_shared_deletion(
     Ok(())
 }
 
+/// Return the set of session IDs that have been deleted from shared sources.
+/// Used by the indexer to prevent trashed shared-source sessions from
+/// resurrecting during reindex.
+pub fn shared_deleted_ids() -> std::collections::HashSet<String> {
+    let Ok(dir) = trash_dir() else {
+        return std::collections::HashSet::new();
+    };
+    let path = shared_deletions_path(&dir);
+    read_shared_deletions(&path)
+        .into_iter()
+        .map(|d| d.id)
+        .collect()
+}
+
 fn read_json_or_default<T>(path: &Path) -> T
 where
     T: for<'de> Deserialize<'de> + Default,

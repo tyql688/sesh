@@ -248,9 +248,15 @@ pub(crate) fn sync_source_for_provider(
     let provider_impl = crate::provider::make_provider(&provider)
         .ok_or_else(|| "cannot resolve HOME directory — provider unavailable".to_string())?;
 
-    let sessions = provider_impl
+    let mut sessions = provider_impl
         .scan_source(source_path)
         .map_err(|e| format!("failed to scan source: {e}"))?;
+
+    // Filter out sessions that are in the trash (shared-source providers)
+    let excluded = crate::trash_state::shared_deleted_ids();
+    if !excluded.is_empty() {
+        sessions.retain(|s| !excluded.contains(&s.meta.id));
+    }
 
     db.sync_source_snapshot(&provider, source_path, &sessions)
         .map_err(|e| format!("failed to sync source snapshot: {e}"))

@@ -29,11 +29,19 @@ impl Indexer {
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
 
+        // Read shared deletions once for the entire reindex cycle
+        let excluded = crate::trash_state::shared_deleted_ids();
+
         for provider in self.providers.iter() {
             let provider_kind = provider.provider();
-            let sessions = provider
+            let mut sessions = provider
                 .scan_all()
                 .map_err(|e| format!("failed to scan {} provider: {}", provider_kind.key(), e))?;
+
+            // Filter out sessions that are in the trash (shared-source providers)
+            if !excluded.is_empty() {
+                sessions.retain(|s| !excluded.contains(&s.meta.id));
+            }
 
             let count = sessions.len();
             self.db
