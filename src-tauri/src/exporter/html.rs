@@ -175,7 +175,7 @@ fn render_content(raw: &str) -> String {
 }
 
 /// Render tool_input JSON as a structured HTML summary.
-fn render_tool_detail(tool_name: &str, tool_input: &str) -> String {
+pub(crate) fn render_tool_detail(tool_name: &str, tool_input: &str) -> String {
     // Apply_patch: raw patch text, not JSON
     if tool_name == "Apply_patch" && tool_input.contains("*** Begin Patch") {
         // Extract file path from patch header

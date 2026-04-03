@@ -12,6 +12,14 @@ mod watcher;
 
 use std::sync::Arc;
 
+/// Test helpers — exposes private functions for integration tests.
+#[doc(hidden)]
+pub mod exporter_test_helpers {
+    pub fn render_tool_detail_pub(tool_name: &str, tool_input: &str) -> String {
+        crate::exporter::html::render_tool_detail(tool_name, tool_input)
+    }
+}
+
 use commands::AppState;
 use db::Database;
 use indexer::Indexer;
