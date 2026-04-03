@@ -24,7 +24,7 @@ describe("updater store", () => {
     vi.mocked(check).mockResolvedValue({
       version: "1.0.0",
       downloadAndInstall: vi.fn(),
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof check>>);
 
     const { checkForUpdate, phase, availableVersion } =
       await import("./updater");
