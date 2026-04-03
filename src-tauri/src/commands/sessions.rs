@@ -16,6 +16,26 @@ pub async fn reindex(state: State<'_, AppState>) -> Result<usize, String> {
 }
 
 #[tauri::command]
+pub async fn reindex_providers(
+    providers: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let filter: Vec<crate::models::Provider> = providers
+            .iter()
+            .filter_map(|s| crate::models::Provider::parse(s))
+            .collect();
+        if filter.is_empty() {
+            return Ok(0);
+        }
+        state.indexer.reindex_providers(Some(&filter))
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
+}
+
+#[tauri::command]
 pub async fn sync_sources(paths: Vec<String>, state: State<'_, AppState>) -> Result<usize, String> {
     let state = state.inner().clone();
     tokio::task::spawn_blocking(move || {

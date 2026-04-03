@@ -21,6 +21,10 @@ impl Indexer {
     }
 
     pub fn reindex(&self) -> Result<usize, String> {
+        self.reindex_providers(None)
+    }
+
+    pub fn reindex_providers(&self, filter: Option<&[Provider]>) -> Result<usize, String> {
         let start = Instant::now();
         let mut total = 0usize;
 
@@ -29,16 +33,22 @@ impl Indexer {
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
 
-        // Read shared deletions once for the entire reindex cycle
         let excluded = crate::trash_state::shared_deleted_ids();
 
         for provider in self.providers.iter() {
             let provider_kind = provider.provider();
+
+            // Skip providers not in the filter (if filter is set)
+            if let Some(allowed) = filter {
+                if !allowed.contains(&provider_kind) {
+                    continue;
+                }
+            }
+
             let mut sessions = provider
                 .scan_all()
                 .map_err(|e| format!("failed to scan {} provider: {}", provider_kind.key(), e))?;
 
-            // Filter out sessions that are in the trash (shared-source providers)
             if !excluded.is_empty() {
                 sessions.retain(|s| !excluded.contains(&s.meta.id));
             }
@@ -50,9 +60,12 @@ impl Indexer {
             total += count;
         }
 
-        self.db
-            .set_meta("last_index_time", &now_millis.to_string())
-            .map_err(|e| format!("failed to store last_index_time: {e}"))?;
+        // Only update last_index_time for full reindex
+        if filter.is_none() {
+            self.db
+                .set_meta("last_index_time", &now_millis.to_string())
+                .map_err(|e| format!("failed to store last_index_time: {e}"))?;
+        }
 
         let elapsed = start.elapsed();
         log::info!(

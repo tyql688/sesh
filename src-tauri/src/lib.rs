@@ -101,6 +101,7 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::reindex,
+            commands::reindex_providers,
             commands::sync_sources,
             commands::get_tree,
             commands::get_session_detail,

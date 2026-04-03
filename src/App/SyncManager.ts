@@ -1,6 +1,13 @@
 import type { TreeNode } from "../lib/types";
-import { reindex, syncSources, getTree, getSessionCount } from "../lib/tauri";
+import {
+  reindex,
+  syncSources,
+  getTree,
+  getSessionCount,
+  reindexProviders,
+} from "../lib/tauri";
 import { toastError } from "../stores/toast";
+import { allProviders } from "../lib/provider-registry";
 
 export interface SyncCallbacks {
   setTree: (tree: TreeNode[]) => void;
@@ -13,6 +20,7 @@ export function createSyncManager(callbacks: SyncCallbacks) {
   let syncInFlight = false;
   let pendingFullSync = false;
   const pendingChangedPaths = new Set<string>();
+  let pollTimer: ReturnType<typeof setInterval> | undefined;
 
   async function refreshTree() {
     const [treeData, count] = await Promise.all([getTree(), getSessionCount()]);
@@ -70,6 +78,28 @@ export function createSyncManager(callbacks: SyncCallbacks) {
     }
   }
 
+  function startPolling() {
+    const pollProviders = allProviders()
+      .filter((p) => p.watchStrategy === "poll")
+      .map((p) => p.key);
+    if (pollProviders.length === 0) return;
+
+    pollTimer = setInterval(async () => {
+      if (syncInFlight) return;
+      try {
+        await reindexProviders(pollProviders);
+        await refreshTree();
+      } catch {
+        // Silent — polling failures are transient
+      }
+    }, 5000);
+  }
+
+  function stopPolling() {
+    clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+
   /** Load cached tree immediately, then reindex in background. */
   async function coldStart() {
     // Show cached data instantly so the user doesn't stare at a spinner
@@ -87,11 +117,14 @@ export function createSyncManager(callbacks: SyncCallbacks) {
     } catch (e) {
       toastError(String(e));
     }
+
+    startPolling();
   }
 
   return {
     syncFromDisk,
     refreshTree,
     coldStart,
+    stopPolling,
   };
 }

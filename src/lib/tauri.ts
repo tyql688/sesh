@@ -14,6 +14,10 @@ export async function reindex(): Promise<number> {
   return invoke<number>("reindex");
 }
 
+export async function reindexProviders(providers: string[]): Promise<number> {
+  return invoke<number>("reindex_providers", { providers });
+}
+
 export async function syncSources(paths: string[]): Promise<number> {
   return invoke<number>("sync_sources", { paths });
 }
