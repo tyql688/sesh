@@ -17,6 +17,47 @@ use db::Database;
 use indexer::Indexer;
 use tauri::Manager;
 
+/// Detect and fix inconsistencies left by interrupted trash operations.
+/// Called once at app startup, after DB is opened.
+fn audit_trash_consistency(db: &db::Database) {
+    let Ok(trash_dir) = trash_state::trash_dir() else {
+        return;
+    };
+    let meta_path = trash_state::trash_meta_path(&trash_dir);
+    let entries = trash_state::read_trash_meta(&meta_path);
+    if entries.is_empty() {
+        return;
+    }
+
+    for entry in &entries {
+        // Auto-fix: session in both trash_meta AND DB → complete interrupted trash
+        if db.get_session(&entry.id).ok().flatten().is_some() {
+            log::warn!(
+                "trash audit: session {} found in both trash and DB — completing interrupted trash",
+                entry.id
+            );
+            if let Err(e) = db.delete_session(&entry.id) {
+                log::warn!(
+                    "trash audit: failed to delete session {} from DB: {e}",
+                    entry.id
+                );
+            }
+        }
+
+        // Log: trash file referenced but missing
+        if !entry.trash_file.is_empty() {
+            let trash_file_path = trash_dir.join(&entry.trash_file);
+            if !trash_file_path.exists() {
+                log::warn!(
+                    "trash audit: session {} references missing trash file: {}",
+                    entry.id,
+                    entry.trash_file
+                );
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let data_dir = match dirs::data_local_dir() {
@@ -39,6 +80,8 @@ pub fn run() {
             std::process::exit(1);
         }
     };
+
+    audit_trash_consistency(&db);
 
     let providers = provider::all_providers();
 
