@@ -9,13 +9,11 @@ mod tools;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use rayon::prelude::*;
-use serde_json::Value;
-
 use crate::models::{Message, MessageRole, Provider, SessionMeta};
 use crate::provider::{
     ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
 };
+use rayon::prelude::*;
 
 use tools::*;
 
@@ -160,16 +158,9 @@ impl CursorProvider {
 
         let mut messages = Vec::new();
 
-        for line in content.lines() {
-            let entry: Value = match serde_json::from_str(line) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-
-            let role = entry.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let msg_content = entry.get("message").and_then(|m| m.get("content"));
-
-            match role {
+        crate::providers::cursor::parser::for_each_transcript_entry(
+            &content,
+            |role, msg_content| match role {
                 "user" => {
                     let text = extract_text_from_content(msg_content);
                     let clean = extract_user_text(&text);
@@ -187,10 +178,8 @@ impl CursorProvider {
                 }
                 "assistant" => {
                     let raw_text = extract_text_from_content(msg_content);
-                    // Strip [REDACTED] placeholders from visible text
                     let text = strip_redacted(&raw_text);
 
-                    // Handle <think> tags
                     if let Some(thinking) = extract_think_content(&text) {
                         messages.push(Message {
                             role: MessageRole::System,
@@ -205,7 +194,6 @@ impl CursorProvider {
 
                     let after_think = strip_think_tags(&text);
 
-                    // Handle Cursor-style **Bold Title** thinking blocks
                     if let Some(cursor_thinking) = extract_cursor_thinking(&after_think) {
                         messages.push(Message {
                             role: MessageRole::System,
@@ -252,8 +240,8 @@ impl CursorProvider {
                     }
                 }
                 _ => {}
-            }
-        }
+            },
+        );
 
         Ok(messages)
     }

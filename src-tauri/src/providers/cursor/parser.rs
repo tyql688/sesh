@@ -11,6 +11,23 @@ use crate::provider_utils::{
 use super::tools::*;
 use super::CursorProvider;
 
+/// Shared JSONL entry parsing used by both scan and load paths.
+/// Ensures JSON parsing and role/content extraction are identical.
+pub(crate) fn for_each_transcript_entry(
+    content: &str,
+    mut handler: impl FnMut(&str, Option<&Value>),
+) {
+    for line in content.lines() {
+        let entry: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let role = entry.get("role").and_then(|r| r.as_str()).unwrap_or("");
+        let msg_content = entry.get("message").and_then(|m| m.get("content"));
+        handler(role, msg_content);
+    }
+}
+
 impl CursorProvider {
     /// Parse a transcript JSONL file into a ParsedSession.
     /// Handles both main transcripts and subagent transcripts based on path structure.
@@ -49,49 +66,39 @@ impl CursorProvider {
         let mut message_count: u32 = 0;
         let mut project_path = String::new();
 
-        for line in content.lines() {
-            let entry: Value = match serde_json::from_str(line) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-
-            let role = entry.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let msg_content = entry.get("message").and_then(|m| m.get("content"));
-
-            match role {
-                "user" => {
-                    let text = extract_text_from_content(msg_content);
-                    if project_path.is_empty() {
-                        if let Some(wp) = extract_workspace_path(&text) {
-                            project_path = wp;
-                        }
-                    }
-                    let clean = extract_user_text(&text);
-                    if !clean.is_empty() {
-                        if first_user_message.is_none() {
-                            first_user_message = Some(clean.clone());
-                        }
-                        content_parts.push(clean);
-                        message_count += 1;
+        for_each_transcript_entry(&content, |role, msg_content| match role {
+            "user" => {
+                let text = extract_text_from_content(msg_content);
+                if project_path.is_empty() {
+                    if let Some(wp) = extract_workspace_path(&text) {
+                        project_path = wp;
                     }
                 }
-                "assistant" => {
-                    let text = extract_text_from_content(msg_content);
-                    let after_think = strip_think_tags(&text);
-                    let clean = strip_cursor_thinking(&after_think);
-                    if !clean.is_empty() {
-                        content_parts.push(clean);
+                let clean = extract_user_text(&text);
+                if !clean.is_empty() {
+                    if first_user_message.is_none() {
+                        first_user_message = Some(clean.clone());
                     }
-                    let parts = parse_content_array(msg_content);
-                    let tool_count = parts
-                        .iter()
-                        .filter(|p| p.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
-                        .count();
-                    message_count += 1 + tool_count as u32;
+                    content_parts.push(clean);
+                    message_count += 1;
                 }
-                _ => {}
             }
-        }
+            "assistant" => {
+                let text = extract_text_from_content(msg_content);
+                let after_think = strip_think_tags(&text);
+                let clean = strip_cursor_thinking(&after_think);
+                if !clean.is_empty() {
+                    content_parts.push(clean);
+                }
+                let parts = parse_content_array(msg_content);
+                let tool_count = parts
+                    .iter()
+                    .filter(|p| p.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
+                    .count();
+                message_count += 1 + tool_count as u32;
+            }
+            _ => {}
+        });
 
         if message_count == 0 {
             return None;
@@ -308,4 +315,74 @@ fn decode_project_key(key: &str) -> String {
         }
     }
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::models::MessageRole;
+    use crate::providers::cursor::CursorProvider;
+
+    fn write_fixture(dir: &std::path::Path, content: &str) -> std::path::PathBuf {
+        let session_id = "test-session-001";
+        let transcript_dir = dir
+            .join("projects")
+            .join("TestProj")
+            .join("agent-transcripts")
+            .join(session_id);
+        std::fs::create_dir_all(&transcript_dir).unwrap();
+        let path = transcript_dir.join(format!("{session_id}.jsonl"));
+        std::fs::write(&path, content).unwrap();
+        // Create store.db marker so it's treated as CLI session
+        let chats_dir = dir.join("chats").join("hash123").join(session_id);
+        std::fs::create_dir_all(&chats_dir).unwrap();
+        std::fs::File::create(chats_dir.join("store.db")).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_scan_and_load_message_count_consistent() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let fixture = r#"{"role":"user","message":{"content":[{"type":"text","text":"hello world"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"hi there"},{"type":"tool_use","name":"Read","id":"t1","input":{"file_path":"/tmp/f"}}]}}
+{"role":"user","message":{"content":[{"type":"text","text":"thanks"}]}}"#;
+
+        let path = write_fixture(dir.path(), fixture);
+        let provider = CursorProvider {
+            home_dir: dir.path().to_path_buf(),
+        };
+
+        let parsed = provider.parse_transcript_jsonl(&path).unwrap();
+        let scan_count = parsed.meta.message_count;
+
+        let messages = provider
+            .load_transcript_messages(path.to_str().unwrap())
+            .unwrap();
+        let load_count = messages.len() as u32;
+
+        assert_eq!(
+            scan_count, load_count,
+            "scan message_count ({scan_count}) != load messages.len() ({load_count})"
+        );
+    }
+
+    #[test]
+    fn test_scan_and_load_thinking_consistent() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let fixture = r#"{"role":"user","message":{"content":[{"type":"text","text":"do something"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"<think>internal reasoning</think>\nvisible output"}]}}"#;
+
+        let path = write_fixture(dir.path(), fixture);
+        let provider = CursorProvider {
+            home_dir: dir.path().to_path_buf(),
+        };
+
+        let messages = provider
+            .load_transcript_messages(path.to_str().unwrap())
+            .unwrap();
+        let has_thinking = messages
+            .iter()
+            .any(|m| m.role == MessageRole::System && m.content.starts_with("[thinking]"));
+
+        assert!(has_thinking, "load path should extract thinking blocks");
+    }
 }
