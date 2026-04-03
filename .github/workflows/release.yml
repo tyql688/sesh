@@ -59,18 +59,126 @@ jobs:
           workspaces: src-tauri
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Prepare macOS assets
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p release-assets
+          VERSION="${GITHUB_REF_NAME}"
+
+          # Locate bundle directory
+          BUNDLE_DIR=""
+          for path in \
+            "src-tauri/target/universal-apple-darwin/release/bundle" \
+            "src-tauri/target/aarch64-apple-darwin/release/bundle" \
+            "src-tauri/target/x86_64-apple-darwin/release/bundle" \
+            "src-tauri/target/release/bundle"; do
+            if [ -d "$path" ]; then
+              BUNDLE_DIR="$path"
+              break
+            fi
+          done
+          if [ -z "$BUNDLE_DIR" ]; then
+            echo "❌ No bundle directory found" >&2
+            find src-tauri/target -type d -name bundle 2>/dev/null || true
+            exit 1
+          fi
+          echo "Using bundle dir: $BUNDLE_DIR"
+
+          # DMG
+          DMG=$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -name "*.dmg" -type f 2>/dev/null | head -1 || true)
+          if [ -n "$DMG" ]; then
+            NEW_DMG="CC-Session-${VERSION}-macOS.dmg"
+            cp "$DMG" "release-assets/$NEW_DMG"
+            echo "DMG copied: $NEW_DMG"
+          else
+            echo "⚠️ No DMG found"
+          fi
+
+          # Updater artifact (.tar.gz + .sig)
+          TAR_GZ=$(find "$BUNDLE_DIR/macos" -maxdepth 1 -name "*.tar.gz" -type f 2>/dev/null | head -1 || true)
+          if [ -n "$TAR_GZ" ]; then
+            NEW_TAR_GZ="CC-Session-${VERSION}-macOS.tar.gz"
+            cp "$TAR_GZ" "release-assets/$NEW_TAR_GZ"
+            [ -f "$TAR_GZ.sig" ] && cp "$TAR_GZ.sig" "release-assets/$NEW_TAR_GZ.sig"
+            echo "Updater artifact copied: $NEW_TAR_GZ"
+          else
+            echo "⚠️ No .tar.gz updater artifact found"
+          fi
+
+      - name: Prepare Windows assets
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          $VERSION = $env:GITHUB_REF_NAME
+
+          # NSIS installer + .sig
+          $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Recurse -Include *.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -ne $nsis) {
+            $dest = "CC-Session-$VERSION-Windows.exe"
+            Copy-Item $nsis.FullName (Join-Path release-assets $dest)
+            Write-Host "NSIS installer copied: $dest"
+            $sigPath = "$($nsis.FullName).sig"
+            if (Test-Path $sigPath) {
+              Copy-Item $sigPath (Join-Path release-assets ("$dest.sig"))
+              Write-Host "Signature copied: $dest.sig"
+            }
+          } else {
+            Write-Warning 'No NSIS installer found'
+          }
+
+      - name: Prepare Linux assets
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p release-assets
+          VERSION="${GITHUB_REF_NAME}"
+
+          # AppImage + .sig (updater)
+          APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f 2>/dev/null | head -1 || true)
+          if [ -n "$APPIMAGE" ]; then
+            NEW_APPIMAGE="CC-Session-${VERSION}-Linux-x86_64.AppImage"
+            cp "$APPIMAGE" "release-assets/$NEW_APPIMAGE"
+            [ -f "$APPIMAGE.sig" ] && cp "$APPIMAGE.sig" "release-assets/$NEW_APPIMAGE.sig"
+            echo "AppImage copied: $NEW_APPIMAGE"
+          else
+            echo "⚠️ No AppImage found"
+          fi
+
+          # .deb
+          DEB=$(find src-tauri/target/release/bundle -name "*.deb" -type f 2>/dev/null | head -1 || true)
+          if [ -n "$DEB" ]; then
+            cp "$DEB" "release-assets/CC-Session-${VERSION}-Linux-x86_64.deb"
+            echo "Deb copied"
+          fi
+
+      - name: List prepared assets
+        shell: bash
+        run: ls -la release-assets || true
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'CC Session ${{ github.ref_name }}'
-          releaseBody: 'See the [changelog](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md) for details.'
-          releaseDraft: true
-          prerelease: false
-          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          name: release-assets-${{ runner.os }}-${{ runner.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+
+      - name: List generated bundles (debug)
+        if: always()
+        shell: bash
+        run: |
+          echo "Listing bundles in src-tauri/target..."
+          find src-tauri/target -maxdepth 5 -type f \( -name "*.dmg" -o -name "*.tar.gz" -o -name "*.sig" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.exe" -o -name "*.msi" \) 2>/dev/null || true
 
   publish-release:
     name: Publish GitHub Release
@@ -82,7 +190,7 @@ jobs:
       - name: Download built release artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: release-*
+          pattern: release-assets-*
           path: release-assets
           merge-multiple: true
 
@@ -101,6 +209,14 @@ jobs:
           prerelease: false
           body: |
             See the [changelog](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md) for details.
+
+            ### Downloads
+
+            - **macOS**: `CC-Session-${{ github.ref_name }}-macOS.dmg`
+            - **Windows**: `CC-Session-${{ github.ref_name }}-Windows.exe`
+            - **Linux**: `CC-Session-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb`
+
+            > `.tar.gz` files are for Tauri auto-updater only.
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -133,6 +249,7 @@ jobs:
           mac_url=""; mac_sig=""
           win_url=""; win_sig=""
           linux_url=""; linux_sig=""
+          shopt -s nullglob
           for sig in dl/*.sig; do
             base=${sig%.sig}
             fname=$(basename "$base")
@@ -143,7 +260,7 @@ jobs:
                 mac_url="$url"; mac_sig="$sig_content";;
               *-Linux-*.AppImage|*-Linux-*.appimage)
                 linux_url="$url"; linux_sig="$sig_content";;
-              *.msi|*.exe)
+              *.exe)
                 win_url="$url"; win_sig="$sig_content";;
             esac
           done
