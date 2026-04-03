@@ -61,3 +61,17 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/** Replace home directory prefix with ~ for privacy. */
+export function shortenHomePath(path: string): string {
+  const homePatterns = [
+    /^\/Users\/[^/]+/,
+    /^\/home\/[^/]+/,
+    /^[A-Z]:\\Users\\[^\\]+/,
+  ];
+  for (const pat of homePatterns) {
+    const match = path.match(pat);
+    if (match) return path.replace(match[0], "~");
+  }
+  return path;
+}
