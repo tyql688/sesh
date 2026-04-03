@@ -9,7 +9,12 @@ import {
   onCleanup,
 } from "solid-js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { SessionMeta, Message, MessageRole } from "../../lib/types";
+import type {
+  SessionRef,
+  SessionMeta,
+  Message,
+  MessageRole,
+} from "../../lib/types";
 import { getProvider } from "../../lib/provider-registry";
 import {
   getSessionDetail,
@@ -32,7 +37,7 @@ import { SessionToolbar } from "./SessionToolbar";
 import { SessionSearch } from "./SessionSearch";
 
 export function SessionView(props: {
-  session: SessionMeta;
+  session: SessionRef;
   onRefreshTree: () => void;
   onCloseTab: (id: string) => void;
 }) {
@@ -87,7 +92,15 @@ export function SessionView(props: {
   const hasMore = createMemo(() => visibleCount() < filteredEntries().length);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
-  const [meta, setMeta] = createSignal<SessionMeta>(props.session);
+  const [meta, setMeta] = createSignal<SessionMeta>({
+    ...props.session,
+    source_path: props.session.source_path ?? "",
+    project_path: props.session.project_path ?? "",
+    created_at: 0,
+    updated_at: 0,
+    message_count: 0,
+    file_size_bytes: 0,
+  });
   let loadVersion = 0;
 
   createEffect(
@@ -102,7 +115,7 @@ export function SessionView(props: {
         try {
           const detail = await getSessionDetail(
             sessionId,
-            props.session.source_path,
+            props.session.source_path ?? "",
             props.session.provider,
           );
           // Discard result if a newer load was triggered
@@ -232,7 +245,7 @@ export function SessionView(props: {
     try {
       const detail = await getSessionDetail(
         props.session.id,
-        props.session.source_path,
+        props.session.source_path ?? "",
         props.session.provider,
       );
       const oldCount = messages().length;
@@ -354,7 +367,7 @@ export function SessionView(props: {
     try {
       await trashSession(
         props.session.id,
-        props.session.source_path,
+        props.session.source_path ?? "",
         props.session.provider,
         props.session.title,
       );
@@ -497,7 +510,7 @@ export function SessionView(props: {
 
       <ExportDialog
         open={showExportDialog()}
-        session={props.session}
+        session={meta()}
         onClose={() => setShowExportDialog(false)}
       />
     </div>

@@ -1,4 +1,4 @@
-import type { TreeNode, SessionMeta, Provider } from "../../lib/types";
+import type { TreeNode, SessionRef, Provider } from "../../lib/types";
 import { isPathBlocked } from "../../stores/settings";
 
 /** Filter out projects whose path matches a blocked folder. */
@@ -108,21 +108,15 @@ export function applyTimeGrouping(
   }));
 }
 
-export function buildSessionMeta(
+export function buildSessionRef(
   node: TreeNode,
   parentProjectLabel: string,
-): SessionMeta {
+): SessionRef {
   return {
     id: node.id,
     provider: (node.provider ?? "claude") as Provider,
     title: node.label,
-    project_path: "",
     project_name: parentProjectLabel,
-    created_at: 0,
-    updated_at: 0,
-    message_count: 0,
-    file_size_bytes: 0,
-    source_path: "",
     is_sidechain: node.is_sidechain ?? false,
   };
 }

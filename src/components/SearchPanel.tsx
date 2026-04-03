@@ -1,5 +1,5 @@
 import { createSignal, Show, For, onCleanup } from "solid-js";
-import type { SessionMeta } from "../lib/types";
+import type { SessionRef } from "../lib/types";
 import {
   query,
   results,
@@ -24,7 +24,7 @@ function sanitizeSnippet(html: string): string {
 }
 
 export function SearchPanel(props: {
-  onOpenSession: (session: SessionMeta) => void;
+  onOpenSession: (session: SessionRef) => void;
 }) {
   const { t } = useI18n();
   const [focused, setFocused] = createSignal(false);
@@ -51,7 +51,7 @@ export function SearchPanel(props: {
     }, 200);
   }
 
-  function handleResultClick(session: SessionMeta) {
+  function handleResultClick(session: SessionRef) {
     props.onOpenSession(session);
     clearSearch();
     setFocused(false);

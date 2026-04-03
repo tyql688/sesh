@@ -1,8 +1,8 @@
-import type { SessionMeta } from "../lib/types";
+import type { SessionRef } from "../lib/types";
 
 export interface KeyboardDeps {
   activeTabId: () => string | null;
-  openTabs: () => SessionMeta[];
+  openTabs: () => SessionRef[];
   showKeyboardOverlay: () => boolean;
   setActiveTabId: (id: string | null) => void;
   setShowKeyboardOverlay: (v: boolean | ((prev: boolean) => boolean)) => void;

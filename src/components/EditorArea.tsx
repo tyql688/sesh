@@ -9,7 +9,7 @@ import {
   onCleanup,
 } from "solid-js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { SessionMeta, TreeNode } from "../lib/types";
+import type { SessionRef, TreeNode } from "../lib/types";
 import { listRecentSessions, getChildSessions } from "../lib/tauri";
 import { useI18n } from "../i18n/index";
 import { isPathBlocked } from "../stores/settings";
@@ -20,7 +20,7 @@ import { ProviderIcon } from "../lib/icons";
 import { isMac } from "../lib/platform";
 
 export function EditorArea(props: {
-  tabs: SessionMeta[];
+  tabs: SessionRef[];
   activeTabId: string | null;
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
@@ -29,7 +29,7 @@ export function EditorArea(props: {
   onCloseTabsToRight: (fromId: string) => void;
   onRefreshTree: () => void;
   tree: TreeNode[];
-  onOpenSession: (session: SessionMeta) => void;
+  onOpenSession: (session: SessionRef) => void;
 }) {
   const { t, locale } = useI18n();
   // Refresh trigger: bumped on mount and whenever sessions change

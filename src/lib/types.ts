@@ -26,6 +26,18 @@ export interface SessionMeta {
   parent_id?: string;
 }
 
+/** Lightweight reference for opening sessions from the tree.
+ * SessionMeta satisfies this interface via structural typing. */
+export interface SessionRef {
+  id: string;
+  provider: Provider;
+  title: string;
+  project_name: string;
+  is_sidechain: boolean;
+  source_path?: string;
+  project_path?: string;
+}
+
 export type MessageRole = "user" | "assistant" | "tool" | "system";
 
 export interface TokenUsage {

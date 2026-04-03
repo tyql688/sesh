@@ -1,5 +1,5 @@
 import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
-import type { SessionMeta, TreeNode } from "../../lib/types";
+import type { SessionRef, TreeNode } from "../../lib/types";
 import {
   resumeSession,
   trashSession,
@@ -30,7 +30,7 @@ import {
   filterBlockedFolders,
   applyTimeGrouping,
   filterOrphanSubagents,
-  buildSessionMeta,
+  buildSessionRef,
 } from "./hooks";
 import {
   buildSessionMenuItems,
@@ -63,7 +63,7 @@ function ExplorerSkeleton() {
 export function Explorer(props: {
   tree: TreeNode[];
   activeSessionId: string | null;
-  onOpenSession: (s: SessionMeta) => void;
+  onOpenSession: (s: SessionRef) => void;
   onDeleteSession?: (id: string) => void;
   onExportSession?: (id: string) => void;
   onRefreshTree?: () => void;
@@ -168,7 +168,7 @@ export function Explorer(props: {
       return;
     }
     clearSelection();
-    props.onOpenSession(buildSessionMeta(node, parentProjectLabel));
+    props.onOpenSession(buildSessionRef(node, parentProjectLabel));
   }
 
   function handleSessionContextMenu(

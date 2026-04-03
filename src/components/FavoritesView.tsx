@@ -8,7 +8,7 @@ import {
   on,
 } from "solid-js";
 import { listFavorites } from "../lib/tauri";
-import type { SessionMeta, TreeNode } from "../lib/types";
+import type { SessionMeta, SessionRef, TreeNode } from "../lib/types";
 import { useI18n } from "../i18n/index";
 import { buildFavoritesTree } from "../lib/tree-builders";
 import { toastError } from "../stores/toast";
@@ -17,7 +17,7 @@ import { favoriteVersion } from "../stores/favorites";
 import { TreeNodeComponent } from "./TreeNode";
 
 export function FavoritesView(props: {
-  onOpenSession: (s: SessionMeta) => void;
+  onOpenSession: (s: SessionRef) => void;
 }) {
   const { t } = useI18n();
   const [favorites, setFavorites] = createSignal<SessionMeta[]>([]);

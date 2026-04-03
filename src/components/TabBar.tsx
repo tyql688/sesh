@@ -1,5 +1,5 @@
 import { createSignal, For } from "solid-js";
-import type { SessionMeta, Provider } from "../lib/types";
+import type { SessionRef, Provider } from "../lib/types";
 import { useI18n } from "../i18n/index";
 import { ContextMenu, type MenuItemDef } from "./ContextMenu";
 import { isMac } from "../lib/platform";
@@ -9,7 +9,7 @@ function providerColor(provider: Provider): string {
 }
 
 export function TabBar(props: {
-  tabs: SessionMeta[];
+  tabs: SessionRef[];
   activeTabId: string | null;
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
