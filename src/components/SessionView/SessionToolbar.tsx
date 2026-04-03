@@ -3,7 +3,12 @@ import type { Accessor } from "solid-js";
 import type { SessionMeta, Message } from "../../lib/types";
 import { useI18n } from "../../i18n/index";
 import { getDisplayLabel } from "../../lib/provider-registry";
-import { formatTimestamp, fmtK, formatFileSize } from "../../lib/formatters";
+import {
+  formatTimestamp,
+  fmtK,
+  formatFileSize,
+  shortenHomePath,
+} from "../../lib/formatters";
 import type { ProcessedEntry } from "./hooks";
 
 export function SessionToolbar(props: {
@@ -30,7 +35,8 @@ export function SessionToolbar(props: {
   const totalTokens = () => {
     let input = 0,
       output = 0,
-      cacheRead = 0;
+      cacheRead = 0,
+      cacheWrite = 0;
     for (const e of props.processedEntries()) {
       const msgs =
         e.type === "message"
@@ -43,10 +49,11 @@ export function SessionToolbar(props: {
           input += m.token_usage.input_tokens;
           output += m.token_usage.output_tokens;
           cacheRead += m.token_usage.cache_read_input_tokens;
+          cacheWrite += m.token_usage.cache_creation_input_tokens;
         }
       }
     }
-    return input + output > 0 ? { input, output, cacheRead } : null;
+    return input + output > 0 ? { input, output, cacheRead, cacheWrite } : null;
   };
 
   return (
@@ -139,11 +146,21 @@ export function SessionToolbar(props: {
           <span class="info-sep">&middot;</span>
           <span
             class="session-info-tokens"
-            title={`${t("common.inputTokens")}: ${totalTokens()!.input.toLocaleString()}, ${t("common.outputTokens")}: ${totalTokens()!.output.toLocaleString()}${totalTokens()!.cacheRead > 0 ? `, ${t("common.cacheReadTokens")}: ${totalTokens()!.cacheRead.toLocaleString()}` : ""}`}
+            title={`${t("common.inputTokens")}: ${totalTokens()!.input.toLocaleString()}, ${t("common.outputTokens")}: ${totalTokens()!.output.toLocaleString()}${totalTokens()!.cacheWrite > 0 ? `, ${t("common.cacheWriteTokens")}: ${totalTokens()!.cacheWrite.toLocaleString()}` : ""}${totalTokens()!.cacheRead > 0 ? `, ${t("common.cacheReadTokens")}: ${totalTokens()!.cacheRead.toLocaleString()}` : ""}`}
           >
             {"\u2191"}
             {fmtK(totalTokens()!.input)} {"\u2193"}
             {fmtK(totalTokens()!.output)} {t("common.tokens")}
+            <Show
+              when={totalTokens()!.cacheWrite + totalTokens()!.cacheRead > 0}
+            >
+              {" · "}
+              <span class="cache-read-label">
+                {t("common.cacheRead")} {fmtK(totalTokens()!.cacheRead)}
+              </span>
+              {" · "}
+              {t("common.cacheWrite")} {fmtK(totalTokens()!.cacheWrite)}
+            </Show>
           </span>
         </Show>
         <Show when={props.meta().is_sidechain}>
@@ -170,7 +187,9 @@ export function SessionToolbar(props: {
         </Show>
         <Show when={props.meta().project_path}>
           <span class="info-sep">&middot;</span>
-          <span class="session-info-path">{props.meta().project_path}</span>
+          <span class="session-info-path" title={props.meta().project_path}>
+            {shortenHomePath(props.meta().project_path)}
+          </span>
         </Show>
       </div>
     </>

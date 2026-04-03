@@ -162,6 +162,10 @@
   cursor: default;
 }
 
+.cache-read-label {
+  color: #10b981;
+}
+
 .session-info-sidechain {
   color: var(--text-tertiary);
   font-size: 11px;
