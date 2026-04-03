@@ -1,8 +1,9 @@
-import { onMount } from "solid-js";
+import { onMount, Show } from "solid-js";
 import { useI18n } from "../i18n/index";
 import type { Locale } from "../i18n/index";
 import { theme, setTheme, applyTheme } from "../stores/theme";
 import type { Theme } from "../stores/theme";
+import { phase, availableVersion, downloadAndInstall } from "../stores/updater";
 
 export function StatusBar(props: {
   sessionCount: number;
@@ -44,6 +45,25 @@ export function StatusBar(props: {
     }
   };
 
+  const updateLabel = () => {
+    switch (phase()) {
+      case "available":
+        return `↑ v${availableVersion()}`;
+      case "downloading":
+      case "installing":
+        return t("settings.updating");
+      case "error":
+        return t("settings.updateFailed");
+      default:
+        return null;
+    }
+  };
+
+  const isBusy = () =>
+    phase() === "downloading" ||
+    phase() === "installing" ||
+    phase() === "error";
+
   return (
     <div class="statusbar">
       <div class="statusbar-left">
@@ -64,6 +84,18 @@ export function StatusBar(props: {
         </span>
       </div>
       <div class="statusbar-right">
+        <Show when={updateLabel() !== null}>
+          <button
+            class={`update-badge${isBusy() ? " busy" : ""}`}
+            disabled={isBusy()}
+            onClick={() => {
+              if (phase() === "available") void downloadAndInstall();
+            }}
+            title={updateLabel() ?? ""}
+          >
+            {updateLabel()}
+          </button>
+        </Show>
         <button class="theme-toggle" onClick={cycleTheme} title={themeLabel()}>
           {themeIcon()}
         </button>
