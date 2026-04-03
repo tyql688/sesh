@@ -74,101 +74,78 @@ fn inline_image(path: &str) -> String {
     };
     let b64 = BASE64.encode(&data);
     format!(
-        r#"<div class="msg-image"><img src="data:{mime};base64,{b64}" alt="User image" style="max-width:100%;max-height:500px;border-radius:8px;border:1px solid #e5e7eb"></div>"#
+        r#"<div class="msg-image"><img src="data:{mime};base64,{b64}" alt="User image" style="max-width:100%;max-height:500px;border-radius:8px;border:1px solid #e5e7eb;cursor:zoom-in" onclick="openLightbox(this.src)"></div>"#
     )
 }
 
 /// Convert markdown-style code fences to styled `<pre><code>` blocks,
 /// render image references as `<img>` tags, and escape HTML outside of code blocks.
+/// Render markdown content to HTML using pulldown-cmark.
+/// Preserves custom `[Image: source: ...]` markers via placeholder round-trip.
 fn render_content(raw: &str) -> String {
-    let mut out = String::new();
-    let mut in_code_block = false;
-    let mut code_buf = String::new();
-    let mut lang = String::new();
-
-    for line in raw.split('\n') {
-        if !in_code_block {
-            if let Some(rest) = line.strip_prefix("```") {
-                in_code_block = true;
-                lang = rest.trim().to_string();
-                code_buf.clear();
-            } else {
-                // Check for image references inline: [Image: source: /path/to/file.png]
-                // They may appear anywhere in the line, possibly with surrounding text.
-                if line.contains("[Image") && line.contains("source: ") {
-                    if !out.is_empty() {
-                        out.push_str("<br>");
-                    }
-                    let line_str = line;
-                    let mut pos = 0;
-                    while pos < line_str.len() {
-                        if let Some(start) = line_str[pos..].find("[Image") {
-                            let abs_start = pos + start;
-                            // Find the closing ']' after "source: "
-                            if let Some(src_off) = line_str[abs_start..].find("source: ") {
-                                let path_begin = abs_start + src_off + 8;
-                                if let Some(end) = line_str[path_begin..].find(']') {
-                                    let abs_end = path_begin + end;
-                                    // Emit text before the image marker
-                                    if abs_start > pos {
-                                        out.push_str(&html_escape(&line_str[pos..abs_start]));
-                                    }
-                                    let path = line_str[path_begin..abs_end].trim();
-                                    if path.starts_with("data:") {
-                                        out.push_str(&format!(
-                                            r#"<div class="msg-image"><img src="{}" alt="User image" style="max-width:100%;max-height:500px;border-radius:8px;border:1px solid #e5e7eb"></div>"#,
-                                            html_escape(path)
-                                        ));
-                                    } else {
-                                        out.push_str(&inline_image(path));
-                                    }
-                                    pos = abs_end + 1; // skip past ']'
-                                    continue;
-                                }
-                            }
-                            // Malformed marker — emit as text
-                            out.push_str(&html_escape(&line_str[pos..pos + start + 6]));
-                            pos += start + 6;
-                        } else {
-                            break;
-                        }
-                    }
-                    // Emit any trailing text after last image marker
-                    if pos < line_str.len() {
-                        out.push_str(&html_escape(&line_str[pos..]));
-                    }
-                    continue;
-                }
-
-                if !out.is_empty() {
-                    out.push_str("<br>");
-                }
-                out.push_str(&html_escape(line));
+    // Phase 1: Extract [Image: source: ...] markers and replace with placeholders.
+    // pulldown-cmark would mangle them as broken link references.
+    let mut images: Vec<String> = Vec::new();
+    let mut preprocessed = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(start) = rest.find("[Image") {
+        if let Some(src_off) = rest[start..].find("source: ") {
+            let path_begin = start + src_off + 8;
+            if let Some(end) = rest[path_begin..].find(']') {
+                let abs_end = path_begin + end;
+                preprocessed.push_str(&rest[..start]);
+                let path = rest[path_begin..abs_end].trim();
+                let placeholder = format!("\n\n<!--IMG_PLACEHOLDER_{}-->\n\n", images.len());
+                let img_html = if path.starts_with("data:") {
+                    format!(
+                        r#"<div class="msg-image"><img src="{}" alt="User image" style="max-width:100%;max-height:500px;border-radius:8px;border:1px solid #e5e7eb;cursor:zoom-in" onclick="openLightbox(this.src)"></div>"#,
+                        html_escape(path)
+                    )
+                } else {
+                    inline_image(path)
+                };
+                images.push(img_html);
+                preprocessed.push_str(&placeholder);
+                rest = &rest[abs_end + 1..];
+                continue;
             }
-        } else if line.trim_start().starts_with("```") {
-            in_code_block = false;
-            let lang_attr = if lang.is_empty() {
-                String::new()
-            } else {
-                format!(r#" class="language-{}""#, html_escape(&lang))
-            };
-            out.push_str(&format!(
-                r#"<pre class="code-block"><code{lang_attr}>{}</code></pre>"#,
-                html_escape(code_buf.trim_end())
-            ));
-        } else {
-            if !code_buf.is_empty() {
-                code_buf.push('\n');
-            }
-            code_buf.push_str(line);
         }
+        // Malformed marker — keep as text
+        preprocessed.push_str(&rest[..start + 6]);
+        rest = &rest[start + 6..];
     }
+    preprocessed.push_str(rest);
 
-    if in_code_block && !code_buf.is_empty() {
-        out.push_str(&format!(
-            r#"<pre class="code-block"><code>{}</code></pre>"#,
-            html_escape(code_buf.trim_end())
-        ));
+    // Phase 2: Render markdown to HTML via pulldown-cmark
+    let mut opts = pulldown_cmark::Options::empty();
+    opts.insert(pulldown_cmark::Options::ENABLE_TABLES);
+    opts.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
+    opts.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
+    let parser = pulldown_cmark::Parser::new_ext(&preprocessed, opts);
+    // Escape raw HTML in content (e.g. JSX tags like <Show>, <Explorer>)
+    // to prevent them from breaking the bubble DOM structure.
+    let safe_parser = parser.map(|event| match event {
+        pulldown_cmark::Event::Html(ref html)
+            if !html.contains("IMG_PLACEHOLDER_") =>
+        {
+            pulldown_cmark::Event::Text(html.clone())
+        }
+        pulldown_cmark::Event::InlineHtml(html) => {
+            pulldown_cmark::Event::Text(html)
+        }
+        other => other,
+    });
+    let mut md_html = String::new();
+    pulldown_cmark::html::push_html(&mut md_html, safe_parser);
+
+    // Phase 3: Add our CSS class to <pre> blocks for code styling
+    let md_html = md_html.replace("<pre>", r#"<pre class="code-block">"#);
+
+    // Phase 4: Replace image placeholders with actual HTML
+    let mut out = md_html;
+    for (i, img_html) in images.iter().enumerate() {
+        let placeholder = format!("<!--IMG_PLACEHOLDER_{}-->", i);
+        out = out.replace(&placeholder, img_html);
     }
 
     out
@@ -465,6 +442,19 @@ fn format_msg_ts(raw: &str) -> String {
     raw.to_string()
 }
 
+fn fmt_file_size(bytes: u64) -> String {
+    if bytes == 0 {
+        return "—".to_string();
+    }
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    if bytes < 1024 * 1024 {
+        return format!("{:.1} KB", bytes as f64 / 1024.0);
+    }
+    format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
 fn fmt_k(n: u64) -> String {
     if n >= 1_000_000 {
         format!("{:.1}M", n as f64 / 1_000_000.0)
@@ -482,21 +472,27 @@ pub fn render(detail: &SessionDetail) -> String {
     let project = html_escape(&detail.meta.project_name);
     let count = detail.meta.message_count;
     let date = format_timestamp(detail.meta.created_at);
+    let file_size = fmt_file_size(detail.meta.file_size_bytes);
+    let model = detail.meta.model.as_deref().unwrap_or("");
+    let cc_version = detail.meta.cc_version.as_deref().unwrap_or("");
+    let git_branch = detail.meta.git_branch.as_deref().unwrap_or("");
+    let project_path = super::redact_home_path(&detail.meta.project_path);
 
     // Aggregate token totals
-    let (total_input, total_output, total_cache_read) =
+    let (total_input, total_output, total_cache_read, total_cache_write) =
         detail
             .messages
             .iter()
-            .fold((0u64, 0u64, 0u64), |(inp, out, cr), msg| {
+            .fold((0u64, 0u64, 0u64, 0u64), |(inp, out, cr, cw), msg| {
                 if let Some(u) = &msg.token_usage {
                     (
                         inp + u.input_tokens as u64,
                         out + u.output_tokens as u64,
                         cr + u.cache_read_input_tokens as u64,
+                        cw + u.cache_creation_input_tokens as u64,
                     )
                 } else {
-                    (inp, out, cr)
+                    (inp, out, cr, cw)
                 }
             });
     let has_tokens = total_input > 0 || total_output > 0;
@@ -505,7 +501,7 @@ pub fn render(detail: &SessionDetail) -> String {
     let assistant_svg = provider_avatar_svg(&detail.meta.provider);
 
     let mut messages_html = String::new();
-    for msg in &detail.messages {
+    for (i, msg) in detail.messages.iter().enumerate() {
         let ts = msg
             .timestamp
             .as_deref()
@@ -516,10 +512,11 @@ pub fn render(detail: &SessionDetail) -> String {
         match msg.role {
             MessageRole::User => {
                 let content_html = render_content(&msg.content);
+                let msg_id = format!("msg-{i}");
                 messages_html.push_str(&format!(
                     r#"<div class="msg msg-user">
-  <div class="bubble bubble-user">
-    <div class="msg-header"><span class="role-label">{label}</span><span class="ts">{ts}</span></div>
+  <div class="bubble bubble-user" id="{msg_id}">
+    <div class="msg-header"><span class="role-label">{label}</span><span class="msg-actions"><button class="copy-btn" onclick="copyMsg('{msg_id}')" title="Copy">📋</button></span><span class="ts">{ts}</span></div>
     <div class="msg-body">{content_html}</div>
   </div>
   <div class="avatar avatar-user">{user_svg}</div>
@@ -528,35 +525,42 @@ pub fn render(detail: &SessionDetail) -> String {
             }
             MessageRole::Assistant => {
                 let content_html = render_content(&msg.content);
-                let token_row = if let Some(u) = &msg.token_usage {
-                    let mut parts = vec![
-                        format!("↑{}", fmt_k(u.input_tokens as u64)),
-                        format!("↓{}", fmt_k(u.output_tokens as u64)),
-                    ];
-                    if u.cache_read_input_tokens > 0 {
-                        parts.push(format!(
-                            "cache_read {}",
-                            fmt_k(u.cache_read_input_tokens as u64)
-                        ));
-                    }
-                    if u.cache_creation_input_tokens > 0 {
-                        parts.push(format!(
-                            "cache_write {}",
+                let msg_model = msg.model.as_deref().unwrap_or("");
+                let mut meta_html_parts: Vec<String> = Vec::new();
+                if !msg_model.is_empty() {
+                    meta_html_parts.push(html_escape(msg_model));
+                }
+                if let Some(u) = &msg.token_usage {
+                    let mut s = format!(
+                        "↑{} ↓{}",
+                        fmt_k(u.input_tokens as u64),
+                        fmt_k(u.output_tokens as u64)
+                    );
+                    if u.cache_creation_input_tokens > 0
+                        || u.cache_read_input_tokens > 0
+                    {
+                        s.push_str(&format!(
+                            r#" · <span class="cache-read">cache_read {}</span> · cache_write {}"#,
+                            fmt_k(u.cache_read_input_tokens as u64),
                             fmt_k(u.cache_creation_input_tokens as u64)
                         ));
                     }
+                    meta_html_parts.push(s);
+                }
+                let token_row = if meta_html_parts.is_empty() {
+                    String::new()
+                } else {
                     format!(
                         r#"<div class="msg-token-row">{}</div>"#,
-                        html_escape(&parts.join(" · "))
+                        meta_html_parts.join(" · ")
                     )
-                } else {
-                    String::new()
                 };
+                let msg_id = format!("msg-{i}");
                 messages_html.push_str(&format!(
                     r#"<div class="msg msg-assistant">
   <div class="avatar avatar-assistant">{assistant_svg}</div>
-  <div class="bubble bubble-assistant">
-    <div class="msg-header"><span class="role-label">{label}</span><span class="ts">{ts}</span></div>
+  <div class="bubble bubble-assistant" id="{msg_id}">
+    <div class="msg-header"><span class="role-label">{label}</span><span class="msg-actions"><button class="copy-btn" onclick="copyMsg('{msg_id}')" title="Copy">📋</button></span><span class="ts">{ts}</span></div>
     <div class="msg-body">{content_html}</div>
   </div>
 </div>{token_row}"#
@@ -643,11 +647,38 @@ pub fn render(detail: &SessionDetail) -> String {
     }
 
     let token_summary_html = if has_tokens {
-        let mut s = format!("🔢 ↑{} ↓{}", fmt_k(total_input), fmt_k(total_output));
-        if total_cache_read > 0 {
-            s.push_str(&format!(" cache_read {}", fmt_k(total_cache_read)));
+        let mut s = format!("↑{} ↓{} tokens", fmt_k(total_input), fmt_k(total_output));
+        if total_cache_write > 0 || total_cache_read > 0 {
+            s.push_str(&format!(
+                r#" · <span class="cache-read">cache_read {}</span> · cache_write {}"#,
+                fmt_k(total_cache_read),
+                fmt_k(total_cache_write)
+            ));
         }
-        format!("<span>{}</span>", html_escape(&s))
+        format!("<span>{s}</span>")
+    } else {
+        String::new()
+    };
+
+    let model_html = if model.is_empty() {
+        String::new()
+    } else {
+        format!("<span>🤖 {}</span>", html_escape(model))
+    };
+    let version_html = if cc_version.is_empty() {
+        String::new()
+    } else {
+        format!("<span>🏷️ {}</span>", html_escape(cc_version))
+    };
+    let branch_html = if git_branch.is_empty() {
+        String::new()
+    } else {
+        format!("<span>⎇ {}</span>", html_escape(git_branch))
+    };
+    let path_html = if !project_path.is_empty() {
+        format!("<span>📂 {}</span>", html_escape(&project_path))
+    } else if !project.is_empty() {
+        format!("<span>📁 {}</span>", project)
     } else {
         String::new()
     };
@@ -656,11 +687,15 @@ pub fn render(detail: &SessionDetail) -> String {
         &title,
         &provider_label,
         provider_clr,
-        &project,
         count,
         &html_escape(&date),
+        &file_size,
         &messages_html,
         &token_summary_html,
+        &model_html,
+        &version_html,
+        &branch_html,
+        &path_html,
     )
 }
 
