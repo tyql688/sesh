@@ -24,6 +24,7 @@ import { trashSession, getChildSessions } from "../lib/tauri";
 import { isMac, isWindows } from "../lib/platform";
 import { disabledProviders } from "../stores/settings";
 import { toastError } from "../stores/toast";
+import { checkForUpdate } from "../stores/updater";
 import type { TreeNode, SessionMeta, Provider } from "../lib/types";
 import { useI18n } from "../i18n";
 import { createKeyboardHandler } from "./KeyboardShortcuts";
@@ -130,6 +131,7 @@ export default function App() {
     }
 
     void sync.coldStart();
+    setTimeout(() => void checkForUpdate(), 2000);
 
     document.addEventListener("keydown", handleGlobalKeyDown);
 
