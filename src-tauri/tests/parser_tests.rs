@@ -9,6 +9,7 @@ use cc_session_lib::providers::cursor::CursorProvider;
 use cc_session_lib::providers::gemini::GeminiProvider;
 use cc_session_lib::providers::kimi::KimiProvider;
 use cc_session_lib::providers::opencode::OpenCodeProvider;
+use cc_session_lib::providers::qwen::parser as qwen_parser;
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1488,4 +1489,173 @@ fn opencode_token_usage() {
     assert_eq!(usage.output_tokens, 100);
     assert_eq!(usage.cache_read_input_tokens, 10);
     assert_eq!(usage.cache_creation_input_tokens, 5);
+}
+
+// ---------------------------------------------------------------------------
+// Qwen parser tests
+// ---------------------------------------------------------------------------
+
+fn qwen_fixture() -> cc_session_lib::provider::ParsedSession {
+    let path = fixtures_dir().join("qwen_session.jsonl");
+    qwen_parser::parse_session_file(&path).expect("qwen fixture must parse")
+}
+
+#[test]
+fn qwen_parses_message_count() {
+    let session = qwen_fixture();
+    // 2 user + 3 assistant text + 1 thinking + 2 tool calls + 1 user-with-image = 9
+    // System records (slash_command, ui_telemetry) skipped; empty thought text skipped
+    assert_eq!(session.meta.message_count, 9);
+}
+
+#[test]
+fn qwen_session_metadata() {
+    let session = qwen_fixture();
+    assert_eq!(session.meta.id, "qwen_session");
+    assert_eq!(session.meta.provider, Provider::Qwen);
+    assert_eq!(session.meta.project_path, "/Users/test/myproject");
+    assert_eq!(session.meta.project_name, "myproject");
+    assert_eq!(session.meta.cc_version.as_deref(), Some("0.14.0"));
+    assert_eq!(session.meta.git_branch.as_deref(), Some("main"));
+    assert_eq!(session.meta.model.as_deref(), Some("qwen-coder"));
+    assert!(!session.meta.is_sidechain);
+}
+
+#[test]
+fn qwen_title_from_first_user_message() {
+    let session = qwen_fixture();
+    assert_eq!(session.meta.title, "Search for TODO comments");
+}
+
+#[test]
+fn qwen_thinking_emitted_as_system_role() {
+    let session = qwen_fixture();
+    let thinking_msgs: Vec<_> = session
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::System && m.content.starts_with("[thinking]"))
+        .collect();
+    assert!(
+        !thinking_msgs.is_empty(),
+        "expected at least one thinking message"
+    );
+    assert!(thinking_msgs[0].content.contains("Let me search"));
+}
+
+#[test]
+fn qwen_tool_call_mapped_to_canonical_name() {
+    let session = qwen_fixture();
+    let tool_names: Vec<_> = session
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Tool)
+        .filter_map(|m| m.tool_name.as_deref())
+        .collect();
+    assert!(
+        tool_names.contains(&"Grep"),
+        "expected Grep tool, got {:?}",
+        tool_names
+    );
+    assert!(
+        tool_names.contains(&"Edit"),
+        "expected Edit tool, got {:?}",
+        tool_names
+    );
+}
+
+#[test]
+fn qwen_tool_result_merged_by_call_id() {
+    let session = qwen_fixture();
+    let grep_msg = session
+        .messages
+        .iter()
+        .find(|m| m.tool_name.as_deref() == Some("Grep"))
+        .expect("Grep tool message must exist");
+    assert!(
+        grep_msg.content.contains("TODO"),
+        "tool result should be merged into tool call message"
+    );
+}
+
+#[test]
+fn qwen_image_marker_in_user_message() {
+    let session = qwen_fixture();
+    let img_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::User && m.content.contains("[Image:"))
+        .expect("expected user message with image marker");
+    assert!(img_msg.content.contains("data:image/png;base64,"));
+}
+
+#[test]
+fn qwen_token_usage_on_assistant() {
+    let session = qwen_fixture();
+    let assistant_with_usage = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Assistant && m.token_usage.is_some())
+        .expect("expected assistant message with token usage");
+    let usage = assistant_with_usage.token_usage.as_ref().unwrap();
+    assert!(usage.input_tokens > 0);
+    assert!(usage.output_tokens > 0);
+}
+
+#[test]
+fn qwen_system_records_skipped() {
+    let session = qwen_fixture();
+    // No system message should contain slash_command or ui_telemetry content
+    for msg in &session.messages {
+        if msg.role == MessageRole::System {
+            assert!(
+                msg.content.starts_with("[thinking]"),
+                "system message should only be thinking, got: {}",
+                &msg.content[..msg.content.len().min(50)]
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Qwen real data smoke test (ignored — requires local Qwen data)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore]
+fn qwen_real_data_smoke_test() {
+    let home = dirs::home_dir().expect("home dir");
+    let projects_dir = home.join(".qwen/projects");
+    if !projects_dir.exists() {
+        eprintln!("Skipping: no qwen data at {}", projects_dir.display());
+        return;
+    }
+    let mut parsed = 0;
+    // Walk all project directories to find chats
+    for project_entry in std::fs::read_dir(&projects_dir).unwrap().flatten() {
+        let chats_dir = project_entry.path().join("chats");
+        if !chats_dir.is_dir() {
+            continue;
+        }
+        for entry in std::fs::read_dir(&chats_dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "jsonl").unwrap_or(false) {
+                let session = qwen_parser::parse_session_file(&path);
+                assert!(session.is_some(), "failed to parse {}", path.display());
+                let s = session.unwrap();
+                assert!(s.meta.message_count > 0, "empty session {}", path.display());
+                assert!(!s.meta.title.is_empty(), "no title for {}", path.display());
+                assert_eq!(s.meta.provider, Provider::Qwen);
+                eprintln!(
+                    "  {} — {} msgs, model={:?}, title='{}'",
+                    path.file_name().unwrap().to_string_lossy(),
+                    s.meta.message_count,
+                    s.meta.model,
+                    s.meta.title
+                );
+                parsed += 1;
+            }
+        }
+    }
+    assert!(parsed > 0, "no qwen session files found");
+    eprintln!("Parsed {} real Qwen session files successfully", parsed);
 }

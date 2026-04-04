@@ -5,3 +5,4 @@ pub mod cursor;
 pub mod gemini;
 pub mod kimi;
 pub mod opencode;
+pub mod qwen;

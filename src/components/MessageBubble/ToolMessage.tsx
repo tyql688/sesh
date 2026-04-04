@@ -218,7 +218,16 @@ function openSubagent(
   );
 }
 
-export function ToolMessage(props: { message: Message }) {
+/** Providers where subagents are stored as separate session files (can be opened). */
+const SUBAGENT_FILE_PROVIDERS = new Set([
+  "claude",
+  "codex",
+  "kimi",
+  "cursor",
+  "cc-mirror",
+]);
+
+export function ToolMessage(props: { message: Message; provider?: string }) {
   const [expanded, setExpanded] = createSignal(false);
   const [previewSrc, setPreviewSrc] = createSignal<string | null>(null);
 
@@ -271,7 +280,9 @@ export function ToolMessage(props: { message: Message }) {
         </Show>
         <Show
           when={
-            name() === "Agent" && (summary() || agentNickname() || agentId())
+            name() === "Agent" &&
+            (summary() || agentNickname() || agentId()) &&
+            SUBAGENT_FILE_PROVIDERS.has(props.provider ?? "")
           }
         >
           <button

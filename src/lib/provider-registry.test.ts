@@ -17,6 +17,7 @@ const ALL_PROVIDERS: Provider[] = [
   "opencode",
   "kimi",
   "cc-mirror",
+  "qwen",
 ];
 
 describe("provider-registry", () => {

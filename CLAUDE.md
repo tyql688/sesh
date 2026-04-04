@@ -49,10 +49,10 @@ All providers implement `SessionProvider` trait:
 Provider metadata uses the Bridge pattern: `Provider` enum → `ProviderDescriptor` trait
 (zero-sized structs) for static metadata; `SessionProvider` via `make_provider()` for instance ops.
 
-File-based (Claude, Codex, Gemini, Kimi, Cursor, CC-Mirror): FS event watching via `notify` crate.
+File-based (Claude, Codex, Gemini, Kimi, Cursor, CC-Mirror, Qwen): FS event watching via `notify` crate.
 SQLite-based (OpenCode): 2s polling in frontend. Opened with `SQLITE_OPEN_READ_WRITE` to read WAL data.
 
-Tool names mapped to canonical names per provider (e.g. Codex `exec_command` → `Bash`, Cursor `StrReplace` → `Edit`, Kimi `WriteFile` → `Write`).
+Tool names mapped to canonical names per provider (e.g. Codex `exec_command` → `Bash`, Cursor `StrReplace` → `Edit`, Kimi `WriteFile` → `Write`, Qwen `run_shell_command` → `Bash`).
 
 ## Data Sources
 
@@ -65,6 +65,7 @@ Tool names mapped to canonical names per provider (e.g. Codex `exec_command` →
 | Cursor CLI  | `~/.cursor/projects/*/agent-transcripts/**/*.jsonl` | JSONL |
 | OpenCode    | `~/.local/share/opencode/opencode.db`  | SQLite |
 | CC-Mirror   | `~/.cc-mirror/{variant}/config/projects/**/*.jsonl` | JSONL |
+| Qwen Code   | `~/.qwen/projects/*/chats/*.jsonl`     | JSONL  |
 
 ## Testing
 
@@ -117,6 +118,15 @@ Tool names mapped to canonical names per provider (e.g. Codex `exec_command` →
 - **Variant names sanitized** (alphanumeric, hyphens, underscores) for safe shell usage.
 - **Resume command:** `{variant-name} --resume {session-id}`.
 
+### Qwen Code
+
+- **Path uses `sanitizeCwd()`** — project dir is `~/.qwen/projects/{cwd-with-hyphens}/chats/`, not SHA256.
+- **`thought` field is boolean `true`**, not a string. Thinking text is in the `text` field of the same part.
+- **`functionCall.id` matches `toolCallResult.callId`** for tool result merging.
+- **Subagents embedded in parent session** as `agent` tool calls — no separate files.
+- **System records** (`ui_telemetry`, `slash_command`, `at_command`, `chat_compression`) are skipped during parsing.
+- **Legacy tool names:** `search_file_content` → `grep_search`, `replace` → `edit`, `task` → `agent`.
+
 ### Trash / Restore
 
 - **`TrashMeta.parent_id`** links children to parents for reliable restore across all filesystem layouts.
@@ -126,7 +136,7 @@ Tool names mapped to canonical names per provider (e.g. Codex `exec_command` →
 ### General
 
 - **Provider isolation.** Each provider maps tool names to canonical set {Bash, Edit, Read, Write, Glob, Grep, Agent, Plan}.
-- **Resume commands:** Claude `--resume ID`, Codex `resume ID`, Gemini `--resume ID`, Kimi `--session ID`, Cursor `--resume=ID`, OpenCode `-s ID`.
+- **Resume commands:** Claude `--resume ID`, Codex `resume ID`, Gemini `--resume ID`, Kimi `--session ID`, Cursor `--resume=ID`, OpenCode `-s ID`, Qwen `--resume ID`.
 - **FTS content truncated to 2000 bytes** for index size. Display content never truncated.
 
 ## Conventions
@@ -136,4 +146,4 @@ Tool names mapped to canonical names per provider (e.g. Codex `exec_command` →
 - TypeScript: strict mode, no `any`
 - Commits: conventional commits (`feat:`, `fix:`, `refactor:`)
 - i18n: all user-facing strings via `t()`, never hardcoded
-- Provider colors: Claude `#8b5cf6`, Codex `#10b981`, Gemini `#f59e0b`, Kimi `#6366f1`, Cursor `#3b82f6`, OpenCode `#06b6d4`, CC-Mirror `#f472b6`
+- Provider colors: Claude `#d97757`, Codex `#10b981`, Gemini `#f59e0b`, Cursor `#3b82f6`, OpenCode `#06b6d4`, Kimi `#1783ff`, CC-Mirror `#f472b6`, Qwen `#6c3cf5`

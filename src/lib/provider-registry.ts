@@ -99,6 +99,17 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     watchMatchPrefix: false,
     sortOrder: 1,
   },
+  qwen: {
+    key: "qwen",
+    label: "Qwen Code",
+    colorVar: "qwen",
+    resumeCommand: (id) => `qwen --resume ${id}`,
+    displayLabel: () => "Qwen Code",
+    watchStrategy: "fs",
+    watchDebounceMs: 300,
+    watchMatchPrefix: false,
+    sortOrder: 7,
+  },
 };
 
 export function getProvider(provider: Provider): ProviderDef {

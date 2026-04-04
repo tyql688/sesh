@@ -105,7 +105,9 @@ export function MessageBubble(props: {
     <>
       <Show
         when={props.message.role !== "tool"}
-        fallback={<ToolMessage message={props.message} />}
+        fallback={
+          <ToolMessage message={props.message} provider={props.provider} />
+        }
       >
         <Show
           when={props.message.role !== "system"}

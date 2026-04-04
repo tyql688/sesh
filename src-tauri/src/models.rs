@@ -12,6 +12,7 @@ pub enum Provider {
     Kimi,
     #[serde(rename = "cc-mirror")]
     CcMirror,
+    Qwen,
 }
 
 impl Provider {
@@ -24,6 +25,7 @@ impl Provider {
             Provider::OpenCode => "OpenCode",
             Provider::Kimi => "Kimi CLI",
             Provider::CcMirror => "CC-Mirror",
+            Provider::Qwen => "Qwen Code",
         }
     }
 
@@ -36,6 +38,7 @@ impl Provider {
             Provider::OpenCode => "opencode",
             Provider::Kimi => "kimi",
             Provider::CcMirror => "cc-mirror",
+            Provider::Qwen => "qwen",
         }
     }
 
@@ -48,6 +51,7 @@ impl Provider {
             "opencode" => Some(Provider::OpenCode),
             "kimi" => Some(Provider::Kimi),
             "cc-mirror" => Some(Provider::CcMirror),
+            "qwen" => Some(Provider::Qwen),
             _ => None,
         }
     }
@@ -57,7 +61,7 @@ impl Provider {
     pub fn all() -> &'static [Provider] {
         // SAFETY: update EXPECTED_COUNT when adding a new Provider variant.
         // If they mismatch, this will fail at compile time.
-        const EXPECTED_COUNT: usize = 7;
+        const EXPECTED_COUNT: usize = 8;
         const ALL: [Provider; EXPECTED_COUNT] = [
             Provider::Claude,
             Provider::Codex,
@@ -66,6 +70,7 @@ impl Provider {
             Provider::OpenCode,
             Provider::Kimi,
             Provider::CcMirror,
+            Provider::Qwen,
         ];
         &ALL
     }

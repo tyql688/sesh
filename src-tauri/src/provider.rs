@@ -370,6 +370,7 @@ impl Provider {
             Provider::OpenCode => &crate::providers::opencode::Descriptor,
             Provider::Kimi => &crate::providers::kimi::Descriptor,
             Provider::CcMirror => &crate::providers::cc_mirror::Descriptor,
+            Provider::Qwen => &crate::providers::qwen::Descriptor,
         }
     }
 
@@ -449,6 +450,8 @@ pub fn make_provider(provider: &Provider) -> Option<Box<dyn SessionProvider>> {
         Provider::Kimi => crate::providers::kimi::KimiProvider::new()
             .map(|p| Box::new(p) as Box<dyn SessionProvider>),
         Provider::CcMirror => crate::providers::cc_mirror::CcMirrorProvider::new()
+            .map(|p| Box::new(p) as Box<dyn SessionProvider>),
+        Provider::Qwen => crate::providers::qwen::QwenProvider::new()
             .map(|p| Box::new(p) as Box<dyn SessionProvider>),
     }
 }
@@ -592,6 +595,10 @@ mod tests {
             (
                 "/home/user/.cc-mirror/variant/config/projects/foo/abc.jsonl",
                 Some(Provider::CcMirror),
+            ),
+            (
+                "/home/user/.qwen/projects/-Users-user-myproject/chats/abc-123.jsonl",
+                Some(Provider::Qwen),
             ),
             ("/home/user/random/file.txt", None),
             // cc-mirror path should NOT match claude

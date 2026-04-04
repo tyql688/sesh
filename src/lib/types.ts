@@ -5,7 +5,8 @@ export type Provider =
   | "cursor"
   | "opencode"
   | "kimi"
-  | "cc-mirror";
+  | "cc-mirror"
+  | "qwen";
 
 export interface SessionMeta {
   id: string;
