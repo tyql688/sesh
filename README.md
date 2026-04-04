@@ -21,7 +21,7 @@
 
 ## Why CC Session?
 
-AI coding tools like Claude Code, Codex, and Gemini CLI store session data locally, but there's no easy way to browse, search, or revisit past conversations. CC Session brings all your sessions together in one unified interface — view full conversation histories, search across all providers with full-text search, export records, and resume any session directly in your terminal.
+AI coding tools like Claude Code, Codex, Gemini CLI, and Qwen Code store session data locally, but there's no easy way to browse, search, or revisit past conversations. CC Session brings all your sessions together in one unified interface — view full conversation histories, search across all providers with full-text search, export records, and resume any session directly in your terminal.
 
 ## Features
 
@@ -48,6 +48,7 @@ AI coding tools like Claude Code, Codex, and Gemini CLI store session data local
 | Kimi CLI    | `~/.kimi/sessions/**/*.jsonl`         | JSONL  | FS events  |
 | Cursor CLI  | `~/.cursor/projects/*/agent-transcripts/**/*.jsonl` | JSONL  | FS events  |
 | OpenCode    | `~/.local/share/opencode/opencode.db` | SQLite |  Polling   |
+| Qwen Code   | `~/.qwen/projects/*/chats/*.jsonl`    | JSONL  | FS events  |
 | CC-Mirror   | `~/.cc-mirror/{variant}/config/projects/**/*.jsonl` | JSONL  | FS events  |
 
 Each provider parses: messages, tool calls (with input/output), thinking/reasoning blocks, token usage, and inline images.

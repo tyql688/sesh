@@ -70,7 +70,7 @@ Tool names mapped to canonical names per provider (e.g. Codex `exec_command` →
 ## Testing
 
 - **Rust**: `cd src-tauri && cargo test`
-  - 49 parser golden tests in `tests/parser_tests.rs`
+  - 58 parser golden tests in `tests/parser_tests.rs`
   - Trash lifecycle test in `tests/trash_lifecycle_test.rs` (real local data, `--ignored`)
   - Provider unit tests in `src/provider.rs`
 - **Frontend**: `npm test` (vitest)
