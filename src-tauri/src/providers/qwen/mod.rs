@@ -24,7 +24,7 @@ impl crate::provider::ProviderDescriptor for Descriptor {
         7
     }
     fn color(&self) -> &'static str {
-        "#6d28d9"
+        "#6c3cf5"
     }
     fn cli_command(&self) -> &'static str {
         "qwen"

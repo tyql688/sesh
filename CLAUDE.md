@@ -146,4 +146,4 @@ Tool names mapped to canonical names per provider (e.g. Codex `exec_command` →
 - TypeScript: strict mode, no `any`
 - Commits: conventional commits (`feat:`, `fix:`, `refactor:`)
 - i18n: all user-facing strings via `t()`, never hardcoded
-- Provider colors: Claude `#8b5cf6`, Codex `#10b981`, Gemini `#f59e0b`, Kimi `#6366f1`, Cursor `#3b82f6`, OpenCode `#06b6d4`, CC-Mirror `#f472b6`, Qwen `#6d28d9`
+- Provider colors: Claude `#d97757`, Codex `#10b981`, Gemini `#f59e0b`, Cursor `#3b82f6`, OpenCode `#06b6d4`, Kimi `#1783ff`, CC-Mirror `#f472b6`, Qwen `#6c3cf5`
