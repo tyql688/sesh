@@ -6,8 +6,6 @@ export interface ProviderDef {
   label: string;
   /** CSS variable name (without --), e.g. "claude" -> var(--claude) */
   colorVar: string;
-  /** Build the CLI resume command */
-  resumeCommand: (id: string, variantName?: string) => string;
   /** Display label, optionally using variant name */
   displayLabel: (variantName?: string) => string;
   /** How the frontend watches for live changes */
@@ -25,7 +23,6 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     key: "claude",
     label: "Claude Code",
     colorVar: "claude",
-    resumeCommand: (id) => `claude --resume ${id}`,
     displayLabel: () => "Claude Code",
     watchStrategy: "fs",
     watchDebounceMs: 300,
@@ -36,7 +33,6 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     key: "codex",
     label: "Codex",
     colorVar: "codex",
-    resumeCommand: (id) => `codex resume ${id}`,
     displayLabel: () => "Codex",
     watchStrategy: "fs",
     watchDebounceMs: 300,
@@ -47,7 +43,6 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     key: "gemini",
     label: "Gemini",
     colorVar: "gemini",
-    resumeCommand: (id) => `gemini --resume ${id}`,
     displayLabel: () => "Gemini",
     watchStrategy: "poll",
     watchDebounceMs: 2000,
@@ -58,7 +53,6 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     key: "cursor",
     label: "Cursor",
     colorVar: "cursor",
-    resumeCommand: (id) => `agent --resume=${id}`,
     displayLabel: () => "Cursor",
     watchStrategy: "fs",
     watchDebounceMs: 300,
@@ -69,7 +63,6 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     key: "opencode",
     label: "OpenCode",
     colorVar: "opencode",
-    resumeCommand: (id) => `opencode -s ${id}`,
     displayLabel: () => "OpenCode",
     watchStrategy: "poll",
     watchDebounceMs: 2000,
@@ -80,7 +73,6 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     key: "kimi",
     label: "Kimi CLI",
     colorVar: "kimi",
-    resumeCommand: (id) => `kimi --session ${id}`,
     displayLabel: () => "Kimi CLI",
     watchStrategy: "fs",
     watchDebounceMs: 300,
@@ -91,8 +83,6 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     key: "cc-mirror",
     label: "CC-Mirror",
     colorVar: "cc-mirror",
-    resumeCommand: (id, variantName) =>
-      variantName ? `${variantName} --resume ${id}` : "",
     displayLabel: (variantName) => variantName ?? "CC-Mirror",
     watchStrategy: "fs",
     watchDebounceMs: 300,
@@ -103,7 +93,6 @@ const REGISTRY: Record<Provider, ProviderDef> = {
     key: "qwen",
     label: "Qwen Code",
     colorVar: "qwen",
-    resumeCommand: (id) => `qwen --resume ${id}`,
     displayLabel: () => "Qwen Code",
     watchStrategy: "fs",
     watchDebounceMs: 300,
@@ -126,15 +115,6 @@ export function getProviderColor(provider: Provider): string {
 
 export function allProviders(): ProviderDef[] {
   return Object.values(REGISTRY);
-}
-
-/** Build resume command, handling cc-mirror variant names. */
-export function buildResumeCommand(
-  provider: Provider,
-  sessionId: string,
-  variantName?: string,
-): string {
-  return REGISTRY[provider].resumeCommand(sessionId, variantName);
 }
 
 /** Get the display label, using variant name for cc-mirror. */

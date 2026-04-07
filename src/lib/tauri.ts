@@ -28,14 +28,8 @@ export async function getTree(): Promise<TreeNode[]> {
 
 export async function getSessionDetail(
   sessionId: string,
-  sourcePath: string,
-  provider: string,
 ): Promise<SessionDetail> {
-  return invoke<SessionDetail>("get_session_detail", {
-    sessionId,
-    sourcePath,
-    provider,
-  });
+  return invoke<SessionDetail>("get_session_detail", { sessionId });
 }
 
 export async function searchSessions(
@@ -57,15 +51,11 @@ export async function getSessionCount(): Promise<number> {
 
 export async function exportSession(
   sessionId: string,
-  sourcePath: string,
-  provider: string,
   format: string,
   outputPath: string,
 ): Promise<void> {
   return invoke<void>("export_session", {
     sessionId,
-    sourcePath,
-    provider,
     format,
     outputPath,
   });
@@ -107,24 +97,17 @@ export async function openInTerminal(
 
 export async function resumeSession(
   sessionId: string,
-  provider: string,
   terminalApp: string,
 ): Promise<void> {
-  return invoke<void>("resume_session", { sessionId, provider, terminalApp });
+  return invoke<void>("resume_session", { sessionId, terminalApp });
 }
 
-export async function trashSession(
-  sessionId: string,
-  sourcePath: string,
-  provider: string,
-  title: string,
-): Promise<void> {
-  return invoke<void>("trash_session", {
-    sessionId,
-    sourcePath,
-    provider,
-    title,
-  });
+export async function getResumeCommand(sessionId: string): Promise<string> {
+  return invoke<string>("get_resume_command", { sessionId });
+}
+
+export async function trashSession(sessionId: string): Promise<void> {
+  return invoke<void>("trash_session", { sessionId });
 }
 
 export async function listTrash(): Promise<TrashMeta[]> {
@@ -170,7 +153,7 @@ export async function openInFolder(path: string): Promise<void> {
 }
 
 export async function exportSessionsBatch(
-  items: [string, string, string][],
+  items: string[],
   format: string,
   outputPath: string,
 ): Promise<void> {

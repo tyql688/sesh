@@ -14,13 +14,7 @@ use super::{sessions::sync_source_for_provider, AppState};
 static TRASH_META_LOCK: Mutex<()> = Mutex::new(());
 
 #[tauri::command]
-pub fn trash_session(
-    session_id: String,
-    _source_path: String,
-    _provider: String,
-    _title: String,
-    state: State<AppState>,
-) -> Result<(), String> {
+pub fn trash_session(session_id: String, state: State<AppState>) -> Result<(), String> {
     let trash_dir = trash_dir()?;
     let (meta, children) = load_session_for_mutation(&state.db, &session_id)?;
 

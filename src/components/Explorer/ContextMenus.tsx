@@ -1,7 +1,6 @@
 import type { MenuItemDef } from "../ContextMenu";
 import type { TreeNode } from "../../lib/types";
-import { buildResumeCommand } from "../../lib/provider-registry";
-import { openInFolder } from "../../lib/tauri";
+import { getResumeCommand, openInFolder } from "../../lib/tauri";
 import { toast, toastError } from "../../stores/toast";
 import { selectionCount } from "../../stores/selection";
 import { bumpFavoriteVersion } from "../../stores/favorites";
@@ -9,14 +8,9 @@ import { bumpFavoriteVersion } from "../../stores/favorites";
 export interface SessionMenuContext {
   node: TreeNode;
   sessionProjectPath: string;
-  providerLabel: string | undefined;
   t: (key: string) => string;
   terminalApp: string;
-  resumeSession: (
-    id: string,
-    provider: string,
-    terminal: string,
-  ) => Promise<void>;
+  resumeSession: (id: string, terminal: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<boolean>;
   setRenameTarget: (target: { id: string; label: string }) => void;
   onExportSession?: (id: string) => void;
@@ -24,7 +18,7 @@ export interface SessionMenuContext {
 }
 
 export function buildSessionMenuItems(ctx: SessionMenuContext): MenuItemDef[] {
-  const { node, sessionProjectPath, providerLabel, t } = ctx;
+  const { node, sessionProjectPath, t } = ctx;
   const items: MenuItemDef[] = [
     {
       label: t("contextMenu.copySessionId"),
@@ -36,13 +30,14 @@ export function buildSessionMenuItems(ctx: SessionMenuContext): MenuItemDef[] {
     },
     {
       label: t("contextMenu.copyResumeCommand"),
-      onClick: () => {
-        const provider = node.provider ?? "claude";
-        // providerLabel carries the variant name for cc-mirror; ignored by other providers
-        const cmd = buildResumeCommand(provider, node.id, providerLabel);
-        void navigator.clipboard
-          .writeText(cmd)
-          .then(() => toast(t("toast.cmdCopied")));
+      onClick: async () => {
+        try {
+          const cmd = await getResumeCommand(node.id);
+          await navigator.clipboard.writeText(cmd);
+          toast(t("toast.cmdCopied"));
+        } catch (_e) {
+          toastError(t("toast.copyFailed"));
+        }
       },
     },
     ...(sessionProjectPath
@@ -67,8 +62,7 @@ export function buildSessionMenuItems(ctx: SessionMenuContext): MenuItemDef[] {
     {
       label: t("contextMenu.resumeSession"),
       onClick: async () => {
-        const provider = node.provider ?? "claude";
-        await ctx.resumeSession(node.id, provider, ctx.terminalApp);
+        await ctx.resumeSession(node.id, ctx.terminalApp);
       },
     },
     { label: "", separator: true, onClick: () => {} },

@@ -113,11 +113,7 @@ export function SessionView(props: {
         setMessages([]);
         setVisibleCount(BATCH_SIZE);
         try {
-          const detail = await getSessionDetail(
-            sessionId,
-            props.session.source_path ?? "",
-            props.session.provider,
-          );
+          const detail = await getSessionDetail(sessionId);
           // Discard result if a newer load was triggered
           if (version !== loadVersion) return;
           setMeta(detail.meta);
@@ -243,11 +239,7 @@ export function SessionView(props: {
 
   async function reloadSession() {
     try {
-      const detail = await getSessionDetail(
-        props.session.id,
-        props.session.source_path ?? "",
-        props.session.provider,
-      );
+      const detail = await getSessionDetail(props.session.id);
       const oldCount = messages().length;
       setMeta(detail.meta);
       setMessages(detail.messages);
@@ -365,12 +357,7 @@ export function SessionView(props: {
 
   const handleDelete = async () => {
     try {
-      await trashSession(
-        props.session.id,
-        props.session.source_path ?? "",
-        props.session.provider,
-        props.session.title,
-      );
+      await trashSession(props.session.id);
       setShowDeleteConfirm(false);
       props.onCloseTab(props.session.id);
       props.onRefreshTree();
@@ -383,7 +370,7 @@ export function SessionView(props: {
 
   const handleResume = async () => {
     try {
-      await resumeSession(props.session.id, meta().provider, terminalApp());
+      await resumeSession(props.session.id, terminalApp());
       toast(t("toast.resumed"));
     } catch (_e) {
       toastError(t("toast.resumeFailed"));

@@ -88,19 +88,17 @@ pub fn get_provider_paths(state: State<AppState>) -> Result<Vec<ProviderInfo>, S
 #[tauri::command]
 pub fn export_session(
     session_id: String,
-    source_path: String,
-    provider: String,
     format: String,
     output_path: String,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let detail = load_detail(&session_id, &source_path, &provider, &state.db)?;
+    let detail = load_detail(&session_id, &state.db)?;
     exporter::export(&detail, &format, &output_path)
 }
 
 #[tauri::command]
 pub async fn export_sessions_batch(
-    items: Vec<(String, String, String)>,
+    items: Vec<String>,
     format: String,
     output_path: String,
     state: State<'_, AppState>,
@@ -116,12 +114,12 @@ pub async fn export_sessions_batch(
         let options = zip::write::SimpleFileOptions::default();
         let total = items.len();
 
-        for (idx, (session_id, source_path, provider)) in items.iter().enumerate() {
+        for (idx, session_id) in items.iter().enumerate() {
             let _ = app.emit(
                 "export-progress",
                 serde_json::json!({ "current": idx + 1, "total": total }),
             );
-            let detail = load_detail(session_id, source_path, provider, &state.db)?;
+            let detail = load_detail(session_id, &state.db)?;
             let ext = match format.as_str() {
                 "json" => "json",
                 "markdown" => "md",

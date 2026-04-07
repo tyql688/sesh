@@ -209,7 +209,7 @@ export function Explorer(props: {
     let failed = 0;
     for (const s of sessions) {
       try {
-        await trashSession(s.id, "", s.provider ?? "claude", s.label);
+        await trashSession(s.id);
       } catch (e) {
         console.warn("failed to trash session:", s.id, e);
         failed++;
@@ -225,60 +225,34 @@ export function Explorer(props: {
     }
   }
 
-  function findSessionInTree(sessionId: string): {
-    provider: string;
-    projectPath: string;
-    providerLabel: string;
-  } | null {
+  function findSessionProjectPath(sessionId: string): string {
     function search(
       nodes: TreeNode[],
       providerHint: string,
-      providerLabelHint: string,
-      displayKeyHint: string,
       projectHint: string,
-    ): {
-      provider: string;
-      projectPath: string;
-      providerLabel: string;
-    } | null {
+    ): string | null {
       for (const node of nodes) {
         if (node.node_type === "session" && node.id === sessionId) {
-          return {
-            provider: providerHint,
-            projectPath: projectHint,
-            providerLabel: providerLabelHint,
-          };
+          return projectHint;
         }
         if (node.children && node.children.length > 0) {
           const nextProvider =
             node.node_type === "provider"
               ? (node.provider ?? node.id)
               : providerHint;
-          const nextProviderLabel =
-            node.node_type === "provider" ? node.label : providerLabelHint;
-          // displayKey is the provider tree node id (e.g. "claude", "cc-mirror:cczai").
-          // Project node id is "displayKey:/path". Strip displayKey + ":" to get path.
-          const nextDisplayKey =
-            node.node_type === "provider" ? node.id : displayKeyHint;
           const nextProject =
             node.node_type === "project" && !providerHint
               ? ""
               : node.node_type === "project" && providerHint && !projectHint
                 ? (node.project_path ?? "")
                 : projectHint;
-          const result = search(
-            node.children,
-            nextProvider,
-            nextProviderLabel,
-            nextDisplayKey,
-            nextProject,
-          );
+          const result = search(node.children, nextProvider, nextProject);
           if (result) return result;
         }
       }
       return null;
     }
-    return search(props.tree, "", "", "", "");
+    return search(props.tree, "", "") ?? "";
   }
 
   async function trashSelected() {
@@ -287,8 +261,7 @@ export function Explorer(props: {
     let failed = 0;
     for (const id of sel) {
       try {
-        const info = findSessionInTree(id);
-        await trashSession(id, "", info?.provider ?? "claude", "");
+        await trashSession(id);
       } catch {
         failed++;
       }
@@ -312,13 +285,7 @@ export function Explorer(props: {
       });
       if (!outputPath) return;
 
-      const items: [string, string, string][] = [];
-      for (const id of sel) {
-        const info = findSessionInTree(id);
-        items.push([id, "", info?.provider ?? "claude"]);
-      }
-
-      await exportSessionsBatch(items, "json", outputPath);
+      await exportSessionsBatch([...sel], "json", outputPath);
       toast(t("toast.copied"));
     } catch (e) {
       toastError(errorMessage(e));
@@ -330,11 +297,9 @@ export function Explorer(props: {
   function sessionMenuItems() {
     const m = sessionMenu();
     if (!m) return [];
-    const sessionInfo = findSessionInTree(m.node.id);
     return buildSessionMenuItems({
       node: m.node,
-      sessionProjectPath: sessionInfo?.projectPath ?? "",
-      providerLabel: sessionInfo?.providerLabel,
+      sessionProjectPath: findSessionProjectPath(m.node.id),
       t,
       terminalApp: terminalApp(),
       resumeSession,

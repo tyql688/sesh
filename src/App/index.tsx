@@ -330,7 +330,7 @@ export default function App() {
               onCollapse={() => setSidebarCollapsed(true)}
               onDeleteSession={async (id: string) => {
                 try {
-                  await trashSession(id, "", "", "");
+                  await trashSession(id);
                   closeTab(id);
                   await sync.refreshTree();
                 } catch (e) {

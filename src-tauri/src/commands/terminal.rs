@@ -12,11 +12,7 @@ struct ResumeTarget {
 }
 
 #[tauri::command]
-pub fn get_resume_command(
-    session_id: String,
-    _provider: String,
-    state: State<AppState>,
-) -> Result<String, String> {
+pub fn get_resume_command(session_id: String, state: State<AppState>) -> Result<String, String> {
     Ok(resolve_resume_target(&state, &session_id)?.command)
 }
 
@@ -108,7 +104,6 @@ fn is_known_cc_mirror_variant(name: &str) -> bool {
 #[tauri::command]
 pub fn resume_session(
     session_id: String,
-    _provider: String,
     terminal_app: String,
     state: State<AppState>,
 ) -> Result<(), String> {

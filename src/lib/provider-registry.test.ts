@@ -3,7 +3,6 @@ import {
   getProvider,
   getProviderLabel,
   getProviderColor,
-  buildResumeCommand,
   getDisplayLabel,
   allProviders,
 } from "./provider-registry";
@@ -42,20 +41,6 @@ describe("provider-registry", () => {
 
   it("getProviderColor returns CSS var", () => {
     expect(getProviderColor("claude")).toBe("var(--claude)");
-  });
-
-  it("buildResumeCommand formats correctly", () => {
-    expect(buildResumeCommand("claude", "abc-123")).toBe(
-      "claude --resume abc-123",
-    );
-    expect(buildResumeCommand("codex", "abc")).toBe("codex resume abc");
-    expect(buildResumeCommand("cursor", "abc")).toBe("agent --resume=abc");
-  });
-
-  it("buildResumeCommand handles cc-mirror variant", () => {
-    expect(buildResumeCommand("cc-mirror", "abc", "cczai")).toBe(
-      "cczai --resume abc",
-    );
   });
 
   it("getDisplayLabel uses variant for cc-mirror", () => {

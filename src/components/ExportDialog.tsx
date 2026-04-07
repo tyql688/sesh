@@ -45,13 +45,7 @@ export function ExportDialog(props: {
       if (!outputPath) return;
 
       setExporting(true);
-      await exportSession(
-        props.session.id,
-        props.session.source_path,
-        props.session.provider,
-        selected.value,
-        outputPath,
-      );
+      await exportSession(props.session.id, selected.value, outputPath);
       props.onClose();
       toast(t("toast.exportOk"));
     } catch (e) {

@@ -3,9 +3,9 @@ use std::path::Path;
 use tauri::State;
 
 use crate::db::Database;
-use crate::models::{Message, MessageRole, Provider, SessionDetail, SessionMeta};
+use crate::models::{Message, Provider, SessionDetail, SessionMeta};
 
-use super::session_resolution::load_session_for_mutation;
+use super::session_resolution::{load_session_for_mutation, load_session_meta};
 use super::AppState;
 
 #[tauri::command]
@@ -66,11 +66,9 @@ pub fn get_tree(state: State<AppState>) -> Result<Vec<crate::models::TreeNode>, 
 #[tauri::command]
 pub fn get_session_detail(
     session_id: String,
-    source_path: String,
-    provider: String,
     state: State<AppState>,
 ) -> Result<SessionDetail, String> {
-    load_detail(&session_id, &source_path, &provider, &state.db)
+    load_detail(&session_id, &state.db)
 }
 
 #[tauri::command]
@@ -201,33 +199,9 @@ pub fn is_favorite(session_id: String, state: State<AppState>) -> Result<bool, S
         .map_err(|e| format!("failed to check favorite: {e}"))
 }
 
-pub(crate) fn load_detail(
-    session_id: &str,
-    source_path: &str,
-    provider: &str,
-    db: &Database,
-) -> Result<SessionDetail, String> {
-    let db_meta = find_meta_from_db(db, session_id);
-    let provider_enum = if let Some(meta) = db_meta.as_ref() {
-        meta.provider.clone()
-    } else {
-        str_to_provider(provider)?
-    };
-
-    let resolved_source_path = if let Some(meta) = db_meta.as_ref() {
-        meta.source_path.clone()
-    } else if source_path.is_empty() {
-        String::new()
-    } else {
-        source_path.to_string()
-    };
-
-    let messages = load_messages_from_provider(&provider_enum, session_id, &resolved_source_path)?;
-
-    let meta = db_meta.unwrap_or_else(|| {
-        build_fallback_meta(session_id, &resolved_source_path, &provider_enum, &messages)
-    });
-
+pub(crate) fn load_detail(session_id: &str, db: &Database) -> Result<SessionDetail, String> {
+    let meta = load_session_meta(db, session_id)?;
+    let messages = load_messages_from_provider(&meta.provider, session_id, &meta.source_path)?;
     Ok(SessionDetail { meta, messages })
 }
 
@@ -270,54 +244,6 @@ fn load_messages_from_provider(
         .require_runtime()?
         .load_messages(session_id, source_path)
         .map_err(|e| format!("failed to load messages: {e}"))
-}
-
-fn find_meta_from_db(db: &Database, session_id: &str) -> Option<SessionMeta> {
-    db.get_session(session_id).ok().flatten()
-}
-
-fn build_fallback_meta(
-    session_id: &str,
-    source_path: &str,
-    provider: &Provider,
-    messages: &[Message],
-) -> SessionMeta {
-    let title = messages
-        .iter()
-        .find(|m| m.role == MessageRole::User && !m.content.is_empty())
-        .map(|m| {
-            if m.content.chars().count() > 100 {
-                let mut t: String = m.content.chars().take(100).collect();
-                t.push_str("...");
-                t
-            } else {
-                m.content.clone()
-            }
-        })
-        .unwrap_or_else(|| "Untitled".to_string());
-
-    SessionMeta {
-        id: session_id.to_string(),
-        provider: provider.clone(),
-        title,
-        project_path: String::new(),
-        project_name: String::new(),
-        created_at: 0,
-        updated_at: 0,
-        message_count: messages.len() as u32,
-        file_size_bytes: 0,
-        source_path: source_path.to_string(),
-        is_sidechain: false,
-        variant_name: None,
-        model: None,
-        cc_version: None,
-        git_branch: None,
-        parent_id: None,
-    }
-}
-
-fn str_to_provider(s: &str) -> Result<Provider, String> {
-    Provider::parse_strict(s)
 }
 
 /// Session images must live under the user home or system temp (same policy as HTML export).
