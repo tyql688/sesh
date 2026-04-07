@@ -15,7 +15,7 @@ import type {
   Message,
   MessageRole,
 } from "../../lib/types";
-import { getProvider } from "../../lib/provider-registry";
+import { getProviderWatchConfig } from "../../lib/provider-registry";
 import {
   getSessionDetail,
   trashSession,
@@ -268,10 +268,10 @@ export function SessionView(props: {
       if (isWatching) {
         const activeSourcePath =
           meta().source_path || props.session.source_path;
-        const providerDef = getProvider(meta().provider);
+        const watchConfig = getProviderWatchConfig(meta().provider);
 
-        if (providerDef.watchStrategy === "poll") {
-          pollTimer = setInterval(reloadSession, providerDef.watchDebounceMs);
+        if (watchConfig.strategy === "poll") {
+          pollTimer = setInterval(reloadSession, watchConfig.debounceMs);
         } else {
           // File-based providers: use FS events
           unwatchFn = await listen<string[]>("sessions-changed", (event) => {
@@ -279,7 +279,7 @@ export function SessionView(props: {
             if (!activeSourcePath) return;
 
             let matched: boolean;
-            if (providerDef.watchMatchPrefix) {
+            if (watchConfig.matchPrefix) {
               // Gemini: match by project directory prefix
               // (strip last 2 path segments: /chats/session-id.json → project dir)
               const dir = activeSourcePath.replace(/\/[^/]+\/[^/]+$/, "");
@@ -290,10 +290,7 @@ export function SessionView(props: {
             if (!matched) return;
 
             clearTimeout(watchDebounce);
-            watchDebounce = setTimeout(
-              reloadSession,
-              providerDef.watchDebounceMs,
-            );
+            watchDebounce = setTimeout(reloadSession, watchConfig.debounceMs);
           });
         }
       }

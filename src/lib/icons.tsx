@@ -1,6 +1,5 @@
 import type { JSX } from "solid-js";
 import type { Provider } from "./types";
-import { getProviderColor } from "./provider-registry";
 
 const PROVIDER_ICONS: Record<Provider, () => JSX.Element> = {
   claude: () => (
@@ -167,7 +166,7 @@ export function ProviderDot(props: { provider: Provider }) {
   return (
     <span
       class="provider-dot provider-logo"
-      style={{ color: getProviderColor(props.provider) }}
+      style={{ color: `var(--${props.provider})` }}
     >
       <ProviderIcon provider={props.provider} />
     </span>

@@ -1,5 +1,5 @@
 import type { SessionMeta, TrashMeta, TreeNode, Provider } from "./types";
-import { getProviderLabel } from "./provider-registry";
+import { getDisplayLabel } from "./provider-registry";
 
 export function buildFavoritesTree(
   sessions: SessionMeta[],
@@ -47,7 +47,7 @@ export function buildFavoritesTree(
     }
     tree.push({
       id: `fav-${provider}`,
-      label: getProviderLabel(provider as Provider),
+      label: getDisplayLabel(provider as Provider),
       node_type: "provider" as const,
       children: projectNodes,
       count: sessions.filter((s) => s.provider === provider).length,
@@ -107,7 +107,7 @@ export function buildTrashTree(
     }
     tree.push({
       id: `trash-${provider}`,
-      label: getProviderLabel(provider as Provider),
+      label: getDisplayLabel(provider as Provider),
       node_type: "provider" as const,
       children: projectNodes,
       count: items.filter((i) => i.provider === provider).length,
