@@ -4,43 +4,68 @@ import type { Provider, ProviderCatalogItem } from "../lib/types";
 
 type ProviderCatalogMap = Partial<Record<Provider, ProviderCatalogItem>>;
 type ProviderWatchStrategy = ProviderCatalogItem["watch_strategy"];
-type ProviderSortOrder = ProviderCatalogItem["sort_order"];
 
 const [providerCatalog, setProviderCatalog] = createSignal<ProviderCatalogMap>(
   {},
 );
 
-const FALLBACK_WATCH_STRATEGIES: Record<Provider, ProviderWatchStrategy> = {
-  claude: "fs",
-  codex: "fs",
-  gemini: "poll",
-  cursor: "fs",
-  opencode: "poll",
-  kimi: "fs",
-  "cc-mirror": "fs",
-  qwen: "fs",
-};
-
-const FALLBACK_SORT_ORDERS: Record<Provider, ProviderSortOrder> = {
-  claude: 0,
-  "cc-mirror": 1,
-  codex: 2,
-  gemini: 3,
-  cursor: 4,
-  opencode: 5,
-  kimi: 6,
-  qwen: 7,
-};
-
-const FALLBACK_LABELS: Record<Provider, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  gemini: "Gemini",
-  cursor: "Cursor",
-  opencode: "OpenCode",
-  kimi: "Kimi CLI",
-  "cc-mirror": "CC-Mirror",
-  qwen: "Qwen Code",
+const FALLBACK_PROVIDER_CATALOG: Record<Provider, ProviderCatalogItem> = {
+  claude: {
+    key: "claude",
+    label: "Claude Code",
+    color: "var(--claude)",
+    sort_order: 0,
+    watch_strategy: "fs",
+  },
+  "cc-mirror": {
+    key: "cc-mirror",
+    label: "CC-Mirror",
+    color: "var(--cc-mirror)",
+    sort_order: 1,
+    watch_strategy: "fs",
+  },
+  codex: {
+    key: "codex",
+    label: "Codex",
+    color: "var(--codex)",
+    sort_order: 2,
+    watch_strategy: "fs",
+  },
+  gemini: {
+    key: "gemini",
+    label: "Gemini",
+    color: "var(--gemini)",
+    sort_order: 3,
+    watch_strategy: "poll",
+  },
+  cursor: {
+    key: "cursor",
+    label: "Cursor",
+    color: "var(--cursor)",
+    sort_order: 4,
+    watch_strategy: "fs",
+  },
+  opencode: {
+    key: "opencode",
+    label: "OpenCode",
+    color: "var(--opencode)",
+    sort_order: 5,
+    watch_strategy: "poll",
+  },
+  kimi: {
+    key: "kimi",
+    label: "Kimi CLI",
+    color: "var(--kimi)",
+    sort_order: 6,
+    watch_strategy: "fs",
+  },
+  qwen: {
+    key: "qwen",
+    label: "Qwen Code",
+    color: "var(--qwen)",
+    sort_order: 7,
+    watch_strategy: "fs",
+  },
 };
 
 let loadPromise: Promise<void> | null = null;
@@ -80,11 +105,17 @@ export function getProviderLabel(
     return variantName;
   }
 
-  return getProviderCatalogItem(provider)?.label ?? FALLBACK_LABELS[provider];
+  return (
+    getProviderCatalogItem(provider)?.label ??
+    FALLBACK_PROVIDER_CATALOG[provider].label
+  );
 }
 
 export function getProviderColor(provider: Provider): string {
-  return getProviderCatalogItem(provider)?.color ?? `var(--${provider})`;
+  return (
+    getProviderCatalogItem(provider)?.color ??
+    FALLBACK_PROVIDER_CATALOG[provider].color
+  );
 }
 
 export function getProviderWatchStrategy(
@@ -92,21 +123,21 @@ export function getProviderWatchStrategy(
 ): ProviderWatchStrategy {
   return (
     getProviderCatalogItem(provider)?.watch_strategy ??
-    FALLBACK_WATCH_STRATEGIES[provider]
+    FALLBACK_PROVIDER_CATALOG[provider].watch_strategy
   );
 }
 
 export function getProvidersForWatchStrategy(
   strategy: ProviderWatchStrategy,
 ): Provider[] {
-  return (Object.keys(FALLBACK_SORT_ORDERS) as Provider[]).filter(
+  return (Object.keys(FALLBACK_PROVIDER_CATALOG) as Provider[]).filter(
     (provider) => getProviderWatchStrategy(provider) === strategy,
   );
 }
 
-export function getProviderSortOrder(provider: Provider): ProviderSortOrder {
+export function getProviderSortOrder(provider: Provider): number {
   return (
     getProviderCatalogItem(provider)?.sort_order ??
-    FALLBACK_SORT_ORDERS[provider]
+    FALLBACK_PROVIDER_CATALOG[provider].sort_order
   );
 }
