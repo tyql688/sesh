@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::models::{Provider, SessionMeta};
+use crate::models::{Message, MessageRole, Provider, SessionMeta};
 use crate::provider::ParsedSession;
 use crate::provider_utils::{
     project_name_from_path, session_title, truncate_to_bytes, FTS_CONTENT_LIMIT,
@@ -28,6 +28,109 @@ pub(crate) fn for_each_transcript_entry(
     }
 }
 
+pub(crate) fn parse_transcript_messages(content: &str) -> Vec<Message> {
+    let mut messages = Vec::new();
+
+    for_each_transcript_entry(content, |role, msg_content| match role {
+        "user" => {
+            let text = extract_text_from_content(msg_content);
+            let clean = extract_user_text(&text);
+            if !clean.is_empty() {
+                messages.push(Message {
+                    role: MessageRole::User,
+                    content: clean,
+                    timestamp: None,
+                    tool_name: None,
+                    tool_input: None,
+                    token_usage: None,
+                    model: None,
+                });
+            }
+        }
+        "assistant" => {
+            let raw_text = extract_text_from_content(msg_content);
+            let text = strip_redacted(&raw_text);
+
+            if let Some(thinking) = extract_think_content(&text) {
+                messages.push(Message {
+                    role: MessageRole::System,
+                    content: format!("[thinking]\n{thinking}"),
+                    timestamp: None,
+                    tool_name: None,
+                    tool_input: None,
+                    token_usage: None,
+                    model: None,
+                });
+            }
+
+            let after_think = strip_think_tags(&text);
+
+            if let Some(cursor_thinking) = extract_cursor_thinking(&after_think) {
+                messages.push(Message {
+                    role: MessageRole::System,
+                    content: format!("[thinking]\n{cursor_thinking}"),
+                    timestamp: None,
+                    tool_name: None,
+                    tool_input: None,
+                    token_usage: None,
+                    model: None,
+                });
+            }
+
+            let visible = strip_cursor_thinking(&after_think);
+            if !visible.is_empty() {
+                messages.push(Message {
+                    role: MessageRole::Assistant,
+                    content: visible,
+                    timestamp: None,
+                    tool_name: None,
+                    tool_input: None,
+                    token_usage: None,
+                    model: None,
+                });
+            }
+
+            let parts = parse_content_array(msg_content);
+            for part in &parts {
+                if part.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+                    continue;
+                }
+                let raw_name = part.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
+                let display_name = map_cursor_tool_name(raw_name);
+                let args = part.get("input");
+                let tool_input = args.and_then(|a| remap_tool_args(display_name, a));
+
+                messages.push(Message {
+                    role: MessageRole::Tool,
+                    content: String::new(),
+                    timestamp: None,
+                    tool_name: Some(display_name.to_string()),
+                    tool_input,
+                    token_usage: None,
+                    model: None,
+                });
+            }
+        }
+        _ => {}
+    });
+
+    messages
+}
+
+fn extract_project_path_from_transcript(content: &str) -> String {
+    let mut project_path = String::new();
+    for_each_transcript_entry(content, |role, msg_content| {
+        if role != "user" || !project_path.is_empty() {
+            return;
+        }
+        let text = extract_text_from_content(msg_content);
+        if let Some(wp) = extract_workspace_path(&text) {
+            project_path = wp;
+        }
+    });
+    project_path
+}
+
 impl CursorProvider {
     /// Parse a transcript JSONL file into a ParsedSession.
     /// Handles both main transcripts and subagent transcripts based on path structure.
@@ -39,6 +142,10 @@ impl CursorProvider {
     ///   → parent_id = Some(parentId), is_sidechain = true
     pub fn parse_transcript_jsonl(&self, path: &Path) -> Option<ParsedSession> {
         let content = std::fs::read_to_string(path).ok()?;
+        let messages = parse_transcript_messages(&content);
+        if messages.is_empty() {
+            return None;
+        }
 
         let file_id = path.file_stem()?.to_string_lossy().to_string();
 
@@ -61,48 +168,20 @@ impl CursorProvider {
             (file_id, None, false)
         };
 
-        let mut first_user_message: Option<String> = None;
-        let mut content_parts: Vec<String> = Vec::new();
-        let mut message_count: u32 = 0;
-        let mut project_path = String::new();
-
-        for_each_transcript_entry(&content, |role, msg_content| match role {
-            "user" => {
-                let text = extract_text_from_content(msg_content);
-                if project_path.is_empty() {
-                    if let Some(wp) = extract_workspace_path(&text) {
-                        project_path = wp;
-                    }
-                }
-                let clean = extract_user_text(&text);
-                if !clean.is_empty() {
-                    if first_user_message.is_none() {
-                        first_user_message = Some(clean.clone());
-                    }
-                    content_parts.push(clean);
-                    message_count += 1;
-                }
-            }
-            "assistant" => {
-                let text = extract_text_from_content(msg_content);
-                let after_think = strip_think_tags(&text);
-                let clean = strip_cursor_thinking(&after_think);
-                if !clean.is_empty() {
-                    content_parts.push(clean);
-                }
-                let parts = parse_content_array(msg_content);
-                let tool_count = parts
-                    .iter()
-                    .filter(|p| p.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
-                    .count();
-                message_count += 1 + tool_count as u32;
-            }
-            _ => {}
+        let first_user_message = messages.iter().find_map(|message| {
+            (message.role == MessageRole::User && !message.content.is_empty())
+                .then(|| message.content.clone())
         });
-
-        if message_count == 0 {
-            return None;
-        }
+        let content_parts: Vec<String> = messages
+            .iter()
+            .filter(|message| {
+                matches!(message.role, MessageRole::User | MessageRole::Assistant)
+                    && !message.content.is_empty()
+            })
+            .map(|message| message.content.clone())
+            .collect();
+        let mut project_path = extract_project_path_from_transcript(&content);
+        let message_count = messages.len() as u32;
 
         // For subagents without Workspace Path in content, derive from projects dir name
         if project_path.is_empty() && !is_subagent {
@@ -384,5 +463,27 @@ mod tests {
             .any(|m| m.role == MessageRole::System && m.content.starts_with("[thinking]"));
 
         assert!(has_thinking, "load path should extract thinking blocks");
+    }
+
+    #[test]
+    fn test_scan_and_load_message_count_consistent_with_thinking_and_redaction() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let fixture = r#"{"role":"user","message":{"content":[{"type":"text","text":"do something"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"<think>internal reasoning</think>\nvisible output\n\n**Plan**\nuse ripgrep first\n[REDACTED]"},{"type":"tool_use","name":"Read","id":"t1","input":{"path":"/tmp/file"}}]}}"#;
+
+        let path = write_fixture(dir.path(), fixture);
+        let provider = CursorProvider {
+            home_dir: dir.path().to_path_buf(),
+        };
+
+        let parsed = provider.parse_transcript_jsonl(&path).unwrap();
+        let messages = provider
+            .load_transcript_messages(path.to_str().unwrap())
+            .unwrap();
+
+        assert_eq!(parsed.meta.message_count, messages.len() as u32);
+        assert_eq!(parsed.content_text, "do something\nvisible output");
+        assert!(!parsed.content_text.contains("internal reasoning"));
+        assert!(!parsed.content_text.contains("[REDACTED]"));
     }
 }

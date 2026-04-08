@@ -1047,10 +1047,12 @@ fn cursor_subagent_message_count() {
         .parse_transcript_jsonl(&jsonl_path)
         .expect("subagent JSONL must parse");
 
-    // 1 user + 3 assistant + 2 tool_use = 6
+    // 1 user + 2 visible assistant messages + 2 tool_use = 5.
+    // The Grep-only turn has no visible assistant text, so it materializes as
+    // just one Tool message in `load_messages`.
     assert_eq!(
-        session.meta.message_count, 6,
-        "expected 6 messages (1 user + 3 assistant + 2 tool_use)"
+        session.meta.message_count, 5,
+        "expected 5 materialized messages (1 user + 2 assistant + 2 tool_use)"
     );
 }
 

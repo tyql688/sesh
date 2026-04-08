@@ -9,13 +9,11 @@ mod tools;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::models::{Message, MessageRole, Provider, SessionMeta};
+use crate::models::{Message, Provider, SessionMeta};
 use crate::provider::{
     ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
 };
 use rayon::prelude::*;
-
-use tools::*;
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -155,95 +153,9 @@ impl CursorProvider {
     fn load_transcript_messages(&self, source_path: &str) -> Result<Vec<Message>, ProviderError> {
         let content = std::fs::read_to_string(source_path)
             .map_err(|e| ProviderError::Parse(format!("failed to read transcript: {e}")))?;
-
-        let mut messages = Vec::new();
-
-        crate::providers::cursor::parser::for_each_transcript_entry(
+        Ok(crate::providers::cursor::parser::parse_transcript_messages(
             &content,
-            |role, msg_content| match role {
-                "user" => {
-                    let text = extract_text_from_content(msg_content);
-                    let clean = extract_user_text(&text);
-                    if !clean.is_empty() {
-                        messages.push(Message {
-                            role: MessageRole::User,
-                            content: clean,
-                            timestamp: None,
-                            tool_name: None,
-                            tool_input: None,
-                            token_usage: None,
-                            model: None,
-                        });
-                    }
-                }
-                "assistant" => {
-                    let raw_text = extract_text_from_content(msg_content);
-                    let text = strip_redacted(&raw_text);
-
-                    if let Some(thinking) = extract_think_content(&text) {
-                        messages.push(Message {
-                            role: MessageRole::System,
-                            content: format!("[thinking]\n{thinking}"),
-                            timestamp: None,
-                            tool_name: None,
-                            tool_input: None,
-                            token_usage: None,
-                            model: None,
-                        });
-                    }
-
-                    let after_think = strip_think_tags(&text);
-
-                    if let Some(cursor_thinking) = extract_cursor_thinking(&after_think) {
-                        messages.push(Message {
-                            role: MessageRole::System,
-                            content: format!("[thinking]\n{cursor_thinking}"),
-                            timestamp: None,
-                            tool_name: None,
-                            tool_input: None,
-                            token_usage: None,
-                            model: None,
-                        });
-                    }
-
-                    let visible = strip_cursor_thinking(&after_think);
-                    if !visible.is_empty() {
-                        messages.push(Message {
-                            role: MessageRole::Assistant,
-                            content: visible,
-                            timestamp: None,
-                            tool_name: None,
-                            tool_input: None,
-                            token_usage: None,
-                            model: None,
-                        });
-                    }
-                    let parts = parse_content_array(msg_content);
-                    for part in &parts {
-                        if part.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
-                            continue;
-                        }
-                        let raw_name = part.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
-                        let display_name = map_cursor_tool_name(raw_name);
-                        let args = part.get("input");
-                        let tool_input = args.and_then(|a| remap_tool_args(display_name, a));
-
-                        messages.push(Message {
-                            role: MessageRole::Tool,
-                            content: String::new(),
-                            timestamp: None,
-                            tool_name: Some(display_name.to_string()),
-                            tool_input,
-                            token_usage: None,
-                            model: None,
-                        });
-                    }
-                }
-                _ => {}
-            },
-        );
-
-        Ok(messages)
+        ))
     }
 }
 
