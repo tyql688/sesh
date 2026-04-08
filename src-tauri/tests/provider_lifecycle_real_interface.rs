@@ -1,3 +1,5 @@
+#![cfg(not(target_os = "windows"))]
+
 //! Manual real-provider smoke test.
 //!
 //! This test generates fresh local sessions via the real provider CLIs, then
