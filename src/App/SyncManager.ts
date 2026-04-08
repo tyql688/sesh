@@ -7,9 +7,9 @@ import {
   reindexProviders,
 } from "../lib/tauri";
 import {
-  getProvidersForWatchStrategy,
-  loadProviderCatalog,
-} from "../stores/providerCatalog";
+  getPollWatchProviders,
+  loadProviderWatchCatalog,
+} from "../lib/provider-watch";
 import { toastError } from "../stores/toast";
 
 export interface SyncCallbacks {
@@ -125,13 +125,14 @@ export function createSyncManager(callbacks: SyncCallbacks) {
 
   function startPolling() {
     const token = ++pollConfigToken;
-    let activeProviders = getProvidersForWatchStrategy("poll");
+    let activeProviders = getPollWatchProviders();
     applyPolling(activeProviders);
 
-    void loadProviderCatalog().then(() => {
+    const catalogLoad = loadProviderWatchCatalog();
+    void catalogLoad?.then(() => {
       if (token !== pollConfigToken) return;
 
-      const nextProviders = getProvidersForWatchStrategy("poll");
+      const nextProviders = getPollWatchProviders();
       if (providersKey(nextProviders) === providersKey(activeProviders)) return;
 
       activeProviders = nextProviders;

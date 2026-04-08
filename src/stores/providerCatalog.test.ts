@@ -72,4 +72,29 @@ describe("providerCatalog store", () => {
     expect(getProviderCatalogVersion()).toBe(1);
     expect(getProvidersForWatchStrategy("poll")).toEqual(["codex"]);
   });
+
+  it("keeps fallback values and warns when catalog load fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    getProviderCatalog.mockRejectedValue(new Error("boom"));
+
+    const {
+      getProvidersForWatchStrategy,
+      getProviderCatalogVersion,
+      loadProviderCatalog,
+    } = await loadStore();
+
+    await loadProviderCatalog();
+
+    expect(getProviderCatalogVersion()).toBe(0);
+    expect(getProvidersForWatchStrategy("poll")).toEqual([
+      "gemini",
+      "opencode",
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      "failed to load provider catalog:",
+      expect.any(Error),
+    );
+
+    warn.mockRestore();
+  });
 });

@@ -87,7 +87,9 @@ export async function loadProviderCatalog() {
       setProviderCatalog(next);
       setProviderCatalogVersion((version) => version + 1);
     })
-    .catch(() => {})
+    .catch((error) => {
+      console.warn("failed to load provider catalog:", error);
+    })
     .finally(() => {
       loadPromise = null;
     });

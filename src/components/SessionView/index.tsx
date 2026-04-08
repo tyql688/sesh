@@ -15,12 +15,11 @@ import type {
   Message,
   MessageRole,
 } from "../../lib/types";
-import { getProviderWatchBehavior } from "../../lib/provider-registry";
 import {
-  getProviderCatalogVersion,
-  getProviderWatchStrategy,
-  loadProviderCatalog,
-} from "../../stores/providerCatalog";
+  getProviderWatchConfig,
+  getWatchCatalogVersion,
+  loadProviderWatchCatalog,
+} from "../../lib/provider-watch";
 import {
   getSessionDetail,
   trashSession,
@@ -269,7 +268,7 @@ export function SessionView(props: {
           meta().provider,
           meta().source_path,
           props.session.source_path,
-          getProviderCatalogVersion(),
+          getWatchCatalogVersion(),
         ] as const,
       async ([isWatching]) => {
         // Cleanup previous listener & polling
@@ -280,15 +279,14 @@ export function SessionView(props: {
         unwatchFn = undefined;
 
         if (isWatching) {
-          void loadProviderCatalog();
+          void loadProviderWatchCatalog();
 
           const activeSourcePath =
             meta().source_path || props.session.source_path;
-          const watchBehavior = getProviderWatchBehavior(meta().provider);
-          const watchStrategy = getProviderWatchStrategy(meta().provider);
+          const watchConfig = getProviderWatchConfig(meta().provider);
 
-          if (watchStrategy === "poll") {
-            pollTimer = setInterval(reloadSession, watchBehavior.debounceMs);
+          if (watchConfig.strategy === "poll") {
+            pollTimer = setInterval(reloadSession, watchConfig.debounceMs);
           } else {
             // File-based providers: use FS events
             unwatchFn = await listen<string[]>("sessions-changed", (event) => {
@@ -296,7 +294,7 @@ export function SessionView(props: {
               if (!activeSourcePath) return;
 
               let matched: boolean;
-              if (watchBehavior.matchPrefix) {
+              if (watchConfig.matchPrefix) {
                 // Gemini: match by project directory prefix
                 // (strip last 2 path segments: /chats/session-id.json → project dir)
                 const dir = activeSourcePath.replace(/\/[^/]+\/[^/]+$/, "");
@@ -307,10 +305,7 @@ export function SessionView(props: {
               if (!matched) return;
 
               clearTimeout(watchDebounce);
-              watchDebounce = setTimeout(
-                reloadSession,
-                watchBehavior.debounceMs,
-              );
+              watchDebounce = setTimeout(reloadSession, watchConfig.debounceMs);
             });
           }
         }
