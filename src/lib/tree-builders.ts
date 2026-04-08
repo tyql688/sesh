@@ -2,7 +2,7 @@ import type { SessionMeta, TrashMeta, TreeNode, Provider } from "./types";
 import {
   getProviderLabel,
   getProviderSortOrder,
-} from "../stores/providerCatalog";
+} from "../stores/providerSnapshots";
 
 function sortProviders<T>(entries: [string, T][]): [string, T][] {
   return entries.sort(

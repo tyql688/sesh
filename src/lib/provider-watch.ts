@@ -1,9 +1,9 @@
 import {
-  getProviderCatalogVersion,
+  getProviderSnapshotVersion,
   getProvidersForWatchStrategy,
   getProviderWatchStrategy,
-  loadProviderCatalog,
-} from "../stores/providerCatalog";
+  loadProviderSnapshots,
+} from "../stores/providerSnapshots";
 import type { Provider } from "./types";
 
 export interface ProviderWatchBehavior {
@@ -45,10 +45,10 @@ export function getPollWatchProviders(): Provider[] {
   return getProvidersForWatchStrategy("poll");
 }
 
-export function loadProviderWatchCatalog(): Promise<void> | undefined {
-  return loadProviderCatalog();
+export function loadProviderWatchSnapshots(): Promise<void> | undefined {
+  return loadProviderSnapshots();
 }
 
-export function getWatchCatalogVersion(): number {
-  return getProviderCatalogVersion();
+export function getProviderWatchVersion(): number {
+  return getProviderSnapshotVersion();
 }

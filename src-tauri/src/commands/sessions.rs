@@ -4,8 +4,8 @@ use tauri::State;
 
 use crate::db::Database;
 use crate::models::{Message, Provider, SessionDetail, SessionMeta};
+use crate::services::{load_session_meta, SessionLifecycleService, SourceSyncService};
 
-use super::session_resolution::{load_session_meta, resolve_session_deletion};
 use super::AppState;
 
 #[tauri::command]
@@ -40,6 +40,7 @@ pub async fn reindex_providers(
 pub async fn sync_sources(paths: Vec<String>, state: State<'_, AppState>) -> Result<usize, String> {
     let state = state.inner().clone();
     tokio::task::spawn_blocking(move || {
+        let source_sync = SourceSyncService::new(&state.db);
         let mut unique_paths = std::collections::HashSet::new();
         let mut synced = 0;
 
@@ -47,7 +48,7 @@ pub async fn sync_sources(paths: Vec<String>, state: State<'_, AppState>) -> Res
             if path.is_empty() || !unique_paths.insert(path.clone()) {
                 continue;
             }
-            if sync_source_from_path(&path, &state)? {
+            if source_sync.sync_source_path(&path)? {
                 synced += 1;
             }
         }
@@ -84,15 +85,7 @@ pub fn get_child_sessions(
 
 #[tauri::command]
 pub fn delete_session(session_id: String, state: State<AppState>) -> Result<(), String> {
-    let deletion = resolve_session_deletion(&state.db, &session_id)?;
-    crate::provider::execute_purge(&deletion.plan, deletion.provider.as_ref(), &deletion.meta)?;
-
-    state
-        .db
-        .delete_session(&session_id)
-        .map_err(|e| format!("failed to delete from db: {e}"))?;
-
-    Ok(())
+    SessionLifecycleService::new(&state.db).purge_session(&session_id)
 }
 
 // TODO: return per-item results when frontend uses this command.
@@ -103,24 +96,7 @@ pub async fn delete_sessions_batch(
     state: State<'_, AppState>,
 ) -> Result<u32, String> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let mut deleted: u32 = 0;
-        for session_id in &items {
-            let deletion = resolve_session_deletion(&state.db, session_id)?;
-            crate::provider::execute_purge(
-                &deletion.plan,
-                deletion.provider.as_ref(),
-                &deletion.meta,
-            )?;
-
-            state
-                .db
-                .delete_session(session_id)
-                .map_err(|e| format!("failed to delete session {session_id} from db: {e}"))?;
-            deleted += 1;
-        }
-        Ok(deleted)
-    })
+    tokio::task::spawn_blocking(move || SessionLifecycleService::new(&state.db).purge_sessions(&items))
     .await
     .map_err(|e| format!("task join error: {e}"))?
 }
@@ -199,36 +175,6 @@ pub(crate) fn load_detail(session_id: &str, db: &Database) -> Result<SessionDeta
     let meta = load_session_meta(db, session_id)?;
     let messages = load_messages_from_provider(&meta.provider, session_id, &meta.source_path)?;
     Ok(SessionDetail { meta, messages })
-}
-
-pub(crate) fn sync_source_for_provider(
-    provider: Provider,
-    source_path: &str,
-    db: &Database,
-) -> Result<(), String> {
-    let provider_impl = provider.require_runtime()?;
-
-    let mut sessions = provider_impl
-        .scan_source(source_path)
-        .map_err(|e| format!("failed to scan source: {e}"))?;
-
-    // Filter out sessions that are in the trash (shared-source providers)
-    let excluded = crate::trash_state::shared_deleted_ids();
-    if !excluded.is_empty() {
-        sessions.retain(|s| !excluded.contains(&s.meta.id));
-    }
-
-    db.sync_source_snapshot(&provider, source_path, &sessions)
-        .map_err(|e| format!("failed to sync source snapshot: {e}"))
-}
-
-pub(crate) fn sync_source_from_path(source_path: &str, state: &AppState) -> Result<bool, String> {
-    let Some(provider) = Provider::from_source_path(source_path) else {
-        return Ok(false);
-    };
-
-    sync_source_for_provider(provider, source_path, &state.db)?;
-    Ok(true)
 }
 
 fn load_messages_from_provider(

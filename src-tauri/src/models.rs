@@ -119,20 +119,15 @@ pub struct IndexStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProviderInfo {
-    pub key: String,
-    pub path: String,
-    pub exists: bool,
-    pub session_count: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProviderCatalogItem {
-    pub key: String,
+pub struct ProviderSnapshot {
+    pub key: Provider,
     pub label: String,
     pub color: String,
     pub sort_order: u32,
     pub watch_strategy: crate::provider::WatchStrategy,
+    pub path: String,
+    pub exists: bool,
+    pub session_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

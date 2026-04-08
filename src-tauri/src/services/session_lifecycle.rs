@@ -1,0 +1,345 @@
+use std::path::Path;
+use std::sync::Mutex;
+
+use crate::db::Database;
+use crate::models::TrashMeta;
+use crate::provider::{FileAction, RestoreAction, SessionProvider};
+use crate::services::{resolve_session_deletion, SourceSyncService};
+use crate::trash_state::{
+    add_shared_deletion, atomic_write_json, read_trash_meta, remove_shared_deletion,
+    shared_deletions_path, trash_dir, trash_meta_path,
+};
+
+/// Serialize all trash metadata read-modify-write operations.
+static TRASH_META_LOCK: Mutex<()> = Mutex::new(());
+
+struct RestoreEntries {
+    entry: TrashMeta,
+    child_entries: Vec<TrashMeta>,
+    remaining: Vec<TrashMeta>,
+}
+
+pub struct SessionLifecycleService<'a> {
+    db: &'a Database,
+    source_sync: SourceSyncService<'a>,
+}
+
+impl<'a> SessionLifecycleService<'a> {
+    pub fn new(db: &'a Database) -> Self {
+        Self {
+            db,
+            source_sync: SourceSyncService::new(db),
+        }
+    }
+
+    pub fn trash_session(&self, session_id: &str) -> Result<(), String> {
+        let trash_dir = trash_dir()?;
+        let deletion = resolve_session_deletion(self.db, session_id)?;
+
+        let now_ts = chrono::Utc::now().timestamp();
+        let meta_path = trash_meta_path(&trash_dir);
+        let _lock = TRASH_META_LOCK
+            .lock()
+            .map_err(|_| "trash meta lock poisoned".to_string())?;
+
+        let provider_key = deletion.meta.provider.key();
+        let mut entries = read_trash_meta(&meta_path);
+        let records = crate::provider::execute_trash(
+            &deletion.plan,
+            &deletion.meta,
+            provider_key,
+            &trash_dir,
+            now_ts,
+        )?;
+        entries.extend(records);
+
+        let shared_deletions_path = shared_deletions_path(&trash_dir);
+        if deletion.plan.file_action == FileAction::Shared {
+            add_shared_deletion(
+                &shared_deletions_path,
+                &deletion.meta.id,
+                provider_key,
+                &deletion.meta.source_path,
+            )?;
+        }
+
+        atomic_write_json(&meta_path, &entries)?;
+        self.db
+            .delete_session(session_id)
+            .map_err(|e| format!("failed to delete from db: {e}"))?;
+        Ok(())
+    }
+
+    pub fn purge_session(&self, session_id: &str) -> Result<(), String> {
+        let deletion = resolve_session_deletion(self.db, session_id)?;
+        crate::provider::execute_purge(&deletion.plan, deletion.provider.as_ref(), &deletion.meta)?;
+        self.db
+            .delete_session(session_id)
+            .map_err(|e| format!("failed to delete from db: {e}"))?;
+        Ok(())
+    }
+
+    pub fn purge_sessions(&self, session_ids: &[String]) -> Result<u32, String> {
+        let mut deleted = 0;
+        for session_id in session_ids {
+            self.purge_session(session_id)?;
+            deleted += 1;
+        }
+        Ok(deleted)
+    }
+
+    pub fn list_trash() -> Result<Vec<TrashMeta>, String> {
+        let trash_dir = trash_dir()?;
+        let meta_path = trash_meta_path(&trash_dir);
+        let _lock = TRASH_META_LOCK
+            .lock()
+            .map_err(|_| "trash meta lock poisoned".to_string())?;
+        Ok(read_trash_meta(&meta_path))
+    }
+
+    pub fn restore_session(&self, trash_id: &str) -> Result<(), String> {
+        let trash_dir = trash_dir()?;
+        let meta_path = trash_meta_path(&trash_dir);
+        let shared_deletions_path = shared_deletions_path(&trash_dir);
+        if !meta_path.exists() {
+            return Err("No trash metadata found".to_string());
+        }
+
+        let lock = TRASH_META_LOCK
+            .lock()
+            .map_err(|_| "trash meta lock poisoned".to_string())?;
+
+        let entries = read_trash_meta(&meta_path);
+        let Some(restore_entries) = collect_restore_entries(entries, trash_id) else {
+            drop(lock);
+            return Ok(());
+        };
+
+        let provider = runtime_for_trash_entry(&restore_entries.entry);
+        let action = provider
+            .as_ref()
+            .map(|runtime| runtime.restore_action(&restore_entries.entry))
+            .unwrap_or_else(|| crate::provider::infer_restore_action(&restore_entries.entry));
+
+        let needs_sync = crate::provider::execute_restore(
+            &action,
+            &restore_entries.entry,
+            &trash_dir,
+            &restore_entries.remaining,
+        )?;
+
+        for child in &restore_entries.child_entries {
+            let child_action = provider
+                .as_ref()
+                .map(|runtime| runtime.restore_action(child))
+                .unwrap_or_else(|| crate::provider::infer_restore_action(child));
+            let _ = crate::provider::execute_restore(
+                &child_action,
+                child,
+                &trash_dir,
+                &restore_entries.remaining,
+            );
+        }
+
+        if action == RestoreAction::UndoSharedDeletion {
+            remove_shared_deletion(
+                &shared_deletions_path,
+                &restore_entries.entry.id,
+                &restore_entries.entry.original_path,
+            )?;
+        }
+
+        atomic_write_json(&meta_path, &restore_entries.remaining)?;
+        drop(lock);
+
+        if needs_sync {
+            self.source_sync.sync_provider_key(
+                &restore_entries.entry.provider,
+                &restore_entries.entry.original_path,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn empty_trash() -> Result<(), String> {
+        let trash_dir = trash_dir()?;
+        let meta_path = trash_meta_path(&trash_dir);
+        let shared_deletions_path = shared_deletions_path(&trash_dir);
+
+        if meta_path.exists() {
+            let _lock = TRASH_META_LOCK
+                .lock()
+                .map_err(|_| "trash meta lock poisoned".to_string())?;
+            let entries = read_trash_meta(&meta_path);
+
+            for entry in &entries {
+                remove_trash_entry(entry, &trash_dir, &shared_deletions_path, &entries, true)?;
+            }
+
+            let empty: Vec<TrashMeta> = Vec::new();
+            atomic_write_json(&meta_path, &empty)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn permanent_delete_trash(&self, trash_id: &str) -> Result<(), String> {
+        let trash_dir = trash_dir()?;
+        let meta_path = trash_meta_path(&trash_dir);
+        let shared_deletions_path = shared_deletions_path(&trash_dir);
+        if !meta_path.exists() {
+            return Err("No trash metadata found".to_string());
+        }
+
+        let _lock = TRASH_META_LOCK
+            .lock()
+            .map_err(|_| "trash meta lock poisoned".to_string())?;
+        let entries = read_trash_meta(&meta_path);
+
+        if let Some(entry) = entries.iter().find(|entry| entry.id == trash_id) {
+            remove_trash_entry(entry, &trash_dir, &shared_deletions_path, &entries, false)?;
+        }
+
+        let remaining: Vec<TrashMeta> =
+            entries.into_iter().filter(|entry| entry.id != trash_id).collect();
+        atomic_write_json(&meta_path, &remaining)?;
+        Ok(())
+    }
+}
+
+fn collect_restore_entries(entries: Vec<TrashMeta>, trash_id: &str) -> Option<RestoreEntries> {
+    let entry = entries.iter().find(|entry| entry.id == trash_id)?.clone();
+    let mut child_entries = Vec::new();
+
+    let remaining = entries
+        .into_iter()
+        .filter(|candidate| {
+            if candidate.id == trash_id {
+                return false;
+            }
+            if candidate.parent_id.as_deref() == Some(trash_id) {
+                if candidate.trash_file.is_empty() {
+                    return false;
+                }
+                child_entries.push(candidate.clone());
+                return false;
+            }
+            if candidate.trash_file.is_empty()
+                && !entry.trash_file.is_empty()
+                && candidate.original_path == entry.original_path
+                && candidate.provider == entry.provider
+                && candidate.parent_id.is_none()
+            {
+                log::debug!(
+                    "restore: legacy child match for session {} (provider={}, path={})",
+                    candidate.id,
+                    candidate.provider,
+                    candidate.original_path
+                );
+                return false;
+            }
+            true
+        })
+        .collect();
+
+    Some(RestoreEntries {
+        entry,
+        child_entries,
+        remaining,
+    })
+}
+
+fn remove_trash_entry(
+    entry: &TrashMeta,
+    trash_dir: &Path,
+    shared_deletions_path: &Path,
+    all_entries: &[TrashMeta],
+    delete_all: bool,
+) -> Result<(), String> {
+    if entry.trash_file.is_empty() && !entry.original_path.is_empty() {
+        purge_shared_trash_entry(entry, shared_deletions_path)?;
+        if delete_all {
+            return Ok(());
+        }
+    }
+
+    if !entry.trash_file.is_empty() {
+        let file = trash_dir.join(&entry.trash_file);
+        let others_use_file = if delete_all {
+            false
+        } else {
+            all_entries
+                .iter()
+                .filter(|other| other.id != entry.id)
+                .any(|other| other.trash_file == entry.trash_file)
+        };
+
+        if !others_use_file && file.exists() {
+            let _ = std::fs::remove_file(&file);
+        }
+    }
+
+    if !entry.original_path.is_empty() {
+        cleanup_session_dir(&entry.original_path);
+    }
+    cleanup_provider_entry(entry);
+    Ok(())
+}
+
+/// Remove session directory from original location.
+/// Tries both patterns to cover all providers:
+/// - `<file>.jsonl` → `<file>/` (Claude, Codex, CC-Mirror)
+/// - `parent()` of file (Kimi, Cursor — session UUID dir contains subagents/, state.json)
+///
+/// Safety: only `remove_dir_all` on directories that look session-specific
+/// (contain subagents/, state.json, wire.jsonl, or context.jsonl).
+/// Shared directories like Gemini's `chats/` are NOT removed.
+fn cleanup_session_dir(original_path: &str) {
+    let original = Path::new(original_path);
+    for candidate in [
+        original.with_extension(""),
+        original.parent().unwrap_or(original).to_path_buf(),
+    ] {
+        if !candidate.is_dir() {
+            continue;
+        }
+        if is_session_dir(&candidate) {
+            let _ = std::fs::remove_dir_all(&candidate);
+        } else {
+            let _ = std::fs::remove_dir(&candidate);
+        }
+    }
+}
+
+fn is_session_dir(dir: &Path) -> bool {
+    dir.join("subagents").is_dir()
+        || dir.join("state.json").is_file()
+        || dir.join("wire.jsonl").is_file()
+        || dir.join("context.jsonl").is_file()
+}
+
+fn runtime_for_trash_entry(entry: &TrashMeta) -> Option<Box<dyn SessionProvider>> {
+    crate::models::Provider::parse(&entry.provider).and_then(|provider| provider.build_runtime())
+}
+
+fn purge_shared_trash_entry(entry: &TrashMeta, shared_deletions_path: &Path) -> Result<(), String> {
+    if let Some(provider) = runtime_for_trash_entry(entry) {
+        if let Err(error) = provider.purge_from_source(&entry.original_path, &entry.id) {
+            log::warn!("failed to purge session {} from source: {error}", entry.id);
+        }
+    }
+
+    add_shared_deletion(
+        shared_deletions_path,
+        &entry.id,
+        &entry.provider,
+        &entry.original_path,
+    )
+}
+
+fn cleanup_provider_entry(entry: &TrashMeta) {
+    if let Some(provider) = runtime_for_trash_entry(entry) {
+        provider.cleanup_on_permanent_delete(&entry.id);
+    }
+}

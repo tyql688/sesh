@@ -1,5 +1,4 @@
 mod search;
-mod session_resolution;
 mod sessions;
 mod settings;
 mod terminal;

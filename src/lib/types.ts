@@ -96,19 +96,15 @@ export interface IndexStats {
   last_index_time: string;
 }
 
-export interface ProviderInfo {
-  key: Provider;
-  path: string;
-  exists: boolean;
-  session_count: number;
-}
-
-export interface ProviderCatalogItem {
+export interface ProviderSnapshot {
   key: Provider;
   label: string;
   color: string;
   sort_order: number;
   watch_strategy: "fs" | "poll";
+  path: string;
+  exists: boolean;
+  session_count: number;
 }
 
 export interface TrashMeta {

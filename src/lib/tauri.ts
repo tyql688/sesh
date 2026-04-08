@@ -5,8 +5,7 @@ import type {
   SearchFilters,
   TreeNode,
   IndexStats,
-  ProviderInfo,
-  ProviderCatalogItem,
+  ProviderSnapshot,
   TrashMeta,
   SessionMeta,
 } from "./types";
@@ -84,12 +83,8 @@ export async function detectTerminal(): Promise<string> {
   return invoke<string>("detect_terminal");
 }
 
-export async function getProviderPaths(): Promise<ProviderInfo[]> {
-  return invoke<ProviderInfo[]>("get_provider_paths");
-}
-
-export async function getProviderCatalog(): Promise<ProviderCatalogItem[]> {
-  return invoke<ProviderCatalogItem[]>("get_provider_catalog");
+export async function getProviderSnapshots(): Promise<ProviderSnapshot[]> {
+  return invoke<ProviderSnapshot[]>("get_provider_snapshots");
 }
 
 export async function openInTerminal(

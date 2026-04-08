@@ -1,9 +1,9 @@
 use tauri::State;
 
 use crate::models::Provider;
+use crate::services::load_session_meta;
 use crate::terminal;
 
-use super::session_resolution::load_session_meta;
 use super::AppState;
 
 struct ResumeTarget {

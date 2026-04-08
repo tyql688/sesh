@@ -1,13 +1,14 @@
 import { createSignal, For, Show } from "solid-js";
 import { useI18n } from "../i18n/index";
 import { GeneralSettings } from "./Settings/GeneralSettings";
-import {
-  DataSourceSettings,
-  createProviderPathsResource,
-} from "./Settings/DataSourceSettings";
+import { DataSourceSettings } from "./Settings/DataSourceSettings";
 import { IndexSettings } from "./Settings/IndexSettings";
 import { KeyboardSettings } from "./Settings/KeyboardSettings";
 import { AboutSettings } from "./Settings/AboutSettings";
+import {
+  listLoadedProviderSnapshots,
+  refreshProviderSnapshots,
+} from "../stores/providerSnapshots";
 
 type SettingsCategory =
   | "general"
@@ -20,9 +21,6 @@ export function SettingsPanel() {
   const { t } = useI18n();
   const [activeCategory, setActiveCategory] =
     createSignal<SettingsCategory>("general");
-
-  const [providerPaths, { refetch: refetchProviderPaths }] =
-    createProviderPathsResource();
 
   const categories = [
     {
@@ -39,7 +37,7 @@ export function SettingsPanel() {
   ];
 
   function handleIndexChanged() {
-    refetchProviderPaths();
+    void refreshProviderSnapshots();
   }
 
   return (
@@ -63,7 +61,7 @@ export function SettingsPanel() {
         </Show>
 
         <Show when={activeCategory() === "dataSources"}>
-          <DataSourceSettings providerPaths={providerPaths} />
+          <DataSourceSettings providerSnapshots={listLoadedProviderSnapshots} />
         </Show>
 
         <Show when={activeCategory() === "index"}>

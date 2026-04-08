@@ -6,6 +6,7 @@ pub mod models;
 pub mod provider;
 pub mod provider_utils;
 pub mod providers;
+mod services;
 mod terminal;
 pub mod trash_state;
 mod watcher;
@@ -123,8 +124,7 @@ pub fn run() {
             commands::get_index_stats,
             commands::rebuild_index,
             commands::clear_index,
-            commands::get_provider_paths,
-            commands::get_provider_catalog,
+            commands::get_provider_snapshots,
             commands::get_resume_command,
             commands::detect_terminal,
             commands::open_in_terminal,

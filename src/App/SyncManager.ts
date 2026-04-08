@@ -8,7 +8,7 @@ import {
 } from "../lib/tauri";
 import {
   getPollWatchProviders,
-  loadProviderWatchCatalog,
+  loadProviderWatchSnapshots,
 } from "../lib/provider-watch";
 import { toastError } from "../stores/toast";
 
@@ -128,7 +128,7 @@ export function createSyncManager(callbacks: SyncCallbacks) {
     let activeProviders = getPollWatchProviders();
     applyPolling(activeProviders);
 
-    const catalogLoad = loadProviderWatchCatalog();
+    const catalogLoad = loadProviderWatchSnapshots();
     void catalogLoad?.then(() => {
       if (token !== pollConfigToken) return;
 

@@ -17,8 +17,8 @@ import type {
 } from "../../lib/types";
 import {
   getProviderWatchConfig,
-  getWatchCatalogVersion,
-  loadProviderWatchCatalog,
+  getProviderWatchVersion,
+  loadProviderWatchSnapshots,
 } from "../../lib/provider-watch";
 import {
   getSessionDetail,
@@ -268,7 +268,7 @@ export function SessionView(props: {
           meta().provider,
           meta().source_path,
           props.session.source_path,
-          getWatchCatalogVersion(),
+          getProviderWatchVersion(),
         ] as const,
       async ([isWatching]) => {
         // Cleanup previous listener & polling
@@ -279,7 +279,7 @@ export function SessionView(props: {
         unwatchFn = undefined;
 
         if (isWatching) {
-          void loadProviderWatchCatalog();
+          void loadProviderWatchSnapshots();
 
           const activeSourcePath =
             meta().source_path || props.session.source_path;

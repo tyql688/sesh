@@ -2,7 +2,8 @@ use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::exporter;
-use crate::models::{IndexStats, ProviderCatalogItem, ProviderInfo};
+use crate::models::{IndexStats, ProviderSnapshot};
+use crate::services::ProviderSnapshotService;
 
 use super::sessions::load_detail;
 use super::AppState;
@@ -52,55 +53,8 @@ pub fn clear_index(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_provider_paths(state: State<AppState>) -> Result<Vec<ProviderInfo>, String> {
-    let providers = crate::provider::all_runtimes();
-    let counts = state
-        .db
-        .provider_session_counts()
-        .map_err(|e| format!("failed to load provider session counts: {e}"))?;
-
-    let mut infos = Vec::new();
-
-    for provider in &providers {
-        let paths = provider.watch_paths();
-        let path_str = paths
-            .first()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let exists = paths.first().is_some_and(|p| p.exists());
-        let provider_kind = provider.provider();
-        let key = provider_kind.key().to_string();
-        let session_count = counts.get(&key).copied().unwrap_or(0);
-
-        infos.push(ProviderInfo {
-            key,
-            path: path_str,
-            exists,
-            session_count,
-        });
-    }
-
-    infos.sort_by_key(|info| {
-        crate::models::Provider::parse(&info.key)
-            .map(|provider| provider.descriptor().sort_order())
-            .unwrap_or(u32::MAX)
-    });
-
-    Ok(infos)
-}
-
-#[tauri::command]
-pub fn get_provider_catalog() -> Vec<ProviderCatalogItem> {
-    crate::models::Provider::all()
-        .iter()
-        .map(|provider| ProviderCatalogItem {
-            key: provider.key().to_string(),
-            label: provider.label().to_string(),
-            color: provider.descriptor().color().to_string(),
-            sort_order: provider.descriptor().sort_order(),
-            watch_strategy: provider.descriptor().watch_strategy(),
-        })
-        .collect()
+pub fn get_provider_snapshots(state: State<AppState>) -> Result<Vec<ProviderSnapshot>, String> {
+    ProviderSnapshotService::new(&state.db).list()
 }
 
 #[tauri::command]

@@ -1,36 +1,24 @@
-import { createResource, For, Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../../i18n/index";
-import type { ProviderInfo } from "../../lib/types";
-import { getProviderPaths } from "../../lib/tauri";
-import { getProviderLabel } from "../../stores/providerCatalog";
+import type { ProviderSnapshot } from "../../lib/types";
 import { disabledProviders, toggleProvider } from "../../stores/settings";
 import { toastError } from "../../stores/toast";
 
-export function createProviderPathsResource() {
-  return createResource<ProviderInfo[]>(async () => {
-    try {
-      return await getProviderPaths();
-    } catch {
-      return [];
-    }
-  });
-}
-
 export function DataSourceSettings(props: {
-  providerPaths: () => ProviderInfo[] | undefined;
+  providerSnapshots: () => ProviderSnapshot[] | undefined;
 }) {
   const { t } = useI18n();
 
   return (
     <div class="settings-section">
       <div class="settings-section-title">{t("settings.dataSources")}</div>
-      <Show when={props.providerPaths()}>
-        <For each={props.providerPaths()}>
+      <Show when={props.providerSnapshots()}>
+        <For each={props.providerSnapshots()}>
           {(info) => (
             <div class="settings-row">
               <div>
-                <div class="settings-label">{getProviderLabel(info.key)}</div>
+                <div class="settings-label">{info.label}</div>
                 <div class="settings-desc flex-center-gap-sm">
                   <span>{info.path}</span>
                   <Show when={info.exists}>

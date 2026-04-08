@@ -1,23 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProviderCatalogItem } from "../lib/types";
+import type { ProviderSnapshot } from "../lib/types";
 
-const getProviderCatalog = vi.fn<() => Promise<ProviderCatalogItem[]>>();
+const getProviderSnapshots = vi.fn<() => Promise<ProviderSnapshot[]>>();
 
 vi.mock("../lib/tauri", () => ({
-  getProviderCatalog,
+  getProviderSnapshots,
 }));
 
 async function loadStore() {
-  return import("./providerCatalog");
+  return import("./providerSnapshots");
 }
 
-describe("providerCatalog store", () => {
+describe("providerSnapshots store", () => {
   beforeEach(() => {
     vi.resetModules();
-    getProviderCatalog.mockReset();
+    getProviderSnapshots.mockReset();
   });
 
-  it("uses fallback values before catalog loads", async () => {
+  it("uses fallback values before snapshots load", async () => {
     const {
       getProviderLabel,
       getProvidersForWatchStrategy,
@@ -38,14 +38,17 @@ describe("providerCatalog store", () => {
     );
   });
 
-  it("switches watch providers to the loaded catalog", async () => {
-    getProviderCatalog.mockResolvedValue([
+  it("switches watch providers to the loaded snapshots", async () => {
+    getProviderSnapshots.mockResolvedValue([
       {
         key: "claude",
         label: "Claude Code",
         color: "var(--claude)",
         sort_order: 0,
         watch_strategy: "fs",
+        path: "/claude",
+        exists: true,
+        session_count: 2,
       },
       {
         key: "codex",
@@ -53,13 +56,17 @@ describe("providerCatalog store", () => {
         color: "var(--codex)",
         sort_order: 1,
         watch_strategy: "poll",
+        path: "/codex",
+        exists: true,
+        session_count: 3,
       },
     ]);
 
     const {
       getProvidersForWatchStrategy,
-      getProviderCatalogVersion,
-      loadProviderCatalog,
+      getProviderSnapshotVersion,
+      listLoadedProviderSnapshots,
+      loadProviderSnapshots,
     } = await loadStore();
 
     expect(getProvidersForWatchStrategy("poll")).toEqual([
@@ -67,31 +74,34 @@ describe("providerCatalog store", () => {
       "opencode",
     ]);
 
-    await loadProviderCatalog();
+    await loadProviderSnapshots();
 
-    expect(getProviderCatalogVersion()).toBe(1);
+    expect(getProviderSnapshotVersion()).toBe(1);
     expect(getProvidersForWatchStrategy("poll")).toEqual(["codex"]);
+    expect(
+      listLoadedProviderSnapshots()?.map((snapshot) => snapshot.key),
+    ).toEqual(["claude", "codex"]);
   });
 
-  it("keeps fallback values and warns when catalog load fails", async () => {
+  it("keeps fallback values and warns when snapshot load fails", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    getProviderCatalog.mockRejectedValue(new Error("boom"));
+    getProviderSnapshots.mockRejectedValue(new Error("boom"));
 
     const {
       getProvidersForWatchStrategy,
-      getProviderCatalogVersion,
-      loadProviderCatalog,
+      getProviderSnapshotVersion,
+      loadProviderSnapshots,
     } = await loadStore();
 
-    await loadProviderCatalog();
+    await loadProviderSnapshots();
 
-    expect(getProviderCatalogVersion()).toBe(0);
+    expect(getProviderSnapshotVersion()).toBe(0);
     expect(getProvidersForWatchStrategy("poll")).toEqual([
       "gemini",
       "opencode",
     ]);
     expect(warn).toHaveBeenCalledWith(
-      "failed to load provider catalog:",
+      "failed to load provider snapshots:",
       expect.any(Error),
     );
 

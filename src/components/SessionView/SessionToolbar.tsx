@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { SessionMeta, Message } from "../../lib/types";
 import { useI18n } from "../../i18n/index";
-import { getProviderLabel } from "../../stores/providerCatalog";
+import { getProviderLabel } from "../../stores/providerSnapshots";
 import {
   formatTimestamp,
   fmtK,
