@@ -30,32 +30,32 @@ AI coding tools like Claude Code, Codex, Gemini CLI, and Qwen Code store session
 ## Features
 
 - **Unified view** — All your AI coding sessions from multiple providers in one place
-- **Full-text search** — Search across all session content with SQLite FTS5 (`⌘K`)
-- **Resume sessions** — Jump back into any session in Terminal, iTerm2, Ghostty, Kitty, Warp, WezTerm, Alacritty, Windows Terminal, or PowerShell (`⇧⌘R`)
-- **Live watch** — Auto-refreshes when active sessions update (`⌘L`)
+- **Full-text search** — Search across all session content with SQLite FTS5
+- **Resume sessions** — Jump back into any session in your terminal
+- **Live watch** — Auto-refreshes when active sessions update
 - **Rich rendering** — Markdown, syntax highlighting, Mermaid diagrams, KaTeX math, inline images, structured tool call diffs
 - **Token usage** — Per-message and session-level token counts with cache hit/write breakdown
 - **Export** — JSON, Markdown, or self-contained HTML (dark mode, collapsible tools & thinking blocks)
 - **Session management** — Rename, trash/restore, favorites, batch operations
 - **Auto-update** — Built-in updater checks for new releases automatically
-- **Keyboard-driven** — Full keyboard navigation (`?` to see all shortcuts)
+- **Keyboard-friendly** — Fast navigation and actions without leaving the keyboard
 - **i18n** — English / Chinese
 - **Blocked folders** — Hide sessions from specific project directories
 
-## Supported Providers
+## Supported Tools
 
-| Provider    | Data Source                           | Format | Live Watch |
-| :---------- | :------------------------------------ | :----: | :--------: |
-| Claude Code | `~/.claude/projects/**/*.jsonl`       | JSONL  | FS events  |
-| Codex CLI   | `~/.codex/sessions/**/*.jsonl`        | JSONL  | FS events  |
-| Gemini CLI  | `~/.gemini/tmp/*/chats/*.json`        |  JSON  | FS events  |
-| Kimi CLI    | `~/.kimi/sessions/**/wire.jsonl`      | JSONL  | FS events  |
-| Cursor CLI  | `~/.cursor/projects/*/agent-transcripts/**/*.jsonl` | JSONL  | FS events  |
-| OpenCode    | `~/.local/share/opencode/opencode.db` | SQLite |  Polling   |
-| Qwen Code   | `~/.qwen/projects/*/chats/*.jsonl`    | JSONL  | FS events  |
-| CC-Mirror   | `~/.cc-mirror/{variant}/config/projects/**/*.jsonl` | JSONL  | FS events  |
+CC Session currently supports:
 
-Each provider parses: messages, tool calls (with input/output), thinking/reasoning blocks, token usage, and inline images.
+- Claude Code
+- Codex CLI
+- Gemini CLI
+- Kimi CLI
+- Cursor CLI
+- OpenCode
+- Qwen Code
+- CC-Mirror
+
+Across providers, CC Session parses messages, tool calls, thinking/reasoning blocks, token usage, and inline images.
 
 ## Install
 
@@ -68,32 +68,14 @@ Download the latest release from [Releases](https://github.com/tyql688/cc-sessio
 > **macOS Gatekeeper:** The app is not code-signed. On first launch, macOS may block it. Fix with:
 >
 > ```bash
-> xattr -cr /Applications/CC Session.app
+> xattr -cr "/Applications/CC Session.app"
 > ```
 
 ## Quick Start
 
 1. Install and open CC Session
 2. Let it index supported local provider data
-3. Open a session, search with `⌘K`, or resume with `⇧⌘R`
-
-## Keyboard Shortcuts
-
-`⌘` = Cmd (macOS) / Ctrl (Windows & Linux)
-
-| Key          | Action                |
-| :----------- | :-------------------- |
-| `⌘K`         | Search                |
-| `⌘1-9`       | Switch tab            |
-| `⌘W` / `⇧⌘W` | Close tab / Close all |
-| `⌘]` / `⌘[`  | Next / Prev tab       |
-| `⇧⌘R`        | Resume in terminal    |
-| `⇧⌘E`        | Export                |
-| `⌘B`         | Toggle favorite       |
-| `⌘L`         | Toggle live watch     |
-| `⌘⌫`         | Delete session        |
-| `⌘F`         | Find in session       |
-| `?`          | Show all shortcuts    |
+3. Open a session, search across history, or resume where you left off
 
 ## Build from Source
 
@@ -119,7 +101,11 @@ cd src-tauri && cargo clippy     # Lint Rust
 
 ## Built With
 
-[Tauri 2.0](https://v2.tauri.app/) · [Solid.js](https://www.solidjs.com/) · Rust · SQLite FTS5
+- [Tauri 2](https://v2.tauri.app/) for the desktop shell and native integrations
+- [SolidJS](https://www.solidjs.com/) for the frontend UI
+- [Rust](https://www.rust-lang.org/) for provider parsing, indexing, export, and session lifecycle management
+- [SQLite](https://www.sqlite.org/) + FTS5 for local storage and full-text search
+- [Vitest](https://vitest.dev/), [ESLint](https://eslint.org/), [Prettier](https://prettier.io/), and [Clippy](https://doc.rust-lang.org/clippy/) for testing and code quality
 
 ## License
 
