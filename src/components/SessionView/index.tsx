@@ -15,7 +15,11 @@ import type {
   Message,
   MessageRole,
 } from "../../lib/types";
-import { getProviderWatchConfig } from "../../lib/provider-registry";
+import { getProviderWatchBehavior } from "../../lib/provider-registry";
+import {
+  getProviderWatchStrategy,
+  loadProviderCatalog,
+} from "../../stores/providerCatalog";
 import {
   getSessionDetail,
   trashSession,
@@ -266,12 +270,16 @@ export function SessionView(props: {
       unwatchFn = undefined;
 
       if (isWatching) {
+        await loadProviderCatalog();
+        if (!watching()) return;
+
         const activeSourcePath =
           meta().source_path || props.session.source_path;
-        const watchConfig = getProviderWatchConfig(meta().provider);
+        const watchBehavior = getProviderWatchBehavior(meta().provider);
+        const watchStrategy = getProviderWatchStrategy(meta().provider);
 
-        if (watchConfig.strategy === "poll") {
-          pollTimer = setInterval(reloadSession, watchConfig.debounceMs);
+        if (watchStrategy === "poll") {
+          pollTimer = setInterval(reloadSession, watchBehavior.debounceMs);
         } else {
           // File-based providers: use FS events
           unwatchFn = await listen<string[]>("sessions-changed", (event) => {
@@ -279,7 +287,7 @@ export function SessionView(props: {
             if (!activeSourcePath) return;
 
             let matched: boolean;
-            if (watchConfig.matchPrefix) {
+            if (watchBehavior.matchPrefix) {
               // Gemini: match by project directory prefix
               // (strip last 2 path segments: /chats/session-id.json → project dir)
               const dir = activeSourcePath.replace(/\/[^/]+\/[^/]+$/, "");
@@ -290,7 +298,7 @@ export function SessionView(props: {
             if (!matched) return;
 
             clearTimeout(watchDebounce);
-            watchDebounce = setTimeout(reloadSession, watchConfig.debounceMs);
+            watchDebounce = setTimeout(reloadSession, watchBehavior.debounceMs);
           });
         }
       }

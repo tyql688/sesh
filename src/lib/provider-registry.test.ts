@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  getDisplayLabel,
-  getProviderWatchConfig,
-  providersForWatchStrategy,
-} from "./provider-registry";
+import { getDisplayLabel, getProviderWatchBehavior } from "./provider-registry";
 import type { Provider } from "./types";
 
 const ALL_PROVIDERS: Provider[] = [
@@ -18,16 +14,12 @@ const ALL_PROVIDERS: Provider[] = [
 ];
 
 describe("provider-registry", () => {
-  it("getProviderWatchConfig returns config for all providers", () => {
+  it("getProviderWatchBehavior returns config for all providers", () => {
     for (const key of ALL_PROVIDERS) {
-      const watch = getProviderWatchConfig(key);
+      const watch = getProviderWatchBehavior(key);
       expect(watch).toBeDefined();
       expect(watch.debounceMs).toBeGreaterThan(0);
     }
-  });
-
-  it("providersForWatchStrategy returns poll providers", () => {
-    expect(providersForWatchStrategy("poll")).toEqual(["gemini", "opencode"]);
   });
 
   it("getDisplayLabel uses variant for cc-mirror", () => {

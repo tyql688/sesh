@@ -4,10 +4,22 @@ import type { Provider, ProviderCatalogItem } from "../lib/types";
 import { getDisplayLabel as getFallbackDisplayLabel } from "../lib/provider-registry";
 
 type ProviderCatalogMap = Partial<Record<Provider, ProviderCatalogItem>>;
+type ProviderWatchStrategy = ProviderCatalogItem["watch_strategy"];
 
 const [providerCatalog, setProviderCatalog] = createSignal<ProviderCatalogMap>(
   {},
 );
+
+const FALLBACK_WATCH_STRATEGIES: Record<Provider, ProviderWatchStrategy> = {
+  claude: "fs",
+  codex: "fs",
+  gemini: "poll",
+  cursor: "fs",
+  opencode: "poll",
+  kimi: "fs",
+  "cc-mirror": "fs",
+  qwen: "fs",
+};
 
 let loadPromise: Promise<void> | null = null;
 
@@ -54,4 +66,21 @@ export function getProviderLabel(
 
 export function getProviderColor(provider: Provider): string {
   return getProviderCatalogItem(provider)?.color ?? `var(--${provider})`;
+}
+
+export function getProviderWatchStrategy(
+  provider: Provider,
+): ProviderWatchStrategy {
+  return (
+    getProviderCatalogItem(provider)?.watch_strategy ??
+    FALLBACK_WATCH_STRATEGIES[provider]
+  );
+}
+
+export function getProvidersForWatchStrategy(
+  strategy: ProviderWatchStrategy,
+): Provider[] {
+  return (Object.keys(FALLBACK_WATCH_STRATEGIES) as Provider[]).filter(
+    (provider) => getProviderWatchStrategy(provider) === strategy,
+  );
 }

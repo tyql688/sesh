@@ -6,8 +6,11 @@ import {
   getSessionCount,
   reindexProviders,
 } from "../lib/tauri";
+import {
+  getProvidersForWatchStrategy,
+  loadProviderCatalog,
+} from "../stores/providerCatalog";
 import { toastError } from "../stores/toast";
-import { providersForWatchStrategy } from "../lib/provider-registry";
 
 export interface SyncCallbacks {
   setTree: (tree: TreeNode[]) => void;
@@ -104,8 +107,9 @@ export function createSyncManager(callbacks: SyncCallbacks) {
     }
   }
 
-  function startPolling() {
-    const pollProviders = providersForWatchStrategy("poll");
+  async function startPolling() {
+    await loadProviderCatalog();
+    const pollProviders = getProvidersForWatchStrategy("poll");
     if (pollProviders.length === 0) return;
 
     pollTimer = setInterval(() => {
@@ -141,7 +145,7 @@ export function createSyncManager(callbacks: SyncCallbacks) {
       if (!cacheHit) callbacks.setIsLoading(false);
     }
 
-    startPolling();
+    await startPolling();
   }
 
   return {
