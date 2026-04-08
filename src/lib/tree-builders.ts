@@ -4,10 +4,7 @@ import {
   getProviderSortOrder,
 } from "../stores/providerSnapshots";
 
-function projectFromTrashPath(
-  item: TrashMeta,
-  unknownLabel: string,
-): string {
+function projectFromTrashPath(item: TrashMeta, unknownLabel: string): string {
   const provider = item.provider || "claude";
   const path = item.original_path.replaceAll("\\", "/");
   const segments = path.split("/").filter(Boolean);

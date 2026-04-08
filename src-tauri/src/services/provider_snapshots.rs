@@ -67,8 +67,11 @@ fn common_watch_root(paths: &[PathBuf]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{common_watch_root, snapshot_path_info};
+    use super::{common_watch_root, snapshot_path_info, ProviderSnapshotService};
+    use crate::db::Database;
+    use crate::models::Provider;
     use std::path::PathBuf;
+    use tempfile::TempDir;
 
     #[test]
     fn common_watch_root_returns_shared_ancestor() {
@@ -94,5 +97,33 @@ mod tests {
             snapshot_path_info(&paths),
             ("/tmp/provider-one".to_string(), false)
         );
+    }
+
+    #[test]
+    fn list_returns_all_providers_in_snapshot_order() {
+        let dir = TempDir::new().unwrap();
+        let db = Database::open(dir.path()).unwrap();
+        let service = ProviderSnapshotService::new(&db);
+
+        let snapshots = service.list().unwrap();
+        let keys: Vec<Provider> = snapshots
+            .iter()
+            .map(|snapshot| snapshot.key.clone())
+            .collect();
+
+        assert_eq!(
+            keys,
+            vec![
+                Provider::Claude,
+                Provider::CcMirror,
+                Provider::Codex,
+                Provider::Gemini,
+                Provider::Cursor,
+                Provider::OpenCode,
+                Provider::Kimi,
+                Provider::Qwen,
+            ]
+        );
+        assert_eq!(snapshots.len(), Provider::all().len());
     }
 }

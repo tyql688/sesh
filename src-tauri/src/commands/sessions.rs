@@ -96,7 +96,9 @@ pub async fn delete_sessions_batch(
     state: State<'_, AppState>,
 ) -> Result<u32, String> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || SessionLifecycleService::new(&state.db).purge_sessions(&items))
+    tokio::task::spawn_blocking(move || {
+        SessionLifecycleService::new(&state.db).purge_sessions(&items)
+    })
     .await
     .map_err(|e| format!("task join error: {e}"))?
 }

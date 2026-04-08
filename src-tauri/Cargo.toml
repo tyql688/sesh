@@ -14,7 +14,7 @@ name = "cc-session"
 path = "src/main.rs"
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "test"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"

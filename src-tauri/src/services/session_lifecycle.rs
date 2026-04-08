@@ -73,6 +73,12 @@ impl<'a> SessionLifecycleService<'a> {
     pub fn purge_session(&self, session_id: &str) -> Result<(), String> {
         let deletion = resolve_session_deletion(self.db, session_id)?;
         crate::provider::execute_purge(&deletion.plan, deletion.provider.as_ref(), &deletion.meta)?;
+        if deletion.plan.file_action == FileAction::Remove {
+            cleanup_session_dir(&deletion.meta.source_path);
+        }
+        deletion
+            .provider
+            .cleanup_on_permanent_delete(&deletion.meta.id);
         self.db
             .delete_session(session_id)
             .map_err(|e| format!("failed to delete from db: {e}"))?;
@@ -201,8 +207,10 @@ impl<'a> SessionLifecycleService<'a> {
             remove_trash_entry(entry, &trash_dir, &shared_deletions_path, &entries, false)?;
         }
 
-        let remaining: Vec<TrashMeta> =
-            entries.into_iter().filter(|entry| entry.id != trash_id).collect();
+        let remaining: Vec<TrashMeta> = entries
+            .into_iter()
+            .filter(|entry| entry.id != trash_id)
+            .collect();
         atomic_write_json(&meta_path, &remaining)?;
         Ok(())
     }

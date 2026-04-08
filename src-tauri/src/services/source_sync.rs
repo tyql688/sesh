@@ -19,7 +19,11 @@ impl<'a> SourceSyncService<'a> {
         Ok(true)
     }
 
-    pub fn sync_provider_source(&self, provider: Provider, source_path: &str) -> Result<(), String> {
+    pub fn sync_provider_source(
+        &self,
+        provider: Provider,
+        source_path: &str,
+    ) -> Result<(), String> {
         let provider_impl = provider.require_runtime()?;
 
         let mut sessions = provider_impl

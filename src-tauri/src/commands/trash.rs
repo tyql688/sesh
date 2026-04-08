@@ -1,8 +1,8 @@
 use tauri::State;
 
+use super::AppState;
 use crate::models::TrashMeta;
 use crate::services::SessionLifecycleService;
-use super::AppState;
 
 #[tauri::command]
 pub fn trash_session(session_id: String, state: State<AppState>) -> Result<(), String> {
