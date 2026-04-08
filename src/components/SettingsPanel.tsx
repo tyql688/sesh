@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import { useI18n } from "../i18n/index";
 import { GeneralSettings } from "./Settings/GeneralSettings";
 import { DataSourceSettings } from "./Settings/DataSourceSettings";
@@ -6,7 +6,7 @@ import { IndexSettings } from "./Settings/IndexSettings";
 import { KeyboardSettings } from "./Settings/KeyboardSettings";
 import { AboutSettings } from "./Settings/AboutSettings";
 import {
-  listLoadedProviderSnapshots,
+  listProviderSnapshots,
   refreshProviderSnapshots,
 } from "../stores/providerSnapshots";
 
@@ -21,6 +21,12 @@ export function SettingsPanel() {
   const { t } = useI18n();
   const [activeCategory, setActiveCategory] =
     createSignal<SettingsCategory>("general");
+
+  createEffect(() => {
+    if (activeCategory() === "dataSources") {
+      void refreshProviderSnapshots();
+    }
+  });
 
   const categories = [
     {
@@ -61,7 +67,7 @@ export function SettingsPanel() {
         </Show>
 
         <Show when={activeCategory() === "dataSources"}>
-          <DataSourceSettings providerSnapshots={listLoadedProviderSnapshots} />
+          <DataSourceSettings providerSnapshots={listProviderSnapshots} />
         </Show>
 
         <Show when={activeCategory() === "index"}>

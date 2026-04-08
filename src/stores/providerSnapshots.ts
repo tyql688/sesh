@@ -94,18 +94,12 @@ const FALLBACK_PROVIDER_SNAPSHOTS: Record<Provider, ProviderSnapshot> = {
 
 let loadPromise: Promise<void> | null = null;
 
-function loadedProviderSnapshotEntries(): [Provider, ProviderSnapshot][] {
-  return Object.entries(providerSnapshotMap()) as [
-    Provider,
-    ProviderSnapshot,
-  ][];
-}
-
 function activeProviderSnapshotMap(): Record<Provider, ProviderSnapshot> {
   const loaded = providerSnapshotMap();
-  return Object.keys(loaded).length > 0
-    ? (loaded as Record<Provider, ProviderSnapshot>)
-    : FALLBACK_PROVIDER_SNAPSHOTS;
+  return {
+    ...FALLBACK_PROVIDER_SNAPSHOTS,
+    ...loaded,
+  };
 }
 
 export async function loadProviderSnapshots(force = false) {
@@ -138,19 +132,14 @@ export function refreshProviderSnapshots() {
   return loadProviderSnapshots(true);
 }
 
-export function listLoadedProviderSnapshots(): ProviderSnapshot[] | undefined {
-  const entries = loadedProviderSnapshotEntries();
-  if (entries.length === 0) return undefined;
-
-  return entries
-    .map(([, snapshot]) => snapshot)
-    .sort((left, right) => left.sort_order - right.sort_order);
+export function listProviderSnapshots(): ProviderSnapshot[] {
+  return Object.values(activeProviderSnapshotMap()).sort(
+    (left, right) => left.sort_order - right.sort_order,
+  );
 }
 
 export function getProviderSnapshot(provider: Provider): ProviderSnapshot {
-  return (
-    providerSnapshotMap()[provider] ?? FALLBACK_PROVIDER_SNAPSHOTS[provider]
-  );
+  return activeProviderSnapshotMap()[provider];
 }
 
 export function getProviderLabel(

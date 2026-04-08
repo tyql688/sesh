@@ -1,5 +1,6 @@
 use crate::db::Database;
-use crate::models::ProviderSnapshot;
+use crate::models::{Provider, ProviderSnapshot};
+use std::path::{Path, PathBuf};
 
 pub struct ProviderSnapshotService<'a> {
     db: &'a Database,
@@ -11,7 +12,6 @@ impl<'a> ProviderSnapshotService<'a> {
     }
 
     pub fn list(&self) -> Result<Vec<ProviderSnapshot>, String> {
-        let providers = crate::provider::all_runtimes();
         let counts = self
             .db
             .provider_session_counts()
@@ -19,14 +19,11 @@ impl<'a> ProviderSnapshotService<'a> {
 
         let mut snapshots = Vec::new();
 
-        for runtime in &providers {
-            let provider = runtime.provider();
-            let paths = runtime.watch_paths();
-            let path = paths
-                .first()
-                .map(|p| p.to_string_lossy().to_string())
+        for provider in Provider::all() {
+            let (path, exists) = provider
+                .build_runtime()
+                .map(|runtime| snapshot_path_info(&runtime.watch_paths()))
                 .unwrap_or_default();
-            let exists = paths.first().is_some_and(|p| p.exists());
 
             snapshots.push(ProviderSnapshot {
                 key: provider.clone(),
@@ -42,5 +39,60 @@ impl<'a> ProviderSnapshotService<'a> {
 
         snapshots.sort_by_key(|snapshot| snapshot.sort_order);
         Ok(snapshots)
+    }
+}
+
+fn snapshot_path_info(paths: &[PathBuf]) -> (String, bool) {
+    let Some(path) = common_watch_root(paths).or_else(|| paths.first().cloned()) else {
+        return (String::new(), false);
+    };
+
+    (path.to_string_lossy().to_string(), path.exists())
+}
+
+fn common_watch_root(paths: &[PathBuf]) -> Option<PathBuf> {
+    let first = paths.first()?;
+
+    first
+        .ancestors()
+        .find(|candidate| paths.iter().all(|path| path.starts_with(candidate)))
+        .and_then(|candidate| {
+            if paths.len() > 1 && candidate.parent().is_none() {
+                None
+            } else {
+                Some(Path::to_path_buf(candidate))
+            }
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{common_watch_root, snapshot_path_info};
+    use std::path::PathBuf;
+
+    #[test]
+    fn common_watch_root_returns_shared_ancestor() {
+        let paths = vec![
+            PathBuf::from("/tmp/.cc-mirror/a/config/projects"),
+            PathBuf::from("/tmp/.cc-mirror/b/config/projects"),
+        ];
+
+        assert_eq!(
+            common_watch_root(&paths),
+            Some(PathBuf::from("/tmp/.cc-mirror"))
+        );
+    }
+
+    #[test]
+    fn snapshot_path_info_uses_single_path_when_no_common_root_exists() {
+        let paths = vec![
+            PathBuf::from("/tmp/provider-one"),
+            PathBuf::from("/var/provider-two"),
+        ];
+
+        assert_eq!(
+            snapshot_path_info(&paths),
+            ("/tmp/provider-one".to_string(), false)
+        );
     }
 }

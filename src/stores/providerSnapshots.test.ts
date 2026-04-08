@@ -65,7 +65,7 @@ describe("providerSnapshots store", () => {
     const {
       getProvidersForWatchStrategy,
       getProviderSnapshotVersion,
-      listLoadedProviderSnapshots,
+      listProviderSnapshots,
       loadProviderSnapshots,
     } = await loadStore();
 
@@ -77,10 +77,21 @@ describe("providerSnapshots store", () => {
     await loadProviderSnapshots();
 
     expect(getProviderSnapshotVersion()).toBe(1);
-    expect(getProvidersForWatchStrategy("poll")).toEqual(["codex"]);
-    expect(
-      listLoadedProviderSnapshots()?.map((snapshot) => snapshot.key),
-    ).toEqual(["claude", "codex"]);
+    expect(getProvidersForWatchStrategy("poll")).toEqual([
+      "codex",
+      "gemini",
+      "opencode",
+    ]);
+    expect(listProviderSnapshots().map((snapshot) => snapshot.key)).toEqual([
+      "claude",
+      "cc-mirror",
+      "codex",
+      "gemini",
+      "cursor",
+      "opencode",
+      "kimi",
+      "qwen",
+    ]);
   });
 
   it("keeps fallback values and warns when snapshot load fails", async () => {
