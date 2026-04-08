@@ -113,10 +113,11 @@ describe("buildTrashTree", () => {
     expect(buildTrashTree([], labels)).toEqual([]);
   });
 
-  it("derives project from original_path", () => {
+  it("derives project from provider-aware original_path fallback", () => {
     const items = [
       makeTrashItem({
         id: "t1",
+        project_name: "",
         original_path: "/home/user/.claude/projects/myproject/session.jsonl",
       }),
     ];
@@ -125,9 +126,68 @@ describe("buildTrashTree", () => {
     expect(tree).toHaveLength(1);
     expect(tree[0].node_type).toBe("provider");
     expect(tree[0].children).toHaveLength(1);
-    // Project derived from second-to-last path segment
     expect(tree[0].children[0].label).toBe("myproject");
     expect(tree[0].children[0].children).toHaveLength(1);
     expect(tree[0].children[0].children[0].id).toBe("t1");
+  });
+
+  it("does not treat cursor session ids as project names", () => {
+    const items = [
+      makeTrashItem({
+        id: "t1",
+        provider: "cursor",
+        project_name: "",
+        original_path:
+          "/Users/test/.cursor/projects/private-tmp-ccsession-cli-cursor/agent-transcripts/c9e8cdc7-c0c7-435d-9045-765c4c837308/c9e8cdc7-c0c7-435d-9045-765c4c837308.jsonl",
+      }),
+    ];
+
+    const tree = buildTrashTree(items, labels);
+    expect(tree[0].children[0].label).toBe("private-tmp-ccsession-cli-cursor");
+  });
+
+  it("falls back to unknown for kimi legacy entries", () => {
+    const items = [
+      makeTrashItem({
+        id: "t1",
+        provider: "kimi",
+        project_name: "",
+        original_path:
+          "/Users/test/.kimi/sessions/d43b8ea075dfbc269128c50a437f3627/de8cd3a2-30c1-40bf-ad19-f43acc708caa/wire.jsonl",
+      }),
+    ];
+
+    const tree = buildTrashTree(items, labels);
+    expect(tree[0].children[0].label).toBe("Unknown");
+  });
+
+  it("falls back to unknown for codex legacy entries", () => {
+    const items = [
+      makeTrashItem({
+        id: "t1",
+        provider: "codex",
+        project_name: "",
+        original_path:
+          "/Users/test/.codex/sessions/2026/04/08/rollout-2026-04-08T13-13-10-019d6b82-3dd6-7981-a67b-6b13b9166661.jsonl",
+      }),
+    ];
+
+    const tree = buildTrashTree(items, labels);
+    expect(tree[0].children[0].label).toBe("Unknown");
+  });
+
+  it("uses qwen project directory instead of chats folder", () => {
+    const items = [
+      makeTrashItem({
+        id: "t1",
+        provider: "qwen",
+        project_name: "",
+        original_path:
+          "/Users/test/.qwen/projects/-private-tmp-ccsession-cli-qwen/chats/be2736ef-b5df-4e78-bd07-8fe138314aab.jsonl",
+      }),
+    ];
+
+    const tree = buildTrashTree(items, labels);
+    expect(tree[0].children[0].label).toBe("-private-tmp-ccsession-cli-qwen");
   });
 });

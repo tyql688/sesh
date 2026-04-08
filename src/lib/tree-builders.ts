@@ -4,6 +4,37 @@ import {
   getProviderSortOrder,
 } from "../stores/providerSnapshots";
 
+function projectFromTrashPath(
+  item: TrashMeta,
+  unknownLabel: string,
+): string {
+  const provider = item.provider || "claude";
+  const path = item.original_path.replaceAll("\\", "/");
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length === 0) {
+    return unknownLabel;
+  }
+
+  const projectsIndex = segments.lastIndexOf("projects");
+  if (projectsIndex >= 0 && projectsIndex + 1 < segments.length) {
+    return segments[projectsIndex + 1] || unknownLabel;
+  }
+
+  switch (provider) {
+    case "claude":
+    case "cc-mirror":
+      return segments.at(-2) || unknownLabel;
+    case "cursor":
+    case "codex":
+    case "gemini":
+    case "kimi":
+    case "opencode":
+    case "qwen":
+    default:
+      return unknownLabel;
+  }
+}
+
 function sortProviders<T>(entries: [string, T][]): [string, T][] {
   return entries.sort(
     ([left], [right]) =>
@@ -79,14 +110,8 @@ export function buildTrashTree(
 
   for (const item of items) {
     const provider = item.provider || "claude";
-    // Use project_name from trash meta, fallback to path extraction for legacy entries
-    let project = item.project_name || labels.unknown;
-    if (!item.project_name) {
-      const parts = item.original_path.split("/");
-      if (parts.length >= 2) {
-        project = parts[parts.length - 2];
-      }
-    }
+    const project =
+      item.project_name?.trim() || projectFromTrashPath(item, labels.unknown);
     if (!providerMap.has(provider)) {
       providerMap.set(provider, new Map());
     }
