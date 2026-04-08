@@ -21,6 +21,42 @@ pub mod exporter_test_helpers {
     }
 }
 
+#[doc(hidden)]
+pub mod command_test_helpers {
+    use crate::commands::{get_resume_command_for_tests, load_session_detail_for_tests};
+    use crate::db::Database;
+    use crate::models::{ProviderSnapshot, SessionDetail, TrashMeta};
+    use crate::services::{ProviderSnapshotService, SessionLifecycleService};
+
+    pub fn get_session_detail(db: &Database, session_id: &str) -> Result<SessionDetail, String> {
+        load_session_detail_for_tests(db, session_id)
+    }
+
+    pub fn get_provider_snapshots(db: &Database) -> Result<Vec<ProviderSnapshot>, String> {
+        ProviderSnapshotService::new(db).list()
+    }
+
+    pub fn get_resume_command(db: &Database, session_id: &str) -> Result<String, String> {
+        get_resume_command_for_tests(db, session_id)
+    }
+
+    pub fn trash_session(db: &Database, session_id: &str) -> Result<(), String> {
+        SessionLifecycleService::new(db).trash_session(session_id)
+    }
+
+    pub fn list_trash() -> Result<Vec<TrashMeta>, String> {
+        SessionLifecycleService::list_trash()
+    }
+
+    pub fn restore_session(db: &Database, trash_id: &str) -> Result<(), String> {
+        SessionLifecycleService::new(db).restore_session(trash_id)
+    }
+
+    pub fn delete_session(db: &Database, session_id: &str) -> Result<(), String> {
+        SessionLifecycleService::new(db).purge_session(session_id)
+    }
+}
+
 use commands::AppState;
 use db::Database;
 use indexer::Indexer;

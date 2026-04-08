@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::db::Database;
 use crate::models::Provider;
 use crate::services::load_session_meta;
 use crate::terminal;
@@ -13,7 +14,7 @@ struct ResumeTarget {
 
 #[tauri::command]
 pub fn get_resume_command(session_id: String, state: State<AppState>) -> Result<String, String> {
-    Ok(resolve_resume_target(&state, &session_id)?.command)
+    get_resume_command_for_db(&state.db, &session_id)
 }
 
 /// Sanitize session ID to prevent shell injection — only allow alnum, hyphens, underscores
@@ -32,9 +33,9 @@ fn sanitize_session_id(id: &str) -> Result<String, String> {
     Err(format!("session id contains invalid characters: '{id}'"))
 }
 
-fn resolve_resume_target(state: &AppState, session_id: &str) -> Result<ResumeTarget, String> {
+fn resolve_resume_target(db: &Database, session_id: &str) -> Result<ResumeTarget, String> {
     let safe_id = sanitize_session_id(session_id)?;
-    let session = load_session_meta(&state.db, session_id)?;
+    let session = load_session_meta(db, session_id)?;
     let variant_name = session
         .variant_name
         .as_deref()
@@ -50,6 +51,10 @@ fn resolve_resume_target(state: &AppState, session_id: &str) -> Result<ResumeTar
     let cwd = (!session.project_path.is_empty()).then_some(session.project_path);
 
     Ok(ResumeTarget { command, cwd })
+}
+
+pub(crate) fn get_resume_command_for_db(db: &Database, session_id: &str) -> Result<String, String> {
+    Ok(resolve_resume_target(db, session_id)?.command)
 }
 
 /// Shell metacharacters that must never appear in a terminal command.
@@ -107,7 +112,7 @@ pub fn resume_session(
     terminal_app: String,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let target = resolve_resume_target(&state, &session_id)?;
+    let target = resolve_resume_target(&state.db, &session_id)?;
     terminal::launch_terminal(&terminal_app, &target.command, target.cwd.as_deref())
 }
 

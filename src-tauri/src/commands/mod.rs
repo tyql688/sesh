@@ -20,3 +20,17 @@ pub use sessions::*;
 pub use settings::*;
 pub use terminal::*;
 pub use trash::*;
+
+pub(crate) fn load_session_detail_for_tests(
+    db: &crate::db::Database,
+    session_id: &str,
+) -> Result<crate::models::SessionDetail, String> {
+    sessions::load_detail(session_id, db)
+}
+
+pub(crate) fn get_resume_command_for_tests(
+    db: &crate::db::Database,
+    session_id: &str,
+) -> Result<String, String> {
+    terminal::get_resume_command_for_db(db, session_id)
+}
