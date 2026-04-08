@@ -63,6 +63,7 @@ fn override_home_env(home: &Path) -> Vec<EnvOverride> {
 
 fn override_data_env(data_home: &Path) -> Vec<EnvOverride> {
     vec![
+        EnvOverride::set("CC_SESSION_TEST_DATA_DIR", data_home),
         EnvOverride::set("XDG_DATA_HOME", data_home),
         EnvOverride::set("LOCALAPPDATA", data_home),
         EnvOverride::set("APPDATA", data_home),

@@ -12,12 +12,18 @@ pub struct SharedDeletion {
 }
 
 pub fn trash_dir() -> Result<PathBuf, String> {
-    let dir = dirs::data_local_dir()
+    let dir = data_local_dir()
         .ok_or_else(|| "failed to resolve local data dir".to_string())?
         .join("cc-session")
         .join("trash");
     std::fs::create_dir_all(&dir).map_err(|e| format!("failed to create trash directory: {e}"))?;
     Ok(dir)
+}
+
+fn data_local_dir() -> Option<PathBuf> {
+    std::env::var_os("CC_SESSION_TEST_DATA_DIR")
+        .map(PathBuf::from)
+        .or_else(dirs::data_local_dir)
 }
 
 pub fn trash_meta_path(trash_dir: &Path) -> PathBuf {
