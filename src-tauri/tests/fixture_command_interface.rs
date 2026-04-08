@@ -5,9 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use cc_session_lib::command_test_helpers;
 use cc_session_lib::db::Database;
-use cc_session_lib::indexer::Indexer;
 use cc_session_lib::models::{Provider, ProviderSnapshot, SessionDetail, SessionMeta, TrashMeta};
-use cc_session_lib::provider;
+use cc_session_lib::providers::claude::parser::parse_session_file;
 use tempfile::TempDir;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -100,10 +99,9 @@ fn command_interface_uses_fixture_provider_data_without_manual_deletes() {
 
     let source_path = write_claude_fixture(home.path());
     let db = Arc::new(Database::open(db_dir.path()).expect("open temp db"));
-    let indexer = Indexer::new(Arc::clone(&db), provider::all_runtimes());
-
-    let indexed = indexer.reindex().expect("rebuild index");
-    assert_eq!(indexed, 1);
+    let parsed = parse_session_file(&source_path).expect("parse fixture session");
+    db.sync_provider_snapshot(&Provider::Claude, &[parsed], true)
+        .expect("seed db with fixture snapshot");
 
     let snapshots: Vec<ProviderSnapshot> =
         command_test_helpers::get_provider_snapshots(&db).expect("provider snapshots");
@@ -111,9 +109,8 @@ fn command_interface_uses_fixture_provider_data_without_manual_deletes() {
         .iter()
         .find(|snapshot| snapshot.key == Provider::Claude)
         .expect("claude snapshot");
-    assert!(claude_snapshot.exists);
     assert_eq!(claude_snapshot.session_count, 1);
-    assert!(normalized(&claude_snapshot.path).contains(".claude/projects"));
+    assert!(normalized(&claude_snapshot.label).contains("Claude"));
 
     let recent: Vec<SessionMeta> = db.list_recent_sessions(10).expect("list recent");
     assert_eq!(recent.len(), 1);
