@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectFootnotes,
+  footnoteDomId,
+  headingTagName,
   parseContent,
   parseMarkdownAst,
   sanitizeMessageForClipboard,
@@ -70,6 +73,23 @@ describe("parseMarkdownAst", () => {
 
     expect(tree.children[1]?.type).toBe("math");
   });
+
+  it("parses footnote references and definitions", () => {
+    const tree = parseMarkdownAst(
+      "This sentence has a footnote[^note].\n\n[^note]: Footnote text",
+    );
+
+    expect(tree.children[0]?.type).toBe("paragraph");
+    const paragraph = tree.children[0];
+    if (!paragraph || paragraph.type !== "paragraph") {
+      throw new Error("expected paragraph");
+    }
+
+    expect(paragraph.children.map((child) => child.type)).toContain(
+      "footnoteReference",
+    );
+    expect(tree.children[1]?.type).toBe("footnoteDefinition");
+  });
 });
 
 describe("parseContent", () => {
@@ -102,5 +122,28 @@ describe("sanitizeMessageForClipboard", () => {
         "Before [Image #1: source: /tmp/screenshot.png] after [Image #2]",
       ),
     ).toBe("Before [Image] after [Image]");
+  });
+});
+
+describe("collectFootnotes", () => {
+  it("numbers references by first appearance and exposes stable ids", () => {
+    const tree = parseMarkdownAst(
+      "B[^second] then A[^first].\n\n[^first]: First footnote\n[^second]: Second footnote",
+    );
+    const footnotes = collectFootnotes(tree);
+
+    expect(footnotes.order).toEqual(["second", "first"]);
+    expect(footnotes.numbers.get("second")).toBe(1);
+    expect(footnotes.numbers.get("first")).toBe(2);
+    expect(footnoteDomId("spec", "second")).toBe("msg-footnote-spec-second");
+  });
+});
+
+describe("headingTagName", () => {
+  it("maps heading depth four through six distinctly", () => {
+    expect(headingTagName(4)).toBe("h4");
+    expect(headingTagName(5)).toBe("h5");
+    expect(headingTagName(6)).toBe("h6");
+    expect(headingTagName(9)).toBe("h6");
   });
 });

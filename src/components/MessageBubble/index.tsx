@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show } from "solid-js";
+import { createSignal, createMemo, Show, createUniqueId } from "solid-js";
 import type { Message, Provider } from "../../lib/types";
 import { ProviderIcon, UserIcon } from "../../lib/icons";
 import { useI18n } from "../../i18n/index";
@@ -65,6 +65,7 @@ export function MessageBubble(props: {
   provider?: Provider;
   highlightTerm?: string;
 }) {
+  const footnotePrefix = createUniqueId();
   const [previewImage, setPreviewImage] = createSignal<{
     src: string;
     source?: string;
@@ -74,6 +75,7 @@ export function MessageBubble(props: {
   );
   const markdownContent = createMemo(() =>
     renderMarkdownContent(props.message.content, {
+      footnotePrefix,
       highlightTerm: props.highlightTerm,
       onPreview: (src, source) => setPreviewImage({ src, source }),
     }),

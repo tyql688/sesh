@@ -340,7 +340,10 @@
 
 .msg-text h1,
 .msg-text h2,
-.msg-text h3 {
+.msg-text h3,
+.msg-text h4,
+.msg-text h5,
+.msg-text h6 {
   margin: 1.1em 0 0.55em;
   line-height: 1.25;
   letter-spacing: -0.02em;
@@ -356,6 +359,18 @@
 
 .msg-text h3 {
   font-size: 0.98rem;
+}
+
+.msg-text h4 {
+  font-size: 0.92rem;
+}
+
+.msg-text h5 {
+  font-size: 0.86rem;
+}
+
+.msg-text h6 {
+  font-size: 0.8rem;
 }
 
 .msg-text ul,
@@ -425,6 +440,9 @@
 .msg-bubble-user .msg-text h1,
 .msg-bubble-user .msg-text h2,
 .msg-bubble-user .msg-text h3,
+.msg-bubble-user .msg-text h4,
+.msg-bubble-user .msg-text h5,
+.msg-bubble-user .msg-text h6,
 .msg-bubble-user .msg-text strong {
   color: var(--msg-user-text);
 }
@@ -952,6 +970,49 @@
 }
 
 .msg-bubble-user .msg-hr {
+  border-top-color: var(--msg-user-hr);
+}
+
+.msg-footnote-ref {
+  margin-left: 0.12em;
+  font-size: 0.78em;
+  line-height: 0;
+  vertical-align: super;
+}
+
+.msg-footnote-ref a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.msg-footnote-ref a:hover {
+  text-decoration: underline;
+}
+
+.msg-footnotes {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.msg-footnotes ol {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.msg-footnote-item {
+  margin: 0.45rem 0;
+}
+
+.msg-footnote-item > :last-child {
+  margin-bottom: 0;
+}
+
+.msg-bubble-user .msg-footnote-ref a {
+  color: var(--msg-user-link);
+}
+
+.msg-bubble-user .msg-footnotes {
   border-top-color: var(--msg-user-hr);
 }
 

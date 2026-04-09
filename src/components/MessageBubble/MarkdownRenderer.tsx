@@ -4,6 +4,8 @@ import type {
   BlockContent,
   Code,
   Definition,
+  FootnoteDefinition,
+  FootnoteReference,
   Heading,
   Image,
   ImageReference,
@@ -49,6 +51,10 @@ type MarkdownInlineNode = PhrasingContent;
 
 interface RenderContext {
   definitions: Map<string, Definition>;
+  footnoteDefinitions: Map<string, FootnoteDefinition>;
+  footnoteOrder: string[];
+  footnoteNumbers: Map<string, number>;
+  footnotePrefix: string;
   highlightTerm?: string;
   onPreview: (src: string, source: string) => void;
 }
@@ -121,18 +127,29 @@ export function parseMarkdownAst(raw: string): Root {
 export function renderMarkdownContent(
   raw: string,
   options: {
+    footnotePrefix: string;
     highlightTerm?: string;
     onPreview: (src: string, source: string) => void;
   },
 ): JSX.Element {
   const tree = parseMarkdownAst(raw);
+  const footnotes = collectFootnotes(tree);
   const context: RenderContext = {
     definitions: collectDefinitions(tree),
+    footnoteDefinitions: footnotes.definitions,
+    footnoteOrder: footnotes.order,
+    footnoteNumbers: footnotes.numbers,
+    footnotePrefix: options.footnotePrefix,
     highlightTerm: options.highlightTerm,
     onPreview: options.onPreview,
   };
 
-  return <div class="msg-text">{renderBlockNodes(tree.children, context)}</div>;
+  return (
+    <div class="msg-text">
+      {renderBlockNodes(tree.children, context)}
+      {renderFootnotesSection(context)}
+    </div>
+  );
 }
 
 function collectDefinitions(tree: Root): Map<string, Definition> {
@@ -147,6 +164,46 @@ function collectDefinitions(tree: Root): Map<string, Definition> {
 
 function normalizeIdentifier(identifier: string): string {
   return identifier.trim().toLowerCase();
+}
+
+export function collectFootnotes(tree: Root) {
+  const definitions = new Map<string, FootnoteDefinition>();
+  const order: string[] = [];
+  const seen = new Set<string>();
+
+  visit(tree, "footnoteDefinition", (node: FootnoteDefinition) => {
+    definitions.set(normalizeIdentifier(node.identifier), node);
+  });
+
+  visit(tree, "footnoteReference", (node: FootnoteReference) => {
+    const identifier = normalizeIdentifier(node.identifier);
+    if (seen.has(identifier)) return;
+    seen.add(identifier);
+    order.push(identifier);
+  });
+
+  for (const identifier of definitions.keys()) {
+    if (seen.has(identifier)) continue;
+    seen.add(identifier);
+    order.push(identifier);
+  }
+
+  return {
+    definitions,
+    order,
+    numbers: new Map(order.map((identifier, index) => [identifier, index + 1])),
+  };
+}
+
+export function headingTagName(
+  depth: number,
+): "h1" | "h2" | "h3" | "h4" | "h5" | "h6" {
+  if (depth <= 1) return "h1";
+  if (depth === 2) return "h2";
+  if (depth === 3) return "h3";
+  if (depth === 4) return "h4";
+  if (depth === 5) return "h5";
+  return "h6";
 }
 
 function transformImagePlaceholders(tree: Root) {
@@ -292,6 +349,7 @@ function renderBlockNode(
         </p>
       );
     case "definition":
+    case "footnoteDefinition":
       return null;
     default:
       return null;
@@ -363,13 +421,19 @@ function renderHeading(
 ): JSX.Element {
   const content = renderInlineNodes(node.children, context);
 
-  switch (node.depth) {
-    case 1:
+  switch (headingTagName(node.depth)) {
+    case "h1":
       return <h1>{content}</h1>;
-    case 2:
+    case "h2":
       return <h2>{content}</h2>;
-    default:
+    case "h3":
       return <h3>{content}</h3>;
+    case "h4":
+      return <h4>{content}</h4>;
+    case "h5":
+      return <h5>{content}</h5>;
+    case "h6":
+      return <h6>{content}</h6>;
   }
 }
 
@@ -575,6 +639,8 @@ function renderInlineNode(
       return renderImageNode(node, context);
     case "imageReference":
       return renderImageReferenceNode(node, context, key);
+    case "footnoteReference":
+      return renderFootnoteReferenceNode(node, context);
     case "inlineMath":
       return renderInlineMathNode(node, key);
     case "break":
@@ -677,6 +743,69 @@ function renderImageNode(node: Image, context: RenderContext): JSX.Element {
       src={node.url}
       onPreview={(src, source) => context.onPreview(src, source)}
     />
+  );
+}
+
+export function footnoteDomId(prefix: string, identifier: string): string {
+  const normalized = identifier
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+  return `msg-footnote-${prefix}-${normalized || "note"}`;
+}
+
+function renderFootnoteReferenceNode(
+  node: FootnoteReference,
+  context: RenderContext,
+): JSX.Element {
+  const identifier = normalizeIdentifier(node.identifier);
+  const label = String(
+    context.footnoteNumbers.get(identifier) ?? node.label ?? node.identifier,
+  );
+  const target = context.footnoteDefinitions.has(identifier)
+    ? `#${footnoteDomId(context.footnotePrefix, identifier)}`
+    : undefined;
+
+  return (
+    <sup class="msg-footnote-ref">
+      {target ? <a href={target}>{label}</a> : <span>{label}</span>}
+    </sup>
+  );
+}
+
+function renderFootnotesSection(context: RenderContext): JSX.Element | null {
+  const footnotes = context.footnoteOrder
+    .map((identifier) => ({
+      identifier,
+      node: context.footnoteDefinitions.get(identifier),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        identifier: string;
+        node: FootnoteDefinition;
+      } => !!entry.node,
+    );
+
+  if (footnotes.length === 0) {
+    return null;
+  }
+
+  return (
+    <section class="msg-footnotes">
+      <ol>
+        <For each={footnotes}>
+          {(entry) => (
+            <li
+              id={footnoteDomId(context.footnotePrefix, entry.identifier)}
+              class="msg-footnote-item"
+            >
+              {renderBlockNodes(entry.node.children, context)}
+            </li>
+          )}
+        </For>
+      </ol>
+    </section>
   );
 }
 
