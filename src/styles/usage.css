@@ -1,0 +1,295 @@
+/* Usage Panel */
+.usage-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+  background: var(--bg-editor);
+  color: var(--text-primary);
+}
+
+/* Header */
+.usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.usage-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.usage-range-group {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-sidebar);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.usage-range-btn {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.usage-range-btn:hover {
+  color: var(--text-primary);
+}
+
+.usage-range-btn.active {
+  background: var(--text-primary);
+  color: var(--bg-editor);
+}
+
+/* Provider chips */
+.usage-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.usage-chip {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+}
+
+.usage-chip.active {
+  color: #fff;
+}
+
+.usage-chip.inactive {
+  background: var(--border-subtle);
+  color: var(--text-tertiary);
+}
+
+.usage-chip.inactive:hover {
+  color: var(--text-secondary);
+}
+
+/* Loading / Empty */
+.usage-loading {
+  text-align: center;
+  padding: 48px 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.usage-empty {
+  text-align: center;
+  padding: 48px 0;
+}
+
+.usage-empty-text {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+/* Summary */
+.usage-summary {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.usage-cost-hero {
+  font-size: 40px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.usage-cost-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-cache-hit {
+  color: var(--text-tertiary);
+}
+
+/* Daily chart */
+.usage-chart-section {
+  margin-bottom: 24px;
+}
+
+.usage-chart-wrap {
+  background: var(--bg-sidebar);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.usage-chart-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.usage-daily-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 80px;
+}
+
+.usage-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column-reverse;
+  height: 100%;
+  min-width: 0;
+}
+
+.usage-bar-seg {
+  border-radius: 1px;
+  min-height: 2px;
+}
+
+.usage-bar-labels {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: 9px;
+  color: var(--text-tertiary);
+}
+
+.usage-bar-labels > span {
+  flex: 1;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tables */
+.usage-table-section {
+  margin-bottom: 20px;
+}
+
+.usage-table-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table th {
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.usage-table th:hover {
+  color: var(--text-secondary);
+}
+
+.usage-table th.r,
+.usage-table td.r {
+  text-align: right;
+}
+
+.usage-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.usage-table tbody tr:hover {
+  background: var(--border-subtle);
+}
+
+.usage-sort-icon {
+  font-size: 8px;
+  color: var(--text-tertiary);
+  margin-left: 2px;
+}
+
+/* Model tag */
+.usage-model-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 4px;
+}
+
+/* Provider dot + cell */
+.usage-provider-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.usage-provider-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Project name truncation */
+.usage-project-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cost value highlight */
+.usage-cost-val {
+  font-weight: 600;
+}
+
+/* Dim text */
+.usage-dim {
+  color: var(--text-tertiary);
+}
+
+/* Footer */
+.usage-footer {
+  text-align: center;
+  padding: 16px 0 8px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}

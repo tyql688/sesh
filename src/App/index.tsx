@@ -18,6 +18,7 @@ import { TrashView } from "../components/TrashView";
 
 import { FavoritesView } from "../components/FavoritesView";
 import { BlockedView } from "../components/BlockedView";
+import { UsagePanel } from "../components/UsagePanel";
 import { KeyboardOverlay } from "../components/KeyboardOverlay";
 import { ToastContainer } from "../components/ToastContainer";
 import { trashSession, getChildSessions } from "../lib/tauri";
@@ -188,13 +189,17 @@ export default function App() {
   );
   const showExplorer = createMemo(() => {
     const v = activeView();
-    return v !== "settings" && v !== "trash";
+    return v !== "settings" && v !== "trash" && v !== "usage";
   });
   const showExplorerTree = createMemo(() => {
     if (sidebarCollapsed()) return false;
     const v = activeView();
     return (
-      v !== "settings" && v !== "trash" && v !== "favorites" && v !== "blocked"
+      v !== "settings" &&
+      v !== "trash" &&
+      v !== "favorites" &&
+      v !== "blocked" &&
+      v !== "usage"
     );
   });
 
@@ -352,6 +357,9 @@ export default function App() {
           </Show>
           <Show when={activeView() === "blocked"}>
             <BlockedView onRefreshTree={sync.refreshTree} />
+          </Show>
+          <Show when={activeView() === "usage"}>
+            <UsagePanel />
           </Show>
           <Show when={showExplorer()}>
             <EditorArea
