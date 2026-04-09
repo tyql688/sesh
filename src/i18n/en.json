@@ -230,5 +230,32 @@
     "permanentDelete": "Permanent Delete",
     "emptyTrash": "Empty Trash",
     "emptyTrashConfirm": "Permanently delete all trashed sessions? This cannot be undone."
+  },
+  "usage": {
+    "title": "Usage",
+    "sessions": "sessions",
+    "turns": "turns",
+    "tokens": "tokens",
+    "cacheHit": "cache hit",
+    "estCost": "estimated cost",
+    "range7d": "7d",
+    "range30d": "30d",
+    "range90d": "90d",
+    "rangeAll": "All",
+    "dailyUsage": "Daily Usage",
+    "costByModel": "Cost by Model",
+    "costByProject": "Cost by Project",
+    "recentSessions": "Recent Sessions",
+    "model": "Model",
+    "project": "Project",
+    "provider": "Provider",
+    "active": "Active",
+    "cost": "Cost",
+    "input": "Input",
+    "output": "Output",
+    "cache": "Cache",
+    "noData": "No usage data",
+    "rebuildHint": "Token data not yet indexed. Rebuild index in Settings to populate.",
+    "pricingNote": "Cost via LiteLLM pricing"
   }
 }

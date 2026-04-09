@@ -228,5 +228,32 @@
     "permanentDelete": "永久删除",
     "emptyTrash": "清空回收站",
     "emptyTrashConfirm": "永久删除所有已回收的会话？此操作无法撤销。"
+  },
+  "usage": {
+    "title": "用量统计",
+    "sessions": "会话",
+    "turns": "轮次",
+    "tokens": "token",
+    "cacheHit": "缓存命中",
+    "estCost": "预估费用",
+    "range7d": "7天",
+    "range30d": "30天",
+    "range90d": "90天",
+    "rangeAll": "全部",
+    "dailyUsage": "每日用量",
+    "costByModel": "按模型",
+    "costByProject": "按项目",
+    "recentSessions": "最近会话",
+    "model": "模型",
+    "project": "项目",
+    "provider": "提供商",
+    "active": "活跃",
+    "cost": "费用",
+    "input": "输入",
+    "output": "输出",
+    "cache": "缓存",
+    "noData": "暂无用量数据",
+    "rebuildHint": "Token 数据尚未索引，请在设置中重建索引。",
+    "pricingNote": "费用基于 LiteLLM 定价"
   }
 }
