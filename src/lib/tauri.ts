@@ -8,6 +8,7 @@ import type {
   ProviderSnapshot,
   TrashMeta,
   SessionMeta,
+  UsageStats,
 } from "./types";
 
 export async function reindex(): Promise<number> {
@@ -158,4 +159,11 @@ export async function exportSessionsBatch(
   outputPath: string,
 ): Promise<void> {
   return invoke<void>("export_sessions_batch", { items, format, outputPath });
+}
+
+export async function getUsageStats(
+  providers: string[],
+  rangeDays: number | null,
+): Promise<UsageStats> {
+  return invoke<UsageStats>("get_usage_stats", { providers, rangeDays });
 }
