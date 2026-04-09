@@ -1,8 +1,8 @@
 [package]
 name = "cc-session"
 version = "0.3.6"
-description = "High-performance desktop session explorer for Claude Code, Codex, and Gemini CLI"
-authors = ["you"]
+description = "High-performance desktop session explorer for local AI coding sessions"
+authors = ["yury <yury.zero.21@gmail.com>"]
 edition = "2021"
 
 [lib]

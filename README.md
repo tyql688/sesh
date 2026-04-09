@@ -32,7 +32,7 @@ AI coding tools like Claude Code, Codex, Gemini CLI, and Qwen Code store session
 - **Unified view** — All your AI coding sessions from multiple providers in one place
 - **Full-text search** — Search across all session content with SQLite FTS5
 - **Resume sessions** — Jump back into any session in your terminal
-- **Live watch** — Auto-refreshes when active sessions update
+- **Live watch** — File-based providers auto-refresh via OS watchers; Gemini and OpenCode use provider-aware polling
 - **Rich rendering** — Markdown, syntax highlighting, Mermaid diagrams, KaTeX math, inline images, structured tool call diffs
 - **Token usage** — Per-message and session-level token counts with cache hit/write breakdown
 - **Export** — JSON, Markdown, or self-contained HTML (dark mode, collapsible tools & thinking blocks)
@@ -55,7 +55,7 @@ CC Session currently supports:
 - Qwen Code
 - CC-Mirror
 
-Across providers, CC Session parses messages, tool calls, thinking/reasoning blocks, token usage, and inline images.
+Across providers, CC Session parses messages, tool calls, thinking/reasoning blocks, token usage, inline images, Markdown, Mermaid diagrams, and KaTeX math where the source format supports them.
 
 ## Install
 
@@ -98,6 +98,8 @@ npx tsc --noEmit                 # Type-check frontend
 cd src-tauri && cargo test       # Rust tests
 cd src-tauri && cargo clippy     # Lint Rust
 ```
+
+On macOS, file-based live watch uses the `notify` crate's `kqueue` backend for more reliable file-level updates.
 
 ## Built With
 

@@ -39,7 +39,7 @@ Metadata via Bridge pattern: `Provider` enum → `ProviderDescriptor` (zero-size
 |-------------|----------------------------------------|--------|-------|
 | Claude Code | `~/.claude/projects/**/*.jsonl`        | JSONL  | FS    |
 | Codex       | `~/.codex/sessions/**/*.jsonl`         | JSONL  | FS    |
-| Gemini      | `~/.gemini/tmp/*/chats/*.json`         | JSON   | FS    |
+| Gemini      | `~/.gemini/tmp/*/chats/*.json`         | JSON   | Poll  |
 | Kimi CLI    | `~/.kimi/sessions/**/wire.jsonl`       | JSONL  | FS    |
 | Cursor CLI  | `~/.cursor/projects/*/agent-transcripts/**/*.jsonl` | JSONL | FS |
 | OpenCode    | `~/.local/share/opencode/opencode.db`  | SQLite | Poll  |
@@ -68,6 +68,7 @@ Resume: Claude `--resume`, Codex `resume`, Gemini `--resume`, Kimi `--session`, 
 ## Pitfalls
 
 - **OpenCode**: Must use `SQLITE_OPEN_READ_WRITE` (not READ_ONLY) for WAL. Uses XDG path, not macOS `~/Library/`.
+- **macOS watchers**: File-backed providers use `notify` with `macos_kqueue` for more reliable file-level follow behavior; do not assume `FSEvents`.
 - **Codex**: `call_id` pairing, output can be nested JSON.
 - **Kimi**: MD5 project path, event stream format, float-second timestamps, truncated parallel agent args.
 - **Cursor**: JSONL transcripts + store.db marker. `[REDACTED]` = redacted thinking. Full-text subagent matching.

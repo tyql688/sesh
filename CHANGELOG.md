@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- AST-based markdown rendering for message bubbles with GFM task lists, tables, footnotes, Mermaid, and KaTeX math
+- Self-contained HTML export rendering for Mermaid diagrams and math formulas
+
+### Changed
+
+- Message bubble typography and colors realigned with the current in-app and HTML export themes
+- Package metadata now uses the current project author and a provider-agnostic description
+
+### Fixed
+
+- Claude Code image markers now support the newer `[Image source: ...]` metadata format
+- macOS file-backed providers now use `kqueue` for more reliable live-follow behavior
+- HTML export now preserves markdown footnotes
+- Codex local image placeholders now resolve correctly, including Windows path variants
+
 ## [0.3.6] - 2026-04-04
 
 ### Added
