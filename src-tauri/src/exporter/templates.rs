@@ -1,3 +1,16 @@
+const EXPORT_KATEX_JS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../node_modules/katex/dist/katex.min.js"
+));
+const EXPORT_MERMAID_JS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../node_modules/mermaid/dist/mermaid.min.js"
+));
+
+fn inline_script_asset(script: &str) -> String {
+    script.replace("</script>", "<\\/script>")
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn assemble_html(
     title: &str,
@@ -13,6 +26,9 @@ pub fn assemble_html(
     branch_html: &str,
     path_html: &str,
 ) -> String {
+    let katex_js = inline_script_asset(EXPORT_KATEX_JS);
+    let mermaid_js = inline_script_asset(EXPORT_MERMAID_JS);
+
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -118,6 +134,16 @@ p {{ margin: 4px 0; }}
 .bubble-user .footnote-reference a {{ color: var(--user-link); }}
 .bubble-user .footnote-definition {{ border-top-color: var(--user-hr); color: var(--user-muted); }}
 .bubble-user .footnote-definition-label {{ color: var(--user-muted); }}
+.math.math-inline {{ display: inline-block; max-width: 100%; vertical-align: middle; }}
+.math.math-display {{ display: block; margin: 10px 0; overflow-x: auto; text-align: center; }}
+.math.math-display math {{ margin: 0 auto; }}
+.mermaid-export {{ margin: 8px 0; }}
+.mermaid-diagram {{ background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; }}
+.mermaid-diagram svg {{ display: block; max-width: 100%; height: auto; margin: 0 auto; }}
+.mermaid-source {{ margin-top: 8px; }}
+.mermaid-source summary {{ cursor: pointer; color: var(--text2); font-size: 0.85em; user-select: none; }}
+.bubble-user .mermaid-diagram {{ background: var(--user-code-block-bg); border-color: var(--user-code-block-border); }}
+.bubble-user .mermaid-source summary {{ color: var(--user-muted); }}
 .msg-image {{ margin: 8px 0; }}
 .msg-image img {{ border-radius: 8px; border: 1px solid var(--border); }}
 .msg-token-row {{ padding-left: 44px; font-size: 0.78em; color: var(--text3); font-variant-numeric: tabular-nums; margin-top: -12px; }}
@@ -174,11 +200,61 @@ p {{ margin: 4px 0; }}
   </div>
 </div>
 <div class="lightbox" id="lightbox" onclick="closeLightbox()"><img id="lightbox-img" src="" alt="Preview"></div>
+<script>{katex_js}</script>
+<script>{mermaid_js}</script>
 <script>
 function openLightbox(src){{document.getElementById('lightbox-img').src=src;document.getElementById('lightbox').classList.add('open')}}
 function closeLightbox(){{document.getElementById('lightbox').classList.remove('open')}}
 document.addEventListener('keydown',function(e){{if(e.key==='Escape')closeLightbox()}})
 function copyMsg(id){{var el=document.getElementById(id);if(!el)return;var body=el.querySelector('.msg-body');if(!body)return;navigator.clipboard.writeText(body.innerText).then(function(){{var btn=el.querySelector('.copy-btn');if(btn){{btn.textContent='✅';setTimeout(function(){{btn.textContent='📋'}},1500)}}}})}}
+function renderExportMath(){{
+  if(!window.katex)return;
+  document.querySelectorAll('.math.math-inline,.math.math-display').forEach(function(el){{
+    var tex=el.textContent||'';
+    if(!tex.trim())return;
+    try{{
+      window.katex.render(tex,el,{{displayMode:el.classList.contains('math-display'),throwOnError:false,output:'mathml'}});
+    }}catch(err){{
+      console.warn('KaTeX export render failed:',err);
+    }}
+  }});
+}}
+async function renderExportMermaid(){{
+  if(!window.mermaid)return;
+  var isDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+  window.mermaid.initialize({{startOnLoad:false,theme:isDark?'dark':'default',securityLevel:'strict',fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace'}});
+  var blocks=Array.from(document.querySelectorAll('pre.code-block > code.language-mermaid'));
+  for(var i=0;i<blocks.length;i++){{
+    var codeEl=blocks[i];
+    var pre=codeEl.parentElement;
+    if(!pre)continue;
+    var source=codeEl.textContent||'';
+    try{{
+      var id='export-mermaid-'+i;
+      var result=await window.mermaid.render(id,source);
+      var wrapper=document.createElement('div');
+      wrapper.className='mermaid-export';
+      var diagram=document.createElement('div');
+      diagram.className='mermaid-diagram';
+      diagram.innerHTML=result.svg;
+      wrapper.appendChild(diagram);
+      var details=document.createElement('details');
+      details.className='mermaid-source';
+      var summary=document.createElement('summary');
+      summary.textContent='Source';
+      details.appendChild(summary);
+      details.appendChild(pre.cloneNode(true));
+      wrapper.appendChild(details);
+      pre.replaceWith(wrapper);
+    }}catch(err){{
+      console.warn('Mermaid export render failed:',err);
+    }}
+  }}
+}}
+document.addEventListener('DOMContentLoaded',function(){{
+  renderExportMath();
+  void renderExportMermaid();
+}})
 </script>
 </body>
 </html>"#,
@@ -194,5 +270,7 @@ function copyMsg(id){{var el=document.getElementById(id);if(!el)return;var body=
         version_html = version_html,
         branch_html = branch_html,
         path_html = path_html,
+        katex_js = katex_js,
+        mermaid_js = mermaid_js,
     )
 }

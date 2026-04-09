@@ -127,6 +127,7 @@ fn render_content(raw: &str) -> String {
     let mut opts = pulldown_cmark::Options::empty();
     opts.insert(pulldown_cmark::Options::ENABLE_TABLES);
     opts.insert(pulldown_cmark::Options::ENABLE_FOOTNOTES);
+    opts.insert(pulldown_cmark::Options::ENABLE_MATH);
     opts.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
     opts.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
     let parser = pulldown_cmark::Parser::new_ext(&preprocessed, opts);
@@ -739,5 +740,23 @@ mod tests {
         assert!(html.contains(r#"class="footnote-reference""#));
         assert!(html.contains(r#"class="footnote-definition""#));
         assert!(html.contains("Footnote text"));
+    }
+
+    #[test]
+    fn test_render_content_renders_math_spans() {
+        let input = "Inline math $x^2 + y^2$.\n\n$$\n\\int_0^1 x^2 dx\n$$";
+        let html = render_content(input);
+        assert!(html.contains(r#"class="math math-inline""#));
+        assert!(html.contains("x^2 + y^2"));
+        assert!(html.contains(r#"class="math math-display""#));
+        assert!(html.contains(r#"\int_0^1 x^2 dx"#));
+    }
+
+    #[test]
+    fn test_render_content_preserves_mermaid_language_class() {
+        let input = "```mermaid\ngraph TD\n  A --> B\n```";
+        let html = render_content(input);
+        assert!(html.contains(r#"class="language-mermaid""#));
+        assert!(html.contains("graph TD"));
     }
 }
