@@ -242,7 +242,10 @@ fn canonical_under_home(canonical: &Path, home: &Path) -> bool {
 #[cfg(not(target_os = "windows"))]
 fn tmp_dir_allows_image(canonical: &Path) -> bool {
     let s = canonical.to_string_lossy();
-    s.starts_with("/tmp/") || s.starts_with("/private/tmp/") || s.starts_with("/var/folders/")
+    s.starts_with("/tmp/")
+        || s.starts_with("/private/tmp/")
+        || s.starts_with("/var/folders/")
+        || s.starts_with("/private/var/folders/")
 }
 
 #[cfg(target_os = "windows")]

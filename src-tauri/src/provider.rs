@@ -403,6 +403,11 @@ fn build_qwen_runtime() -> Option<Box<dyn SessionProvider>> {
     crate::providers::qwen::QwenProvider::new().map(|p| Box::new(p) as Box<dyn SessionProvider>)
 }
 
+fn build_copilot_runtime() -> Option<Box<dyn SessionProvider>> {
+    crate::providers::copilot::CopilotProvider::new()
+        .map(|p| Box::new(p) as Box<dyn SessionProvider>)
+}
+
 fn provider_catalog() -> &'static [ProviderCatalogEntry] {
     &PROVIDER_CATALOG
 }
@@ -418,7 +423,7 @@ fn provider_entry_for_key(key: &str) -> Option<&'static ProviderCatalogEntry> {
     provider_catalog().iter().find(|entry| entry.key == key)
 }
 
-static PROVIDER_KINDS: [Provider; 8] = [
+static PROVIDER_KINDS: [Provider; 9] = [
     Provider::Claude,
     Provider::Codex,
     Provider::Gemini,
@@ -427,9 +432,10 @@ static PROVIDER_KINDS: [Provider; 8] = [
     Provider::Kimi,
     Provider::CcMirror,
     Provider::Qwen,
+    Provider::Copilot,
 ];
 
-static PROVIDER_CATALOG: [ProviderCatalogEntry; 8] = [
+static PROVIDER_CATALOG: [ProviderCatalogEntry; 9] = [
     ProviderCatalogEntry {
         kind: Provider::Claude,
         key: "claude",
@@ -485,6 +491,13 @@ static PROVIDER_CATALOG: [ProviderCatalogEntry; 8] = [
         label: "Qwen Code",
         descriptor: &crate::providers::qwen::Descriptor,
         build_runtime: build_qwen_runtime,
+    },
+    ProviderCatalogEntry {
+        kind: Provider::Copilot,
+        key: "copilot",
+        label: "Copilot",
+        descriptor: &crate::providers::copilot::Descriptor,
+        build_runtime: build_copilot_runtime,
     },
 ];
 
@@ -735,6 +748,10 @@ mod tests {
             (
                 "/home/user/.qwen/projects/-Users-user-myproject/chats/abc-123.jsonl",
                 Some(Provider::Qwen),
+            ),
+            (
+                "/home/user/.copilot/session-state/abc-def/events.jsonl",
+                Some(Provider::Copilot),
             ),
             ("/home/user/random/file.txt", None),
             // cc-mirror path should NOT match claude

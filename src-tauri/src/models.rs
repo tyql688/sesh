@@ -13,6 +13,7 @@ pub enum Provider {
     #[serde(rename = "cc-mirror")]
     CcMirror,
     Qwen,
+    Copilot,
 }
 
 impl std::fmt::Display for Provider {

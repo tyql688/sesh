@@ -5,6 +5,7 @@ use cc_session_lib::models::{MessageRole, Provider};
 use cc_session_lib::provider::SessionProvider;
 use cc_session_lib::providers::claude::ClaudeProvider;
 use cc_session_lib::providers::codex::CodexProvider;
+use cc_session_lib::providers::copilot::parser as copilot_parser;
 use cc_session_lib::providers::cursor::CursorProvider;
 use cc_session_lib::providers::gemini::GeminiProvider;
 use cc_session_lib::providers::kimi::KimiProvider;
@@ -1746,4 +1747,206 @@ fn qwen_real_data_smoke_test() {
     }
     assert!(parsed > 0, "no qwen session files found");
     eprintln!("Parsed {} real Qwen session files successfully", parsed);
+}
+
+// ---------------------------------------------------------------------------
+// Copilot parser tests
+// ---------------------------------------------------------------------------
+
+fn copilot_fixture() -> cc_session_lib::provider::ParsedSession {
+    let path = fixtures_dir().join("copilot").join("events.jsonl");
+    copilot_parser::parse_session_file(&path).expect("copilot fixture must parse")
+}
+
+#[test]
+fn copilot_parses_message_count() {
+    let session = copilot_fixture();
+    // 4 user + 5 assistant text + 3 thinking + 4 tool calls = 16
+    // Skipped: session.info, assistant.turn_start/end, hook.*, session.mode_changed,
+    //          report_intent (internal tool)
+    assert_eq!(session.meta.message_count, 16);
+}
+
+#[test]
+fn copilot_session_metadata() {
+    let session = copilot_fixture();
+    // Session ID from parent directory name, not file stem
+    assert_eq!(session.meta.id, "copilot");
+    assert_eq!(session.meta.provider, Provider::Copilot);
+    assert_eq!(session.meta.project_path, "/Users/test/myproject");
+    assert_eq!(session.meta.project_name, "myproject");
+    assert_eq!(session.meta.cc_version.as_deref(), Some("1.0.21"));
+    assert_eq!(session.meta.git_branch.as_deref(), Some("main"));
+    assert!(!session.meta.is_sidechain);
+    assert!(session.meta.parent_id.is_none());
+}
+
+#[test]
+fn copilot_title_from_first_user_message() {
+    let session = copilot_fixture();
+    assert_eq!(session.meta.title, "Find TODO comments in the project");
+}
+
+#[test]
+fn copilot_thinking_emitted_as_system_role() {
+    let session = copilot_fixture();
+    let thinking_msgs: Vec<_> = session
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::System && m.content.starts_with("[thinking]"))
+        .collect();
+    assert!(
+        !thinking_msgs.is_empty(),
+        "expected at least one thinking message"
+    );
+    assert!(thinking_msgs[0]
+        .content
+        .contains("The user wants me to find TODO"));
+}
+
+#[test]
+fn copilot_tool_names_mapped_to_canonical() {
+    let session = copilot_fixture();
+    let tool_names: Vec<_> = session
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Tool)
+        .filter_map(|m| m.tool_name.as_deref())
+        .collect();
+    assert!(
+        tool_names.contains(&"Grep"),
+        "expected Grep tool, got {:?}",
+        tool_names
+    );
+    assert!(
+        tool_names.contains(&"Read"),
+        "expected Read tool (from view), got {:?}",
+        tool_names
+    );
+    assert!(
+        tool_names.contains(&"Edit"),
+        "expected Edit tool, got {:?}",
+        tool_names
+    );
+}
+
+#[test]
+fn copilot_tool_result_merged_by_call_id() {
+    let session = copilot_fixture();
+    let grep_msg = session
+        .messages
+        .iter()
+        .find(|m| m.tool_name.as_deref() == Some("Grep"))
+        .expect("Grep tool message must exist");
+    assert!(
+        grep_msg.content.contains("TODO"),
+        "tool result should be merged into tool call message"
+    );
+}
+
+#[test]
+fn copilot_internal_tools_skipped() {
+    let session = copilot_fixture();
+    let internal: Vec<_> = session
+        .messages
+        .iter()
+        .filter(|m| {
+            m.tool_name
+                .as_deref()
+                .is_some_and(|n| n == "report_intent" || n == "task_complete")
+        })
+        .collect();
+    assert!(
+        internal.is_empty(),
+        "internal tools should be filtered out, found {:?}",
+        internal
+    );
+}
+
+#[test]
+fn copilot_image_placeholder_replaced_with_source_path() {
+    let session = copilot_fixture();
+    let img_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::User && m.content.contains("[Image:"))
+        .expect("expected user message with image marker");
+    assert!(
+        img_msg
+            .content
+            .contains("[Image: source: /var/folders/xx/test/T/copilot-image-abc123.png]"),
+        "placeholder should be replaced with full path, got: {}",
+        img_msg.content
+    );
+    assert!(
+        !img_msg.content.contains("[📷"),
+        "original placeholder should be gone"
+    );
+}
+
+#[test]
+fn copilot_token_usage_on_assistant() {
+    let session = copilot_fixture();
+    let assistant_with_usage = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Assistant && m.token_usage.is_some())
+        .expect("expected assistant message with token usage");
+    let usage = assistant_with_usage.token_usage.as_ref().unwrap();
+    assert!(usage.output_tokens > 0);
+}
+
+#[test]
+fn copilot_session_info_and_hooks_skipped() {
+    let session = copilot_fixture();
+    // No messages should contain session.info or hook content
+    for msg in &session.messages {
+        assert!(
+            !msg.content.contains("MCP Server"),
+            "session.info should be skipped"
+        );
+        assert!(
+            !msg.content.contains("hookInvocationId"),
+            "hook events should be skipped"
+        );
+    }
+
+    // mode_changed should also be skipped — no message about it
+    for msg in &session.messages {
+        assert!(
+            !msg.content.contains("previousMode"),
+            "session.mode_changed should be skipped"
+        );
+    }
+}
+
+#[test]
+fn copilot_empty_reasoning_text_not_emitted() {
+    let session = copilot_fixture();
+    let empty_thinking = session
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::System && m.content == "[thinking]\n")
+        .count();
+    assert_eq!(
+        empty_thinking, 0,
+        "empty reasoningText should not produce thinking messages"
+    );
+}
+
+#[test]
+fn copilot_empty_content_tool_turn_preserves_token_usage() {
+    let session = copilot_fixture();
+    // The fixture has an assistant.message with empty content, one bash toolRequest,
+    // and outputTokens: 250. Token usage should be attached to the Bash tool message.
+    let bash_msg = session
+        .messages
+        .iter()
+        .find(|m| m.tool_name.as_deref() == Some("Bash"))
+        .expect("Bash tool message must exist");
+    let usage = bash_msg
+        .token_usage
+        .as_ref()
+        .expect("token usage should be attached to tool msg when assistant content is empty");
+    assert_eq!(usage.output_tokens, 250);
 }

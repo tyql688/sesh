@@ -44,10 +44,11 @@ Metadata via Bridge pattern: `Provider` enum → `ProviderDescriptor` (zero-size
 | Cursor CLI  | `~/.cursor/projects/*/agent-transcripts/**/*.jsonl` | JSONL | FS |
 | OpenCode    | `~/.local/share/opencode/opencode.db`  | SQLite | Poll  |
 | Qwen Code   | `~/.qwen/projects/*/chats/*.jsonl`     | JSONL  | FS    |
+| Copilot     | `~/.copilot/session-state/*/events.jsonl` | JSONL | FS   |
 | CC-Mirror   | `~/.cc-mirror/{variant}/config/projects/**/*.jsonl` | JSONL | FS |
 
 Tool names mapped to canonical set per provider: {Bash, Edit, Read, Write, Glob, Grep, Agent, Plan}.
-Resume: Claude `--resume`, Codex `resume`, Gemini `--resume`, Kimi `--session`, Cursor `--resume=`, OpenCode `-s`, Qwen `--resume`.
+Resume: Claude `--resume`, Codex `resume`, Gemini `--resume`, Kimi `--session`, Cursor `--resume=`, OpenCode `-s`, Qwen `--resume`, Copilot `--resume=`.
 
 ## Testing
 
@@ -74,6 +75,7 @@ Resume: Claude `--resume`, Codex `resume`, Gemini `--resume`, Kimi `--session`, 
 - **Cursor**: JSONL transcripts + store.db marker. `[REDACTED]` = redacted thinking. Full-text subagent matching.
 - **CC-Mirror**: Multi-variant under `~/.cc-mirror/`, sanitized variant names.
 - **Qwen**: `sanitizeCwd()` path (hyphens, not SHA256). `thought: true` boolean + `text` field. Subagents embedded in parent (no separate files). Skip `ui_telemetry`/`slash_command`/`at_command`/`chat_compression`.
+- **Copilot**: Session ID from directory name (UUID). `reasoningText` for thinking. `toolRequests[]` in `assistant.message` + `tool.execution_start/complete` for tool calls. Subagents embedded via `task` tool (no separate files). Skip `hook.*`/`session.info`/`system.notification`/`session.mode_changed`.
 
 ## Conventions
 
@@ -81,4 +83,4 @@ Resume: Claude `--resume`, Codex `resume`, Gemini `--resume`, Kimi `--session`, 
 - TypeScript: strict mode, no `any`, ESLint + Prettier
 - Commits: conventional commits (`feat:`, `fix:`, `refactor:`)
 - i18n: all user-facing strings via `t()`
-- Colors: Claude `#d97757`, Codex `#10b981`, Gemini `#f59e0b`, Cursor `#3b82f6`, OpenCode `#06b6d4`, Kimi `#1783ff`, CC-Mirror `#f472b6`, Qwen `#6c3cf5`
+- Colors: Claude `#d97757`, Codex `#10b981`, Gemini `#f59e0b`, Cursor `#3b82f6`, OpenCode `#06b6d4`, Kimi `#1783ff`, CC-Mirror `#f472b6`, Qwen `#6c3cf5`, Copilot `#171717`

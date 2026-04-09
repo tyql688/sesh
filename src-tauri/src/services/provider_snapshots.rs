@@ -122,6 +122,7 @@ mod tests {
                 Provider::OpenCode,
                 Provider::Kimi,
                 Provider::Qwen,
+                Provider::Copilot,
             ]
         );
         assert_eq!(snapshots.len(), Provider::all().len());

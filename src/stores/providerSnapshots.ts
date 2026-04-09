@@ -90,6 +90,16 @@ const FALLBACK_PROVIDER_SNAPSHOTS: Record<Provider, ProviderSnapshot> = {
     exists: false,
     session_count: 0,
   },
+  copilot: {
+    key: "copilot",
+    label: "Copilot",
+    color: "var(--copilot)",
+    sort_order: 8,
+    watch_strategy: "fs",
+    path: "",
+    exists: false,
+    session_count: 0,
+  },
 };
 
 let loadPromise: Promise<void> | null = null;

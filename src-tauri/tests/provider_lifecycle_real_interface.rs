@@ -672,6 +672,7 @@ fn assert_provider_snapshots<W: AsRef<Webview<MockRuntime>>>(webview: &W) {
             Provider::OpenCode,
             Provider::Kimi,
             Provider::Qwen,
+            Provider::Copilot,
         ]
     );
 

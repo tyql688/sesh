@@ -24,6 +24,7 @@ const WATCH_BEHAVIORS: Record<Provider, ProviderWatchBehavior> = {
   kimi: { debounceMs: 300, matchPrefix: false },
   "cc-mirror": { debounceMs: 300, matchPrefix: false },
   qwen: { debounceMs: 300, matchPrefix: false },
+  copilot: { debounceMs: 300, matchPrefix: false },
 };
 
 export function getProviderWatchBehavior(

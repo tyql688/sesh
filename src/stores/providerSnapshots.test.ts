@@ -91,6 +91,7 @@ describe("providerSnapshots store", () => {
       "opencode",
       "kimi",
       "qwen",
+      "copilot",
     ]);
   });
 

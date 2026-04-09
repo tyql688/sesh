@@ -6,7 +6,8 @@ export type Provider =
   | "opencode"
   | "kimi"
   | "cc-mirror"
-  | "qwen";
+  | "qwen"
+  | "copilot";
 
 export interface SessionMeta {
   id: string;
