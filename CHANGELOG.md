@@ -7,6 +7,8 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-04-09
+
 ### Added
 
 - AST-based markdown rendering for message bubbles with GFM task lists, tables, footnotes, Mermaid, and KaTeX math
@@ -23,6 +25,8 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - macOS file-backed providers now use `kqueue` for more reliable live-follow behavior
 - HTML export now preserves markdown footnotes
 - Codex local image placeholders now resolve correctly, including Windows path variants
+- Resume command clipboard copy now works correctly in the context menu (5127bb2)
+- Subagent "Open" link now appears in merged tool rows (203c7e4)
 
 ## [0.3.6] - 2026-04-04
 
