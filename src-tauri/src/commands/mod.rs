@@ -3,6 +3,7 @@ mod sessions;
 mod settings;
 mod terminal;
 pub mod trash;
+mod usage;
 
 use std::sync::Arc;
 
@@ -20,6 +21,7 @@ pub use sessions::*;
 pub use settings::*;
 pub use terminal::*;
 pub use trash::*;
+pub use usage::*;
 
 pub(crate) fn load_session_detail_for_tests(
     db: &crate::db::Database,

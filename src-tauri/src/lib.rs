@@ -179,6 +179,7 @@ pub fn run() {
             commands::read_image_base64,
             commands::open_in_folder,
             commands::open_external,
+            commands::get_usage_stats,
         ])
         .setup(|app| {
             // On Windows, hide native decorations so the custom titlebar is the only one.
