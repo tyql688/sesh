@@ -368,6 +368,26 @@
   margin: 0.3em 0;
 }
 
+.msg-task-item {
+  list-style: none;
+  margin-left: -1.1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.msg-task-checkbox {
+  margin: 0.2rem 0 0;
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.msg-task-content {
+  min-width: 0;
+}
+
 .msg-text strong {
   font-weight: 650;
 }
@@ -416,7 +436,7 @@
 .msg-bubble-user .msg-text code:not(pre code) {
   background: var(--msg-user-code-bg);
   color: var(--msg-user-code-text);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--msg-user-code-inline-border);
 }
 
 .msg-text + .msg-text,
@@ -920,7 +940,7 @@
 }
 
 .msg-bubble-user .msg-blockquote {
-  border-left-color: rgba(255, 255, 255, 0.22);
+  border-left-color: var(--msg-user-quote-border);
   color: var(--msg-user-muted);
 }
 
@@ -932,7 +952,7 @@
 }
 
 .msg-bubble-user .msg-hr {
-  border-top-color: rgba(255, 255, 255, 0.16);
+  border-top-color: var(--msg-user-hr);
 }
 
 /* Table */
@@ -973,18 +993,18 @@
 }
 
 .msg-bubble-user .msg-table th {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.84);
+  background: var(--msg-user-table-header-bg);
+  border-color: var(--msg-user-table-header-border);
+  color: var(--msg-user-table-header-text);
 }
 
 .msg-bubble-user .msg-table td {
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: var(--msg-user-table-cell-border);
   color: var(--msg-user-text);
 }
 
 .msg-bubble-user .msg-table tr:hover td {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--msg-user-table-row-hover);
 }
 
 /* Code Block */
@@ -1134,12 +1154,12 @@
 
 .msg-bubble-user .msg-copy-btn {
   background: var(--msg-user-copy-bg);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.78);
+  border-color: var(--msg-user-copy-border);
+  color: var(--msg-user-copy-text);
 }
 
 .msg-bubble-user .msg-copy-btn:hover {
-  color: #ffffff;
+  color: var(--msg-user-copy-hover-text);
   background: var(--msg-user-copy-hover-bg);
 }
 

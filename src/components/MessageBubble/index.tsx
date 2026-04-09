@@ -1,18 +1,12 @@
-import { createSignal, createMemo, For, Show, JSX } from "solid-js";
+import { createSignal, createMemo, Show } from "solid-js";
 import type { Message, Provider } from "../../lib/types";
 import { ProviderIcon, UserIcon } from "../../lib/icons";
 import { useI18n } from "../../i18n/index";
-import { CodeBlock } from "../CodeBlock";
-import { MermaidBlock } from "../MermaidBlock";
-import { parseContent } from "./MarkdownRenderer";
-import { renderMarkdownText } from "./MarkdownRenderer";
-import { sanitizeMessageForClipboard } from "./MarkdownRenderer";
 import {
-  LocalImage,
-  RemoteImage,
-  ImagePreview,
-  isLocalPath,
-} from "./ImagePreview";
+  renderMarkdownContent,
+  sanitizeMessageForClipboard,
+} from "./MarkdownRenderer";
+import { ImagePreview } from "./ImagePreview";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { CopyMessageButton, TokenUsageDisplay } from "./TokenUsage";
 import { ToolMessage } from "./ToolMessage";
@@ -71,13 +65,18 @@ export function MessageBubble(props: {
   provider?: Provider;
   highlightTerm?: string;
 }) {
-  const segments = createMemo(() => parseContent(props.message.content));
   const [previewImage, setPreviewImage] = createSignal<{
     src: string;
     source?: string;
   } | null>(null);
   const copyText = createMemo(() =>
     sanitizeMessageForClipboard(props.message.content),
+  );
+  const markdownContent = createMemo(() =>
+    renderMarkdownContent(props.message.content, {
+      highlightTerm: props.highlightTerm,
+      onPreview: (src, source) => setPreviewImage({ src, source }),
+    }),
   );
 
   const isEmpty = (): boolean => {
@@ -146,43 +145,7 @@ export function MessageBubble(props: {
               </Show>
             </div>
             <div class={`msg-bubble msg-bubble-${props.message.role}`}>
-              <For each={segments()}>
-                {(seg) => {
-                  if (seg.type === "code") {
-                    if (seg.language?.toLowerCase() === "mermaid") {
-                      return <MermaidBlock code={seg.content} />;
-                    }
-                    return (
-                      <CodeBlock code={seg.content} language={seg.language} />
-                    );
-                  }
-                  if (seg.type === "image") {
-                    if (isLocalPath(seg.content)) {
-                      return (
-                        <LocalImage
-                          path={seg.content}
-                          onPreview={(src, source) =>
-                            setPreviewImage({ src, source })
-                          }
-                        />
-                      );
-                    }
-                    return (
-                      <RemoteImage
-                        src={seg.content}
-                        onPreview={(src, source) =>
-                          setPreviewImage({ src, source })
-                        }
-                      />
-                    );
-                  }
-                  // createMemo makes this reactive: re-renders when highlightTerm signal changes.
-                  // <For> callbacks only run once per item, so without memo the highlight would be static.
-                  return createMemo(() =>
-                    renderMarkdownText(seg.content, props.highlightTerm),
-                  ) as unknown as JSX.Element;
-                }}
-              </For>
+              {markdownContent()}
               <CopyMessageButton
                 content={props.message.content}
                 copyText={copyText()}

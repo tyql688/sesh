@@ -26,20 +26,35 @@
   --code-text: #24292e;
   --inline-code-bg: rgba(0, 0, 0, 0.06);
   --inline-code-text: #d63384;
-  --msg-user-bg: #007aff;
-  --msg-user-border: #007aff;
-  --msg-user-text: #ffffff;
-  --msg-user-muted: rgba(255, 255, 255, 0.72);
-  --msg-user-link: #b3d9ff;
-  --msg-user-code-bg: rgba(255, 255, 255, 0.14);
-  --msg-user-code-text: #fce4ec;
+  --msg-user-bg: linear-gradient(
+    135deg,
+    rgba(0, 122, 255, 0.08),
+    rgba(88, 86, 214, 0.06)
+  );
+  --msg-user-border: rgba(0, 122, 255, 0.12);
+  --msg-user-text: #1d1d1f;
+  --msg-user-muted: #6e6e73;
+  --msg-user-link: #007aff;
+  --msg-user-code-bg: rgba(0, 122, 255, 0.08);
+  --msg-user-code-text: var(--inline-code-text);
+  --msg-user-code-inline-border: rgba(0, 122, 255, 0.12);
   --msg-user-code-block-bg: #22272e;
-  --msg-user-code-block-border: rgba(255, 255, 255, 0.12);
+  --msg-user-code-block-border: rgba(0, 122, 255, 0.14);
   --msg-user-copy-bg: rgba(0, 0, 0, 0.18);
   --msg-user-copy-hover-bg: rgba(0, 0, 0, 0.28);
+  --msg-user-copy-border: rgba(255, 255, 255, 0.16);
+  --msg-user-copy-text: rgba(255, 255, 255, 0.78);
+  --msg-user-copy-hover-text: #ffffff;
+  --msg-user-quote-border: rgba(0, 122, 255, 0.18);
+  --msg-user-hr: rgba(0, 122, 255, 0.12);
+  --msg-user-table-header-bg: rgba(0, 122, 255, 0.06);
+  --msg-user-table-header-border: rgba(0, 122, 255, 0.12);
+  --msg-user-table-header-text: #6e6e73;
+  --msg-user-table-cell-border: rgba(0, 0, 0, 0.08);
+  --msg-user-table-row-hover: rgba(0, 122, 255, 0.04);
   --msg-bubble-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
-  --msg-user-shadow: 0 10px 28px rgba(0, 122, 255, 0.16);
-  --msg-assistant-bg: #ffffff;
+  --msg-user-shadow: 0 8px 20px rgba(0, 122, 255, 0.08);
+  --msg-assistant-bg: #f5f6f8;
   --msg-assistant-border: #e5e7eb;
   --code-token-default: #24292e;
   --code-token-keyword: #d73a49;
@@ -101,21 +116,36 @@
   --code-text: #adbac7;
   --inline-code-bg: rgba(255, 255, 255, 0.1);
   --inline-code-text: #f0abfc;
-  --msg-user-bg: #0a84ff;
-  --msg-user-border: #0a84ff;
+  --msg-user-bg: linear-gradient(
+    135deg,
+    rgba(10, 132, 255, 0.12),
+    rgba(88, 86, 214, 0.08)
+  );
+  --msg-user-border: rgba(10, 132, 255, 0.2);
   --msg-user-text: #ffffff;
   --msg-user-muted: rgba(255, 255, 255, 0.72);
   --msg-user-link: #b9dbff;
   --msg-user-code-bg: rgba(255, 255, 255, 0.14);
   --msg-user-code-text: #fce4ec;
+  --msg-user-code-inline-border: rgba(255, 255, 255, 0.12);
   --msg-user-code-block-bg: #22272e;
   --msg-user-code-block-border: rgba(255, 255, 255, 0.1);
   --msg-user-copy-bg: rgba(255, 255, 255, 0.08);
   --msg-user-copy-hover-bg: rgba(255, 255, 255, 0.16);
+  --msg-user-copy-border: rgba(255, 255, 255, 0.12);
+  --msg-user-copy-text: rgba(255, 255, 255, 0.78);
+  --msg-user-copy-hover-text: #ffffff;
+  --msg-user-quote-border: rgba(255, 255, 255, 0.22);
+  --msg-user-hr: rgba(255, 255, 255, 0.16);
+  --msg-user-table-header-bg: rgba(255, 255, 255, 0.12);
+  --msg-user-table-header-border: rgba(255, 255, 255, 0.18);
+  --msg-user-table-header-text: rgba(255, 255, 255, 0.84);
+  --msg-user-table-cell-border: rgba(255, 255, 255, 0.16);
+  --msg-user-table-row-hover: rgba(255, 255, 255, 0.06);
   --msg-bubble-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
-  --msg-user-shadow: 0 14px 34px rgba(10, 132, 255, 0.24);
-  --msg-assistant-bg: #26272b;
-  --msg-assistant-border: rgba(255, 255, 255, 0.08);
+  --msg-user-shadow: 0 12px 28px rgba(10, 132, 255, 0.14);
+  --msg-assistant-bg: #27292f;
+  --msg-assistant-border: rgba(255, 255, 255, 0.1);
   --code-token-default: #adbac7;
   --code-token-keyword: #f47067;
   --code-token-title: #dcbdfb;

@@ -1,5 +1,42 @@
 import { JSX, For } from "solid-js";
 import katex from "katex";
+import type {
+  BlockContent,
+  Code,
+  Definition,
+  Heading,
+  Image,
+  ImageReference,
+  Link,
+  LinkReference,
+  List,
+  ListItem,
+  Paragraph,
+  PhrasingContent,
+  Root,
+  RootContent,
+  Table,
+  TableCell,
+  Text,
+} from "mdast";
+import { unified } from "unified";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import remarkParse from "remark-parse";
+import { visit } from "unist-util-visit";
+import { CodeBlock } from "../CodeBlock";
+import { MermaidBlock } from "../MermaidBlock";
+import { LocalImage, RemoteImage, isLocalPath } from "./ImagePreview";
+
+interface MathNode {
+  type: "math";
+  value: string;
+}
+
+interface InlineMathNode {
+  type: "inlineMath";
+  value: string;
+}
 
 export interface ContentSegment {
   type: "text" | "code" | "image";
@@ -7,8 +44,28 @@ export interface ContentSegment {
   language?: string;
 }
 
+type MarkdownBlockNode = RootContent | BlockContent;
+type MarkdownInlineNode = PhrasingContent;
+
+interface RenderContext {
+  definitions: Map<string, Definition>;
+  highlightTerm?: string;
+  onPreview: (src: string, source: string) => void;
+}
+
+const IMAGE_PLACEHOLDER_REGEX =
+  /\[Image(?:\s*#\d+)?(?::\s*source:\s*([^\]]+))?\]/g;
+
+const markdownParser = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkMath);
+
 export function sanitizeMessageForClipboard(raw: string): string {
-  return raw.replace(/\[Image:\s*source:\s*[^\]]+\]/g, "[Image]");
+  return raw.replace(
+    /\[Image(?:\s*#\d+)?(?::\s*source:\s*[^\]]+)?\]/g,
+    "[Image]",
+  );
 }
 
 export function parseContent(raw: string): ContentSegment[] {
@@ -17,7 +74,6 @@ export function parseContent(raw: string): ContentSegment[] {
   }
 
   const segments: ContentSegment[] = [];
-  // Match code blocks and image references
   const blockRegex =
     /```([\w+#.-]*)\n?([\s\S]*?)```|\[Image(?:\s*#\d+)?(?::\s*source:\s*([^\]]+))?\]/g;
   let lastIndex = 0;
@@ -30,15 +86,14 @@ export function parseContent(raw: string): ContentSegment[] {
         content: raw.slice(lastIndex, match.index),
       });
     }
+
     if (match[2] !== undefined) {
-      // Code block
       segments.push({
         type: "code",
-        content: match[2].trim(),
+        content: match[2],
         language: match[1] || undefined,
       });
     } else {
-      // Image reference
       const imagePath = match[3]?.trim();
       if (imagePath) {
         segments.push({ type: "image", content: imagePath });
@@ -46,6 +101,7 @@ export function parseContent(raw: string): ContentSegment[] {
         segments.push({ type: "text", content: match[0] });
       }
     }
+
     lastIndex = match.index + match[0].length;
   }
 
@@ -56,7 +112,101 @@ export function parseContent(raw: string): ContentSegment[] {
   return segments;
 }
 
-/** Render a LaTeX math expression using KaTeX. Returns HTML string or null on error. */
+export function parseMarkdownAst(raw: string): Root {
+  const tree = markdownParser.parse(raw) as Root;
+  transformImagePlaceholders(tree);
+  return tree;
+}
+
+export function renderMarkdownContent(
+  raw: string,
+  options: {
+    highlightTerm?: string;
+    onPreview: (src: string, source: string) => void;
+  },
+): JSX.Element {
+  const tree = parseMarkdownAst(raw);
+  const context: RenderContext = {
+    definitions: collectDefinitions(tree),
+    highlightTerm: options.highlightTerm,
+    onPreview: options.onPreview,
+  };
+
+  return <div class="msg-text">{renderBlockNodes(tree.children, context)}</div>;
+}
+
+function collectDefinitions(tree: Root): Map<string, Definition> {
+  const definitions = new Map<string, Definition>();
+
+  visit(tree, "definition", (node: Definition) => {
+    definitions.set(normalizeIdentifier(node.identifier), node);
+  });
+
+  return definitions;
+}
+
+function normalizeIdentifier(identifier: string): string {
+  return identifier.trim().toLowerCase();
+}
+
+function transformImagePlaceholders(tree: Root) {
+  visit(tree, "text", (node: Text, index, parent) => {
+    if (index === undefined || !parent || !("children" in parent)) {
+      return;
+    }
+
+    const replacement = splitTextWithImages(node.value);
+    if (
+      replacement.length === 1 &&
+      replacement[0].type === "text" &&
+      replacement[0].value === node.value
+    ) {
+      return;
+    }
+
+    parent.children.splice(index, 1, ...replacement);
+    return index + replacement.length;
+  });
+}
+
+function splitTextWithImages(value: string): Array<Text | Image> {
+  if (!value.includes("[Image")) {
+    return [{ type: "text", value }];
+  }
+
+  const nodes: Array<Text | Image> = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  IMAGE_PLACEHOLDER_REGEX.lastIndex = 0;
+
+  while ((match = IMAGE_PLACEHOLDER_REGEX.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push({ type: "text", value: value.slice(lastIndex, match.index) });
+    }
+
+    const imagePath = match[1]?.trim();
+    if (imagePath) {
+      nodes.push({
+        type: "image",
+        alt: "Image",
+        title: null,
+        url: imagePath,
+      });
+    } else {
+      nodes.push({ type: "text", value: match[0] });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    nodes.push({ type: "text", value: value.slice(lastIndex) });
+  }
+
+  return nodes;
+}
+
 function renderKatex(tex: string, displayMode: boolean): string | null {
   try {
     return katex.renderToString(tex, { displayMode, throwOnError: false });
@@ -65,12 +215,12 @@ function renderKatex(tex: string, displayMode: boolean): string | null {
   }
 }
 
-/** Wrap matching substrings in <mark> tags for search highlighting. */
-function wrapHighlight(text: string, term: string): JSX.Element {
+function wrapHighlight(text: string, term?: string): JSX.Element {
   if (!term) return <>{text}</>;
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const parts = text.split(new RegExp(`(${escaped})`, "gi"));
   const lowerTerm = term.toLowerCase();
+
   return (
     <>
       <For each={parts}>
@@ -86,9 +236,7 @@ function wrapHighlight(text: string, term: string): JSX.Element {
   );
 }
 
-/** Check whether a URL uses a safe scheme before opening it. */
 function isSafeUrl(url: string): boolean {
-  // Allow relative paths (e.g. /foo/bar) — Tauri shell plugin already gates these
   if (url.startsWith("/")) return true;
   try {
     const parsed = new URL(url, "https://placeholder");
@@ -98,369 +246,447 @@ function isSafeUrl(url: string): boolean {
   }
 }
 
-/** Parse inline markdown formatting within a single line and return JSX elements. */
-function renderInlineMarkdown(
-  text: string,
-  highlightTerm?: string,
+function renderBlockNodes(
+  nodes: MarkdownBlockNode[],
+  context: RenderContext,
 ): JSX.Element {
-  // Process inline formatting: bold, italic, inline code, links, math
-  const elements: JSX.Element[] = [];
-  // Combined regex for inline elements:
-  // 0. inline display math: $$...$$
-  // 1. inline code: `code`
-  // 2. bold: **text** or __text__
-  // 3. italic: *text* or _text_
-  // 4. links: [text](url)
-  // 5. inline math: $...$
-  // Inline formatting: code, bold, italic (word-boundary for _ to avoid snake_case), links, math
-  const inlineRegex =
-    /(\$\$(.+?)\$\$)|(`([^`]+)`)|(\*\*(.+?)\*\*|__(.+?)__)|(\*(.+?)\*|(?<!\w)_(.+?)_(?!\w))|(\[([^\]]+)\]\(([^)]+)\))|(\$(.+?)\$)/g;
+  return (
+    <For each={nodes}>
+      {(node, index) => renderBlockNode(node, context, `block-${index()}`)}
+    </For>
+  );
+}
 
-  let lastIdx = 0;
-  let m: RegExpExecArray | null;
-
-  while ((m = inlineRegex.exec(text)) !== null) {
-    // Push preceding text (with optional search highlight)
-    if (m.index > lastIdx) {
-      const preceding = text.slice(lastIdx, m.index);
-      elements.push(
-        highlightTerm ? (
-          wrapHighlight(preceding, highlightTerm)
-        ) : (
-          <>{preceding}</>
-        ),
+function renderBlockNode(
+  node: MarkdownBlockNode,
+  context: RenderContext,
+  key: string,
+): JSX.Element | null {
+  switch (node.type) {
+    case "paragraph":
+      return renderParagraph(node, context, key);
+    case "heading":
+      return renderHeading(node, context, key);
+    case "blockquote":
+      return (
+        <blockquote class="msg-blockquote">
+          {renderBlockNodes(node.children, context)}
+        </blockquote>
       );
-    }
-
-    if (m[1]) {
-      // display math $$...$$
-      const html = renderKatex(m[2], true);
-      if (html) {
-        // eslint-disable-next-line solid/no-innerhtml
-        elements.push(<span class="katex-display-inline" innerHTML={html} />);
-      } else {
-        elements.push(<code>{m[0]}</code>);
-      }
-    } else if (m[3]) {
-      // inline code — highlight inside code spans too
-      elements.push(
-        <code>
-          {highlightTerm ? wrapHighlight(m[4], highlightTerm) : m[4]}
-        </code>,
+    case "list":
+      return renderList(node, context, key);
+    case "listItem":
+      return renderListItem(node, context, key);
+    case "table":
+      return renderTable(node, context, key);
+    case "code":
+      return renderCodeBlock(node, key);
+    case "math":
+      return renderMathBlock(node, key);
+    case "thematicBreak":
+      return <hr class="msg-hr" />;
+    case "html":
+      return (
+        <p class="msg-text-line">
+          {wrapHighlight(node.value, context.highlightTerm)}
+        </p>
       );
-    } else if (m[5]) {
-      // bold
-      const boldText = m[6] || m[7];
-      elements.push(
-        <strong>
-          {highlightTerm ? wrapHighlight(boldText, highlightTerm) : boldText}
-        </strong>,
-      );
-    } else if (m[8]) {
-      // italic
-      const italicText = m[9] || m[10];
-      elements.push(
-        <em>
-          {highlightTerm
-            ? wrapHighlight(italicText, highlightTerm)
-            : italicText}
-        </em>,
-      );
-    } else if (m[11]) {
-      // link
-      const linkText = m[12];
-      const linkUrl = m[13];
-      if (isSafeUrl(linkUrl)) {
-        elements.push(
-          <a
-            href={linkUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => {
-              e.preventDefault();
-              window.open(linkUrl, "_blank");
-            }}
-          >
-            {highlightTerm ? wrapHighlight(linkText, highlightTerm) : linkText}
-          </a>,
-        );
-      } else {
-        // Unsafe scheme (e.g. javascript:, data:) — render as plain text
-        elements.push(
-          <span>
-            {highlightTerm ? wrapHighlight(linkText, highlightTerm) : linkText}
-          </span>,
-        );
-      }
-    } else if (m[14]) {
-      // inline math $...$
-      const html = renderKatex(m[15], false);
-      if (html) {
-        // eslint-disable-next-line solid/no-innerhtml
-        elements.push(<span class="katex-inline" innerHTML={html} />);
-      } else {
-        elements.push(<code>{m[0]}</code>);
-      }
-    }
-
-    lastIdx = m.index + m[0].length;
+    case "definition":
+      return null;
+    default:
+      return null;
   }
+}
 
-  // Remaining text
-  if (lastIdx < text.length) {
-    const remaining = text.slice(lastIdx);
-    elements.push(
-      highlightTerm ? (
-        wrapHighlight(remaining, highlightTerm)
-      ) : (
-        <>{remaining}</>
-      ),
+function renderParagraph(
+  node: Paragraph,
+  context: RenderContext,
+  _key: string,
+): JSX.Element {
+  const segments = splitParagraphChildren(node.children);
+
+  if (segments.length === 1 && segments[0].type === "phrasing") {
+    return (
+      <p class="msg-text-line">
+        {renderInlineNodes(segments[0].children, context)}
+      </p>
     );
   }
 
-  if (elements.length === 0) {
-    return highlightTerm ? wrapHighlight(text, highlightTerm) : <>{text}</>;
-  }
-
-  return <>{elements}</>;
+  return (
+    <>
+      <For each={segments}>
+        {(segment) =>
+          segment.type === "phrasing" ? (
+            <p class="msg-text-line">
+              {renderInlineNodes(segment.children, context)}
+            </p>
+          ) : (
+            <div>{renderImageNode(segment.node, context)}</div>
+          )
+        }
+      </For>
+    </>
+  );
 }
 
-/** Render a text segment with markdown formatting as JSX. */
-export function renderMarkdownText(
-  text: string,
-  highlightTerm?: string,
+function splitParagraphChildren(children: PhrasingContent[]) {
+  const segments: Array<
+    | { type: "phrasing"; children: PhrasingContent[] }
+    | { type: "image"; node: Image }
+  > = [];
+  let current: PhrasingContent[] = [];
+
+  for (const child of children) {
+    if (child.type === "image") {
+      if (current.length > 0) {
+        segments.push({ type: "phrasing", children: current });
+        current = [];
+      }
+      segments.push({ type: "image", node: child });
+    } else {
+      current.push(child);
+    }
+  }
+
+  if (current.length > 0 || segments.length === 0) {
+    segments.push({ type: "phrasing", children: current });
+  }
+
+  return segments;
+}
+
+function renderHeading(
+  node: Heading,
+  context: RenderContext,
+  _key: string,
 ): JSX.Element {
-  const lines = text.split("\n");
-  const elements: JSX.Element[] = [];
-  let i = 0;
+  const content = renderInlineNodes(node.children, context);
 
-  while (i < lines.length) {
-    const line = lines[i];
-    const trimmed = line.trimStart();
+  switch (node.depth) {
+    case 1:
+      return <h1>{content}</h1>;
+    case 2:
+      return <h2>{content}</h2>;
+    default:
+      return <h3>{content}</h3>;
+  }
+}
 
-    // Display math block: $$...$$ spanning multiple lines
-    if (trimmed === "$$") {
-      const mathLines: string[] = [];
-      i++;
-      while (i < lines.length && lines[i].trimStart() !== "$$") {
-        mathLines.push(lines[i]);
-        i++;
-      }
-      if (i < lines.length) i++; // skip closing $$
-      const tex = mathLines.join("\n");
-      const html = renderKatex(tex, true);
-      if (html) {
-        // eslint-disable-next-line solid/no-innerhtml
-        elements.push(<div class="katex-display-block" innerHTML={html} />);
-      } else {
-        elements.push(
-          <pre class="code-block-pre">
-            <code>{`$$\n${tex}\n$$`}</code>
-          </pre>,
-        );
-      }
-      continue;
-    }
+function renderList(
+  node: List,
+  context: RenderContext,
+  key: string,
+): JSX.Element {
+  if (node.ordered) {
+    return (
+      <ol start={node.start ?? 1}>
+        <For each={node.children}>
+          {(child, index) =>
+            renderListItem(child, context, `${key}-${index()}`)
+          }
+        </For>
+      </ol>
+    );
+  }
 
-    // Headers
-    if (trimmed.startsWith("### ")) {
-      elements.push(
-        <h3>{renderInlineMarkdown(trimmed.slice(4), highlightTerm)}</h3>,
-      );
-      i++;
-      continue;
-    }
-    if (trimmed.startsWith("## ")) {
-      elements.push(
-        <h2>{renderInlineMarkdown(trimmed.slice(3), highlightTerm)}</h2>,
-      );
-      i++;
-      continue;
-    }
-    if (trimmed.startsWith("# ")) {
-      elements.push(
-        <h1>{renderInlineMarkdown(trimmed.slice(2), highlightTerm)}</h1>,
-      );
-      i++;
-      continue;
-    }
+  return (
+    <ul>
+      <For each={node.children}>
+        {(child, index) => renderListItem(child, context, `${key}-${index()}`)}
+      </For>
+    </ul>
+  );
+}
 
-    // Horizontal rule: --- or *** or ___
-    if (/^[-*_]{3,}\s*$/.test(trimmed)) {
-      elements.push(<hr class="msg-hr" />);
-      i++;
-      continue;
-    }
+function renderListItem(
+  node: ListItem,
+  context: RenderContext,
+  key: string,
+): JSX.Element {
+  const isTask = typeof node.checked === "boolean";
+  const onlyParagraph =
+    node.children.length === 1 && node.children[0]?.type === "paragraph";
 
-    // Blockquote: > text
-    if (trimmed.startsWith("> ")) {
-      const quoteLines: string[] = [];
-      while (i < lines.length) {
-        const ql = lines[i].trimStart();
-        if (ql.startsWith("> ")) {
-          quoteLines.push(ql.slice(2));
-          i++;
-        } else if (ql === ">") {
-          quoteLines.push("");
-          i++;
-        } else {
-          break;
+  const content = onlyParagraph
+    ? renderListItemParagraph(node.children[0] as Paragraph, context, key)
+    : renderBlockNodes(node.children, context);
+
+  return (
+    <li class={isTask ? "msg-task-item" : undefined}>
+      {isTask && (
+        <input
+          class="msg-task-checkbox"
+          type="checkbox"
+          checked={node.checked === true}
+          disabled
+        />
+      )}
+      <div class={isTask ? "msg-task-content" : undefined}>{content}</div>
+    </li>
+  );
+}
+
+function renderListItemParagraph(
+  node: Paragraph,
+  context: RenderContext,
+  _key: string,
+): JSX.Element {
+  const segments = splitParagraphChildren(node.children);
+
+  if (segments.length === 1 && segments[0].type === "phrasing") {
+    return <>{renderInlineNodes(segments[0].children, context)}</>;
+  }
+
+  return (
+    <>
+      <For each={segments}>
+        {(segment) =>
+          segment.type === "phrasing" ? (
+            <p class="msg-text-line">
+              {renderInlineNodes(segment.children, context)}
+            </p>
+          ) : (
+            <div>{renderImageNode(segment.node, context)}</div>
+          )
         }
-      }
-      elements.push(
-        <blockquote class="msg-blockquote">
-          <For each={quoteLines}>
-            {(ql) =>
-              ql ? (
-                <p class="msg-text-line">
-                  {renderInlineMarkdown(ql, highlightTerm)}
-                </p>
-              ) : (
-                <br />
+      </For>
+    </>
+  );
+}
+
+function renderTable(
+  node: Table,
+  context: RenderContext,
+  _key: string,
+): JSX.Element {
+  const headerRow = node.children[0];
+  const bodyRows = node.children.slice(1);
+
+  return (
+    <table class="msg-table">
+      <thead>
+        <tr>
+          <For each={headerRow.children}>
+            {(cell, index) =>
+              renderTableCell(
+                cell,
+                node.align?.[index()] ?? null,
+                context,
+                "th",
               )
             }
           </For>
-        </blockquote>,
-      );
-      continue;
-    }
-
-    // Table: | col | col |
-    if (
-      trimmed.startsWith("|") &&
-      trimmed.endsWith("|") &&
-      trimmed.includes("|", 1)
-    ) {
-      const tableRows: string[][] = [];
-      let hasHeader = false;
-      while (i < lines.length) {
-        const tl = lines[i].trim();
-        if (tl.startsWith("|") && tl.endsWith("|")) {
-          const cells = tl
-            .slice(1, -1)
-            .split("|")
-            .map((c) => c.trim());
-          // Skip separator row (| --- | --- |)
-          if (cells.every((c) => /^[-:]+$/.test(c))) {
-            hasHeader = true;
-            i++;
-            continue;
-          }
-          tableRows.push(cells);
-          i++;
-        } else {
-          break;
-        }
-      }
-      if (tableRows.length > 0) {
-        const headerRow = hasHeader ? tableRows[0] : null;
-        const bodyRows = hasHeader ? tableRows.slice(1) : tableRows;
-        elements.push(
-          <table class="msg-table">
-            {headerRow && (
-              <thead>
-                <tr>
-                  <For each={headerRow}>
-                    {(c) => <th>{renderInlineMarkdown(c, highlightTerm)}</th>}
-                  </For>
-                </tr>
-              </thead>
-            )}
-            <tbody>
-              <For each={bodyRows}>
-                {(row) => (
-                  <tr>
-                    <For each={row}>
-                      {(c) => <td>{renderInlineMarkdown(c, highlightTerm)}</td>}
-                    </For>
-                  </tr>
-                )}
+        </tr>
+      </thead>
+      <tbody>
+        <For each={bodyRows}>
+          {(row) => (
+            <tr>
+              <For each={row.children}>
+                {(cell, index) =>
+                  renderTableCell(
+                    cell,
+                    node.align?.[index()] ?? null,
+                    context,
+                    "td",
+                  )
+                }
               </For>
-            </tbody>
-          </table>,
-        );
-      }
-      continue;
-    }
+            </tr>
+          )}
+        </For>
+      </tbody>
+    </table>
+  );
+}
 
-    // Unordered list items: - item or * item
-    if (/^[-*]\s+/.test(trimmed)) {
-      const listItems: JSX.Element[] = [];
-      while (i < lines.length) {
-        const li = lines[i].trimStart();
-        const ulMatch = li.match(/^[-*]\s+(.*)/);
-        if (ulMatch) {
-          listItems.push(
-            <li>{renderInlineMarkdown(ulMatch[1], highlightTerm)}</li>,
-          );
-          i++;
-        } else {
-          break;
-        }
-      }
-      elements.push(<ul>{listItems}</ul>);
-      continue;
-    }
+function renderTableCell(
+  node: TableCell,
+  align: "left" | "right" | "center" | null | undefined,
+  context: RenderContext,
+  tag: "th" | "td",
+): JSX.Element {
+  const content = renderInlineNodes(node.children, context);
+  const style = align ? { "text-align": align } : undefined;
 
-    // Ordered list items: 1. item
-    if (/^\d+\.\s+/.test(trimmed)) {
-      const listItems: JSX.Element[] = [];
-      while (i < lines.length) {
-        const li = lines[i].trimStart();
-        const olMatch = li.match(/^\d+\.\s+(.*)/);
-        if (olMatch) {
-          listItems.push(
-            <li>{renderInlineMarkdown(olMatch[1], highlightTerm)}</li>,
-          );
-          i++;
-        } else {
-          break;
-        }
-      }
-      elements.push(<ol>{listItems}</ol>);
-      continue;
-    }
+  return tag === "th" ? (
+    <th style={style}>{content}</th>
+  ) : (
+    <td style={style}>{content}</td>
+  );
+}
 
-    // Empty line = line break
-    if (trimmed === "") {
-      elements.push(<br />);
-      i++;
-      continue;
-    }
+function renderCodeBlock(node: Code, _key: string): JSX.Element {
+  if (node.lang?.toLowerCase() === "mermaid") {
+    return <MermaidBlock code={node.value} />;
+  }
 
-    // Normal paragraph line
-    const paragraphLines = [line];
-    i++;
-    while (i < lines.length) {
-      const nextLine = lines[i];
-      const nextTrimmed = nextLine.trimStart();
-      if (isBlockBoundaryLine(nextTrimmed)) {
-        break;
-      }
-      paragraphLines.push(nextLine);
-      i++;
-    }
-    elements.push(
-      <p class="msg-text-line">
-        {renderInlineMarkdown(paragraphLines.join("\n"), highlightTerm)}
-      </p>,
+  return <CodeBlock code={node.value} language={node.lang ?? undefined} />;
+}
+
+function renderMathBlock(node: MathNode, _key: string): JSX.Element {
+  const html = renderKatex(node.value, true);
+
+  if (html) {
+    // eslint-disable-next-line solid/no-innerhtml
+    return <div class="katex-display-block" innerHTML={html} />;
+  }
+
+  return (
+    <pre class="code-block-pre">
+      <code>{`$$\n${node.value}\n$$`}</code>
+    </pre>
+  );
+}
+
+function renderInlineNodes(
+  nodes: MarkdownInlineNode[],
+  context: RenderContext,
+): JSX.Element {
+  return (
+    <For each={nodes}>
+      {(node, index) => renderInlineNode(node, context, `inline-${index()}`)}
+    </For>
+  );
+}
+
+function renderInlineNode(
+  node: MarkdownInlineNode,
+  context: RenderContext,
+  key: string,
+): JSX.Element | null {
+  switch (node.type) {
+    case "text":
+      return <>{wrapHighlight(node.value, context.highlightTerm)}</>;
+    case "strong":
+      return <strong>{renderInlineNodes(node.children, context)}</strong>;
+    case "emphasis":
+      return <em>{renderInlineNodes(node.children, context)}</em>;
+    case "delete":
+      return <del>{renderInlineNodes(node.children, context)}</del>;
+    case "inlineCode":
+      return <code>{wrapHighlight(node.value, context.highlightTerm)}</code>;
+    case "link":
+      return renderLinkNode(node, context, key);
+    case "linkReference":
+      return renderLinkReferenceNode(node, context, key);
+    case "image":
+      return renderImageNode(node, context);
+    case "imageReference":
+      return renderImageReferenceNode(node, context, key);
+    case "inlineMath":
+      return renderInlineMathNode(node, key);
+    case "break":
+      return <br />;
+    case "html":
+      return <span>{wrapHighlight(node.value, context.highlightTerm)}</span>;
+    default:
+      return null;
+  }
+}
+
+function renderLinkNode(
+  node: Link,
+  context: RenderContext,
+  _key: string,
+): JSX.Element {
+  if (!isSafeUrl(node.url)) {
+    return <span>{renderInlineNodes(node.children, context)}</span>;
+  }
+
+  return (
+    <a
+      href={node.url}
+      rel="noopener noreferrer"
+      target="_blank"
+      title={node.title ?? undefined}
+      onClick={(event) => {
+        event.preventDefault();
+        window.open(node.url, "_blank");
+      }}
+    >
+      {renderInlineNodes(node.children, context)}
+    </a>
+  );
+}
+
+function renderLinkReferenceNode(
+  node: LinkReference,
+  context: RenderContext,
+  _key: string,
+): JSX.Element {
+  const definition = context.definitions.get(
+    normalizeIdentifier(node.identifier),
+  );
+  if (!definition || !isSafeUrl(definition.url)) {
+    return <span>{renderInlineNodes(node.children, context)}</span>;
+  }
+
+  return (
+    <a
+      href={definition.url}
+      rel="noopener noreferrer"
+      target="_blank"
+      title={definition.title ?? undefined}
+      onClick={(event) => {
+        event.preventDefault();
+        window.open(definition.url, "_blank");
+      }}
+    >
+      {renderInlineNodes(node.children, context)}
+    </a>
+  );
+}
+
+function renderImageReferenceNode(
+  node: ImageReference,
+  context: RenderContext,
+  _key: string,
+): JSX.Element | null {
+  const definition = context.definitions.get(
+    normalizeIdentifier(node.identifier),
+  );
+  if (!definition) {
+    return node.alt ? <span>{node.alt}</span> : null;
+  }
+
+  return renderImageNode(
+    {
+      type: "image",
+      alt: node.alt,
+      title: definition.title,
+      url: definition.url,
+    },
+    context,
+  );
+}
+
+function renderImageNode(node: Image, context: RenderContext): JSX.Element {
+  if (isLocalPath(node.url)) {
+    return (
+      <LocalImage
+        path={node.url}
+        onPreview={(src, source) => context.onPreview(src, source)}
+      />
     );
   }
 
-  return <div class="msg-text">{elements}</div>;
+  return (
+    <RemoteImage
+      src={node.url}
+      onPreview={(src, source) => context.onPreview(src, source)}
+    />
+  );
 }
 
-function isBlockBoundaryLine(trimmed: string): boolean {
-  return (
-    trimmed === "" ||
-    trimmed === "$$" ||
-    trimmed.startsWith("### ") ||
-    trimmed.startsWith("## ") ||
-    trimmed.startsWith("# ") ||
-    /^[-*_]{3,}\s*$/.test(trimmed) ||
-    trimmed.startsWith(">") ||
-    (/^\|.*\|$/.test(trimmed) && trimmed.includes("|", 1)) ||
-    /^[-*]\s+/.test(trimmed) ||
-    /^\d+\.\s+/.test(trimmed)
-  );
+function renderInlineMathNode(node: InlineMathNode, _key: string): JSX.Element {
+  const html = renderKatex(node.value, false);
+
+  if (html) {
+    // eslint-disable-next-line solid/no-innerhtml
+    return <span class="katex-inline" innerHTML={html} />;
+  }
+
+  return <code>{`$${node.value}$`}</code>;
 }
