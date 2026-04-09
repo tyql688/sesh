@@ -44,12 +44,16 @@ export function TrashView(props: { onRefreshTree: () => void }) {
       unknown: t("common.unknown"),
       untitled: t("common.untitled"),
     });
-    // Auto-expand all
     const ids = new Set<string>();
-    for (const n of trashTree) {
-      ids.add(n.id);
-      for (const c of n.children) ids.add(c.id);
-    }
+    const collectIds = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        if (node.node_type !== "session") {
+          ids.add(node.id);
+          collectIds(node.children);
+        }
+      }
+    };
+    collectIds(trashTree);
     setExpandedIds(ids);
     return trashTree;
   });
@@ -131,7 +135,7 @@ export function TrashView(props: { onRefreshTree: () => void }) {
 
   function TrashTreeNode(nodeProps: { node: TreeNode; depth: number }) {
     const isLeaf = () => nodeProps.node.node_type === "session";
-    const isProject = () => nodeProps.node.node_type === "project";
+    const isGroup = () => nodeProps.node.node_type === "project";
     const expanded = () => expandedIds().has(nodeProps.node.id);
     const trashItem = () => itemMap().get(nodeProps.node.id);
 
@@ -166,7 +170,7 @@ export function TrashView(props: { onRefreshTree: () => void }) {
           >
             <ProviderDot provider={nodeProps.node.provider!} />
           </Show>
-          <Show when={isProject()}>
+          <Show when={isGroup()}>
             <span class="trash-tree-icon">
               <svg
                 width="14"

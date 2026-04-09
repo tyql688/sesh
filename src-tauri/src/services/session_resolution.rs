@@ -9,9 +9,12 @@ pub(crate) struct ResolvedDeletion {
 }
 
 pub(crate) fn load_session_meta(db: &Database, session_id: &str) -> Result<SessionMeta, String> {
-    db.get_session(session_id)
+    let mut meta = db
+        .get_session(session_id)
         .map_err(|e| format!("failed to load session {session_id}: {e}"))?
-        .ok_or_else(|| format!("session not found: {session_id}"))
+        .ok_or_else(|| format!("session not found: {session_id}"))?;
+    crate::providers::cc_mirror::populate_variant_name(&mut meta);
+    Ok(meta)
 }
 
 pub(crate) fn load_session_for_mutation(

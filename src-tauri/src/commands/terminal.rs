@@ -94,15 +94,7 @@ pub fn open_in_terminal(
 
 /// Check if a command name matches a discovered cc-mirror variant.
 fn is_known_cc_mirror_variant(name: &str) -> bool {
-    let Some(home) = dirs::home_dir() else {
-        return false;
-    };
-    let mirror_root = home.join(".cc-mirror");
-    if !mirror_root.exists() {
-        return false;
-    }
-    let variant_dir = mirror_root.join(name);
-    variant_dir.is_dir() && variant_dir.join("variant.json").exists()
+    crate::providers::cc_mirror::is_known_variant_command(name)
 }
 
 /// Resume a session: looks up cwd from DB, builds command, launches terminal

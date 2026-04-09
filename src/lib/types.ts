@@ -115,4 +115,5 @@ export interface TrashMeta {
   trashed_at: number;
   trash_file: string;
   project_name: string;
+  variant_name?: string;
 }

@@ -146,8 +146,8 @@ export function getProviderLabel(
   provider: Provider,
   variantName?: string,
 ): string {
-  if (provider === "cc-mirror" && variantName) {
-    return variantName;
+  if (provider === "cc-mirror") {
+    return variantName || getProviderSnapshot(provider).label;
   }
   return getProviderSnapshot(provider).label;
 }

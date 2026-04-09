@@ -77,10 +77,12 @@ pub fn get_child_sessions(
     parent_id: String,
     state: State<AppState>,
 ) -> Result<Vec<SessionMeta>, String> {
-    state
+    let mut sessions = state
         .db
         .get_child_sessions(&parent_id)
-        .map_err(|e| format!("db error: {e}"))
+        .map_err(|e| format!("db error: {e}"))?;
+    hydrate_variant_names(&mut sessions);
+    Ok(sessions)
 }
 
 #[tauri::command]
@@ -151,18 +153,22 @@ pub fn list_recent_sessions(
     limit: usize,
     state: State<AppState>,
 ) -> Result<Vec<SessionMeta>, String> {
-    state
+    let mut sessions = state
         .db
         .list_recent_sessions(limit)
-        .map_err(|e| format!("failed to list recent sessions: {e}"))
+        .map_err(|e| format!("failed to list recent sessions: {e}"))?;
+    hydrate_variant_names(&mut sessions);
+    Ok(sessions)
 }
 
 #[tauri::command]
 pub fn list_favorites(state: State<AppState>) -> Result<Vec<SessionMeta>, String> {
-    state
+    let mut sessions = state
         .db
         .list_favorites()
-        .map_err(|e| format!("failed to list favorites: {e}"))
+        .map_err(|e| format!("failed to list favorites: {e}"))?;
+    hydrate_variant_names(&mut sessions);
+    Ok(sessions)
 }
 
 #[tauri::command]
@@ -177,6 +183,10 @@ pub(crate) fn load_detail(session_id: &str, db: &Database) -> Result<SessionDeta
     let meta = load_session_meta(db, session_id)?;
     let messages = load_messages_from_provider(&meta.provider, session_id, &meta.source_path)?;
     Ok(SessionDetail { meta, messages })
+}
+
+fn hydrate_variant_names(sessions: &mut [SessionMeta]) {
+    crate::providers::cc_mirror::hydrate_variant_names(sessions);
 }
 
 fn load_messages_from_provider(

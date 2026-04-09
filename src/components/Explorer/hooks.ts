@@ -3,15 +3,27 @@ import { isPathBlocked } from "../../stores/settings";
 
 /** Filter out projects whose path matches a blocked folder. */
 export function filterBlockedFolders(tree: TreeNode[]): TreeNode[] {
-  return tree
-    .map((provider) => ({
-      ...provider,
-      children: provider.children.filter((project) => {
-        const path = project.project_path ?? "";
-        return !path || !isPathBlocked(path);
-      }),
-    }))
-    .filter((provider) => provider.children.length > 0);
+  function prune(nodes: TreeNode[]): TreeNode[] {
+    return nodes.flatMap((node) => {
+      const path = node.project_path ?? "";
+      if (node.node_type === "project" && path && isPathBlocked(path)) {
+        return [];
+      }
+
+      if (node.node_type === "session") {
+        return [node];
+      }
+
+      const children = prune(node.children);
+      if (children.length === 0) {
+        return [];
+      }
+
+      return [{ ...node, children }];
+    });
+  }
+
+  return prune(tree);
 }
 
 function countSessions(nodes: TreeNode[]): number {
@@ -81,31 +93,49 @@ export function applyTimeGrouping(
     return t("explorer.older");
   }
 
-  return tree.map((provider) => ({
-    ...provider,
-    children: provider.children.map((project) => {
-      if (project.children.length <= 3) return project; // no grouping for small projects
-      const groups = new Map<string, TreeNode[]>();
-      for (const session of project.children) {
-        const label = groupLabel(session.updated_at || 0);
-        if (!groups.has(label)) groups.set(label, []);
-        groups.get(label)!.push(session);
+  function group(nodes: TreeNode[]): TreeNode[] {
+    return nodes.map((node) => {
+      if (node.node_type === "session") {
+        return node;
       }
-      if (groups.size <= 1) return project; // all in one group, no benefit
-      const groupNodes: TreeNode[] = [];
-      for (const [label, sessions] of groups) {
-        groupNodes.push({
-          id: `${project.id}:${label}`,
-          label,
-          node_type: "project",
-          children: sessions,
-          count: sessions.length,
-          provider: project.provider,
-        });
+
+      const children = group(node.children);
+      const directSessions = children.filter(
+        (child) => child.node_type === "session",
+      );
+
+      if (
+        node.node_type === "project" &&
+        directSessions.length > 3 &&
+        directSessions.length === children.length
+      ) {
+        const groups = new Map<string, TreeNode[]>();
+        for (const session of directSessions) {
+          const label = groupLabel(session.updated_at || 0);
+          if (!groups.has(label)) groups.set(label, []);
+          groups.get(label)!.push(session);
+        }
+        if (groups.size > 1) {
+          const groupNodes: TreeNode[] = [];
+          for (const [label, sessions] of groups) {
+            groupNodes.push({
+              id: `${node.id}:${label}`,
+              label,
+              node_type: "project",
+              children: sessions,
+              count: sessions.length,
+              provider: node.provider,
+            });
+          }
+          return { ...node, children: groupNodes };
+        }
       }
-      return { ...project, children: groupNodes };
-    }),
-  }));
+
+      return { ...node, children };
+    });
+  }
+
+  return group(tree);
 }
 
 export function buildSessionRef(

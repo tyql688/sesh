@@ -57,7 +57,12 @@ struct SmokeSessionDetail {
 struct SessionExpectation {
     provider: Provider,
     marker: String,
-    expected_variant: Option<&'static str>,
+    expected_variant: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MirrorVariantMeta {
+    name: Option<String>,
 }
 
 fn build_app() -> (TempDir, App<MockRuntime>, tauri::WebviewWindow<MockRuntime>) {
@@ -158,6 +163,53 @@ fn should_skip_provider(error: &str) -> bool {
         || error.contains("oauth")
 }
 
+fn sanitize_cc_mirror_command(raw: &str) -> String {
+    raw.chars()
+        .filter(|ch| ch.is_alphanumeric() || *ch == '-' || *ch == '_')
+        .collect()
+}
+
+fn discover_cc_mirror_commands() -> Vec<String> {
+    let Some(home) = dirs::home_dir() else {
+        return Vec::new();
+    };
+    let mirror_root = home.join(".cc-mirror");
+    let Ok(entries) = std::fs::read_dir(&mirror_root) else {
+        return Vec::new();
+    };
+
+    let mut commands = Vec::new();
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() {
+            continue;
+        }
+
+        let dir_name = dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(sanitize_cc_mirror_command)
+            .unwrap_or_default();
+        if dir_name.is_empty() {
+            continue;
+        }
+
+        let command = std::fs::read_to_string(dir.join("variant.json"))
+            .ok()
+            .and_then(|content| serde_json::from_str::<MirrorVariantMeta>(&content).ok())
+            .and_then(|meta| meta.name)
+            .map(|name| sanitize_cc_mirror_command(&name))
+            .filter(|name| !name.is_empty())
+            .unwrap_or(dir_name);
+
+        if !commands.contains(&command) {
+            commands.push(command);
+        }
+    }
+
+    commands
+}
+
 fn generate_real_sessions(root: &Path, run_id: &str) -> (Vec<SessionExpectation>, Vec<String>) {
     let claude_marker = format!("ccsession-real-{run_id}-claude");
     let codex_marker = format!("ccsession-real-{run_id}-codex");
@@ -166,9 +218,9 @@ fn generate_real_sessions(root: &Path, run_id: &str) -> (Vec<SessionExpectation>
     let gemini_marker = format!("ccsession-real-{run_id}-gemini");
     let kimi_marker = format!("ccsession-real-{run_id}-kimi");
     let qwen_marker = format!("ccsession-real-{run_id}-qwen");
-    let cczai_restore_marker = format!("ccsession-real-{run_id}-cczai-restore");
-    let cczai_delete_marker = format!("ccsession-real-{run_id}-cczai-delete");
-    let ccminimax_purge_marker = format!("ccsession-real-{run_id}-ccminimax-purge");
+    let cc_mirror_restore_marker = format!("ccsession-real-{run_id}-cc-mirror-restore");
+    let cc_mirror_delete_marker = format!("ccsession-real-{run_id}-cc-mirror-delete");
+    let cc_mirror_purge_marker = format!("ccsession-real-{run_id}-cc-mirror-purge");
 
     let claude_dir = create_workspace(root, &claude_marker);
     let codex_dir = create_workspace(root, &codex_marker);
@@ -177,9 +229,9 @@ fn generate_real_sessions(root: &Path, run_id: &str) -> (Vec<SessionExpectation>
     let gemini_dir = create_workspace(root, &gemini_marker);
     let kimi_dir = create_workspace(root, &kimi_marker);
     let qwen_dir = create_workspace(root, &qwen_marker);
-    let cczai_restore_dir = create_workspace(root, &cczai_restore_marker);
-    let cczai_delete_dir = create_workspace(root, &cczai_delete_marker);
-    let ccminimax_purge_dir = create_workspace(root, &ccminimax_purge_marker);
+    let cc_mirror_restore_dir = create_workspace(root, &cc_mirror_restore_marker);
+    let cc_mirror_delete_dir = create_workspace(root, &cc_mirror_delete_marker);
+    let cc_mirror_purge_dir = create_workspace(root, &cc_mirror_purge_marker);
 
     let markers = vec![
         claude_marker.clone(),
@@ -189,16 +241,16 @@ fn generate_real_sessions(root: &Path, run_id: &str) -> (Vec<SessionExpectation>
         gemini_marker.clone(),
         kimi_marker.clone(),
         qwen_marker.clone(),
-        cczai_restore_marker.clone(),
-        cczai_delete_marker.clone(),
-        ccminimax_purge_marker.clone(),
+        cc_mirror_restore_marker.clone(),
+        cc_mirror_delete_marker.clone(),
+        cc_mirror_purge_marker.clone(),
     ];
 
     let mut expectations = Vec::new();
     let mut register = |label: &str,
                         provider: Provider,
                         marker: String,
-                        expected_variant: Option<&'static str>,
+                        expected_variant: Option<String>,
                         result: Result<(), String>| {
         match result {
             Ok(()) => expectations.push(SessionExpectation {
@@ -343,74 +395,98 @@ fn generate_real_sessions(root: &Path, run_id: &str) -> (Vec<SessionExpectation>
         ),
     );
 
-    register(
-        "cczai-restore",
-        Provider::CcMirror,
-        cczai_restore_marker.clone(),
-        Some("cczai"),
-        run_cli(
-            "cczai",
-            &[
-                "-p".into(),
-                "--output-format".into(),
-                "json".into(),
-                "--permission-mode".into(),
-                "dontAsk".into(),
-                "--tools".into(),
-                String::new(),
-                "-n".into(),
-                format!("smoke-{run_id}-cczai-restore"),
-                format!("{cczai_restore_marker} Reply with OK only."),
-            ],
-            &cczai_restore_dir,
-        ),
-    );
+    let cc_mirror_commands = discover_cc_mirror_commands();
+    let cc_mirror_restore_command = cc_mirror_commands.first().cloned();
+    let cc_mirror_delete_command = cc_mirror_commands
+        .get(1)
+        .cloned()
+        .or_else(|| cc_mirror_restore_command.clone());
+    let cc_mirror_purge_command = cc_mirror_commands
+        .get(2)
+        .cloned()
+        .or_else(|| cc_mirror_delete_command.clone())
+        .or_else(|| cc_mirror_restore_command.clone());
 
-    register(
-        "cczai-delete",
-        Provider::CcMirror,
-        cczai_delete_marker.clone(),
-        Some("cczai"),
-        run_cli(
-            "cczai",
-            &[
-                "-p".into(),
-                "--output-format".into(),
-                "json".into(),
-                "--permission-mode".into(),
-                "dontAsk".into(),
-                "--tools".into(),
-                String::new(),
-                "-n".into(),
-                format!("smoke-{run_id}-cczai-delete"),
-                format!("{cczai_delete_marker} Reply with OK only."),
-            ],
-            &cczai_delete_dir,
-        ),
-    );
+    if let Some(command) = cc_mirror_restore_command {
+        register(
+            "cc-mirror-restore",
+            Provider::CcMirror,
+            cc_mirror_restore_marker.clone(),
+            Some(command.clone()),
+            run_cli(
+                &command,
+                &[
+                    "-p".into(),
+                    "--output-format".into(),
+                    "json".into(),
+                    "--permission-mode".into(),
+                    "dontAsk".into(),
+                    "--tools".into(),
+                    String::new(),
+                    "-n".into(),
+                    format!("smoke-{run_id}-cc-mirror-restore"),
+                    format!("{cc_mirror_restore_marker} Reply with OK only."),
+                ],
+                &cc_mirror_restore_dir,
+            ),
+        );
+    } else {
+        eprintln!("SKIP cc-mirror-restore: no discovered variants");
+    }
 
-    register(
-        "ccminimax-purge",
-        Provider::CcMirror,
-        ccminimax_purge_marker.clone(),
-        Some("ccminimax"),
-        run_cli(
-            "ccminimax",
-            &[
-                "-p".into(),
-                "--output-format".into(),
-                "json".into(),
-                "--permission-mode".into(),
-                "dontAsk".into(),
-                "--tools".into(),
-                String::new(),
-                "-n".into(),
-                format!("smoke-{run_id}-ccminimax-purge"),
-                format!("{ccminimax_purge_marker} Reply with OK only."),
-            ],
-            &ccminimax_purge_dir,
-        ),
-    );
+    if let Some(command) = cc_mirror_delete_command {
+        register(
+            "cc-mirror-delete",
+            Provider::CcMirror,
+            cc_mirror_delete_marker.clone(),
+            Some(command.clone()),
+            run_cli(
+                &command,
+                &[
+                    "-p".into(),
+                    "--output-format".into(),
+                    "json".into(),
+                    "--permission-mode".into(),
+                    "dontAsk".into(),
+                    "--tools".into(),
+                    String::new(),
+                    "-n".into(),
+                    format!("smoke-{run_id}-cc-mirror-delete"),
+                    format!("{cc_mirror_delete_marker} Reply with OK only."),
+                ],
+                &cc_mirror_delete_dir,
+            ),
+        );
+    } else {
+        eprintln!("SKIP cc-mirror-delete: no discovered variants");
+    }
+
+    if let Some(command) = cc_mirror_purge_command {
+        register(
+            "cc-mirror-purge",
+            Provider::CcMirror,
+            cc_mirror_purge_marker.clone(),
+            Some(command.clone()),
+            run_cli(
+                &command,
+                &[
+                    "-p".into(),
+                    "--output-format".into(),
+                    "json".into(),
+                    "--permission-mode".into(),
+                    "dontAsk".into(),
+                    "--tools".into(),
+                    String::new(),
+                    "-n".into(),
+                    format!("smoke-{run_id}-cc-mirror-purge"),
+                    format!("{cc_mirror_purge_marker} Reply with OK only."),
+                ],
+                &cc_mirror_purge_dir,
+            ),
+        );
+    } else {
+        eprintln!("SKIP cc-mirror-purge: no discovered variants");
+    }
 
     (expectations, markers)
 }
@@ -665,23 +741,23 @@ fn real_provider_sessions_support_interface_semantics() {
                 &webview,
                 &session.id,
                 expectation.provider.clone(),
-                expectation.expected_variant,
+                expectation.expected_variant.as_deref(),
             );
         }
 
         for (expectation, session) in &discovered {
             match expectation.marker.as_str() {
-                marker if marker.contains("ccminimax-purge") => {}
-                marker if marker.contains("cczai-delete") => {}
-                _ => trash_and_restore(&webview, session, expectation.expected_variant),
+                marker if marker.contains("cc-mirror-purge") => {}
+                marker if marker.contains("cc-mirror-delete") => {}
+                _ => trash_and_restore(&webview, session, expectation.expected_variant.as_deref()),
             }
         }
 
         let purge_target = discovered
             .iter()
-            .find(|(expectation, _)| expectation.marker.contains("ccminimax-purge"))
+            .find(|(expectation, _)| expectation.marker.contains("cc-mirror-purge"))
             .map(|(_, session)| session.clone())
-            .expect("ccminimax purge target");
+            .expect("cc-mirror purge target");
         invoke::<(), _>(
             &webview,
             "trash_session",
@@ -708,9 +784,9 @@ fn real_provider_sessions_support_interface_semantics() {
 
         let delete_target = discovered
             .iter()
-            .find(|(expectation, _)| expectation.marker.contains("cczai-delete"))
+            .find(|(expectation, _)| expectation.marker.contains("cc-mirror-delete"))
             .map(|(_, session)| session.clone())
-            .expect("cczai delete target");
+            .expect("cc-mirror delete target");
         delete_session_via_command(&webview, &delete_target.id);
 
         let kimi = discovered

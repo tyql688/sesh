@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::db::Database;
-use crate::models::{Provider, TreeNode, TreeNodeType};
+use crate::models::{Provider, SessionMeta, TreeNode, TreeNodeType};
 use crate::provider::SessionProvider;
 
 #[derive(Clone)]
@@ -48,7 +48,6 @@ impl Indexer {
         for provider in self.providers.iter() {
             let provider_kind = provider.provider();
 
-            // Skip providers not in the filter (if filter is set)
             if let Some(allowed) = filter {
                 if !allowed.contains(&provider_kind) {
                     continue;
@@ -70,7 +69,6 @@ impl Indexer {
             total += count;
         }
 
-        // Only update last_index_time for full reindex
         if filter.is_none() {
             self.db
                 .set_meta("last_index_time", &now_millis.to_string())
@@ -88,12 +86,13 @@ impl Indexer {
     }
 
     pub fn build_tree(&self) -> Result<Vec<TreeNode>, String> {
-        let sessions = self
+        let mut sessions = self
             .db
             .list_sessions()
             .map_err(|e| format!("failed to list sessions: {e}"))?;
+        crate::providers::cc_mirror::hydrate_variant_names(&mut sessions);
 
-        let mut provider_map: BTreeMap<String, BTreeMap<String, Vec<crate::models::SessionMeta>>> =
+        let mut provider_map: BTreeMap<String, BTreeMap<String, Vec<SessionMeta>>> =
             BTreeMap::new();
 
         for session in sessions {
@@ -144,18 +143,16 @@ impl Indexer {
                         }
                     })
                     .unwrap_or_else(|| "(No Project)".to_string());
-                // Separate top-level sessions from subagents
+
                 let (top_sessions, subagents): (Vec<_>, Vec<_>) =
                     sessions.iter().partition(|s| s.parent_id.is_none());
 
-                // Collect top-level session IDs for orphan detection
                 let top_ids: std::collections::HashSet<&str> =
                     top_sessions.iter().map(|s| s.id.as_str()).collect();
 
                 let mut session_nodes: Vec<TreeNode> = top_sessions
                     .iter()
                     .map(|s| {
-                        // Find children of this session, sorted by creation time
                         let mut children: Vec<_> = sessions
                             .iter()
                             .filter(|c| c.parent_id.as_deref() == Some(&s.id))
@@ -190,7 +187,6 @@ impl Indexer {
                     })
                     .collect();
 
-                // Add orphan subagents (parent not in this project group) as standalone sessions
                 for orphan in &subagents {
                     if let Some(ref pid) = orphan.parent_id {
                         if !top_ids.contains(pid.as_str()) {
@@ -211,7 +207,7 @@ impl Indexer {
 
                 let count = session_nodes.len() as u32;
                 if count == 0 {
-                    continue; // Skip projects with no top-level sessions
+                    continue;
                 }
                 provider_total += count;
 
@@ -229,7 +225,7 @@ impl Indexer {
             }
 
             tree.push(TreeNode {
-                id: display_key.clone(),
+                id: display_key.to_string(),
                 label,
                 node_type: TreeNodeType::Provider,
                 children: project_nodes,
@@ -241,7 +237,6 @@ impl Indexer {
             });
         }
 
-        // Sort providers by their declared sort_order, then by id
         tree.sort_by(|a, b| {
             let order_a = a
                 .provider

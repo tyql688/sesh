@@ -301,9 +301,8 @@ fn escape_osascript(value: &str) -> String {
 }
 
 // --- Windows terminal launchers ---
-// Approach inspired by cc-switch: use `cmd /C start` with CREATE_NO_WINDOW to
-// launch terminals cleanly, and generate platform-correct command syntax for
-// each shell (PowerShell vs CMD).
+// Use `cmd /C start` with CREATE_NO_WINDOW to launch terminals cleanly, and
+// generate platform-correct command syntax for each shell (PowerShell vs CMD).
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;

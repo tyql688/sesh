@@ -96,6 +96,7 @@ pub fn execute_trash(
         trashed_at: ts,
         trash_file,
         project_name: meta.project_name.clone(),
+        variant_name: meta.variant_name.clone(),
         parent_id: None,
     });
 
@@ -125,6 +126,7 @@ pub fn execute_trash(
             trashed_at: ts,
             trash_file: child_trash_file,
             project_name: meta.project_name.clone(),
+            variant_name: meta.variant_name.clone(),
             parent_id: Some(meta.id.clone()),
         });
     }
@@ -775,14 +777,13 @@ mod tests {
         // Regular providers roundtrip through parse_display_key
         for p in Provider::all() {
             if *p == Provider::CcMirror {
-                continue; // cc-mirror needs variant_name
+                continue;
             }
             let key = p.descriptor().display_key(None);
             let parsed = Provider::parse_display_key(&key);
             assert!(parsed.is_some(), "display_key roundtrip failed for {:?}", p);
             assert_eq!(parsed.unwrap().0, *p);
         }
-        // CC-Mirror with variant
         let key = Provider::CcMirror.descriptor().display_key(Some("cczai"));
         let parsed = Provider::parse_display_key(&key);
         assert_eq!(parsed, Some((Provider::CcMirror, "cczai".to_string())));
@@ -814,6 +815,7 @@ mod tests {
             trashed_at: 0,
             trash_file: String::new(),
             project_name: String::new(),
+            variant_name: None,
             parent_id: None,
         };
         assert_eq!(provider.restore_action(&entry), RestoreAction::Noop);
@@ -830,6 +832,7 @@ mod tests {
             trashed_at: 0,
             trash_file: String::new(),
             project_name: String::new(),
+            variant_name: None,
             parent_id: None,
         };
         assert_eq!(
@@ -879,6 +882,7 @@ mod tests {
             trashed_at: 0,
             trash_file: "1710000000__s1.jsonl".to_string(),
             project_name: String::new(),
+            variant_name: None,
             parent_id: None,
         };
         assert_eq!(infer_restore_action(&entry), RestoreAction::MoveBack);

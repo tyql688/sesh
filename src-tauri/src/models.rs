@@ -149,6 +149,8 @@ pub struct TrashMeta {
     pub trash_file: String,
     #[serde(default)]
     pub project_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_name: Option<String>,
     /// Parent session ID (set on child entries so restore can group them).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,

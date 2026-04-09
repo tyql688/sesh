@@ -28,6 +28,7 @@ function makeTrashItem(overrides: Partial<TrashMeta> = {}): TrashMeta {
     trashed_at: 1711800000,
     trash_file: "/trash/trash-1.jsonl",
     project_name: "myproject",
+    variant_name: undefined,
     ...overrides,
   };
 }
@@ -103,6 +104,32 @@ describe("buildFavoritesTree", () => {
       "gemini",
       "qwen",
     ]);
+  });
+
+  it("groups cc-mirror favorites as top-level variant groups", () => {
+    const sessions = [
+      makeSession({
+        id: "m1",
+        provider: "cc-mirror",
+        variant_name: "cczai",
+        project_name: "proj-a",
+        project_path: "/a",
+      }),
+      makeSession({
+        id: "m2",
+        provider: "cc-mirror",
+        variant_name: "cczai",
+        project_name: "proj-b",
+        project_path: "/b",
+      }),
+    ];
+
+    const tree = buildFavoritesTree(sessions, "No Project");
+    expect(tree).toHaveLength(1);
+    expect(tree[0].label).toBe("cczai");
+    expect(tree[0].node_type).toBe("provider");
+    expect(tree[0].children).toHaveLength(2);
+    expect(tree[0].children[0].node_type).toBe("project");
   });
 });
 
@@ -189,5 +216,21 @@ describe("buildTrashTree", () => {
 
     const tree = buildTrashTree(items, labels);
     expect(tree[0].children[0].label).toBe("-private-tmp-ccsession-cli-qwen");
+  });
+
+  it("groups cc-mirror trash entries as top-level variant groups", () => {
+    const items = [
+      makeTrashItem({
+        id: "t1",
+        provider: "cc-mirror",
+        variant_name: "cczai",
+        project_name: "proj-a",
+      }),
+    ];
+
+    const tree = buildTrashTree(items, labels);
+    expect(tree[0].label).toBe("cczai");
+    expect(tree[0].node_type).toBe("provider");
+    expect(tree[0].children[0].label).toBe("proj-a");
   });
 });
