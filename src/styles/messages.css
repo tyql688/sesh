@@ -372,6 +372,10 @@
   font-weight: 650;
 }
 
+.msg-text em {
+  font-style: italic;
+}
+
 .msg-text a {
   color: var(--accent);
   text-decoration: underline;
@@ -1371,54 +1375,6 @@ mark.search-active {
 
 .code-block .hljs-strong {
   font-weight: 700;
-}
-
-/* Markdown text rendering */
-.msg-text strong {
-  font-weight: 600;
-}
-.msg-text em {
-  font-style: italic;
-}
-.msg-text code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9em;
-  background: var(--bg-tab-hover);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-.msg-text h1,
-.msg-text h2,
-.msg-text h3 {
-  font-weight: 600;
-  margin: 8px 0 4px;
-}
-.msg-text h1 {
-  font-size: 1.3em;
-}
-.msg-text h2 {
-  font-size: 1.15em;
-}
-.msg-text h3 {
-  font-size: 1.05em;
-}
-.msg-text ul,
-.msg-text ol {
-  padding-left: 20px;
-  margin: 4px 0;
-}
-.msg-text li {
-  margin: 2px 0;
-}
-.msg-text a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.msg-text a:hover {
-  text-decoration: underline;
-}
-.msg-text-line {
-  margin: 0;
 }
 
 /* Load more */
