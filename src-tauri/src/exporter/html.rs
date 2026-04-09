@@ -126,6 +126,7 @@ fn render_content(raw: &str) -> String {
     // Phase 2: Render markdown to HTML via pulldown-cmark
     let mut opts = pulldown_cmark::Options::empty();
     opts.insert(pulldown_cmark::Options::ENABLE_TABLES);
+    opts.insert(pulldown_cmark::Options::ENABLE_FOOTNOTES);
     opts.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
     opts.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
     let parser = pulldown_cmark::Parser::new_ext(&preprocessed, opts);
@@ -729,5 +730,14 @@ mod tests {
         let html = render_content(input);
         assert!(html.contains(r#"class="language-rust""#));
         assert!(html.contains("let x = 1;"));
+    }
+
+    #[test]
+    fn test_render_content_renders_footnotes() {
+        let input = "This has a footnote[^note].\n\n[^note]: Footnote text";
+        let html = render_content(input);
+        assert!(html.contains(r#"class="footnote-reference""#));
+        assert!(html.contains(r#"class="footnote-definition""#));
+        assert!(html.contains("Footnote text"));
     }
 }

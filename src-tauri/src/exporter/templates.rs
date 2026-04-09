@@ -25,9 +25,9 @@ pub fn assemble_html(
 <title>{title}</title>
 <style>
 *,*::before,*::after {{ box-sizing: border-box; }}
-:root {{ --bg: #f9fafb; --bg-bubble: #fff; --text: #1a1a1a; --text2: #6b7280; --text3: #9ca3af; --border: #e5e7eb; --code-bg: #f3f4f6; --code-fg: #1a1a1a; --inline-code-bg: rgba(0,0,0,0.06); --inline-code-color: #d63384; --diff-old: rgba(239,68,68,0.12); --diff-new: rgba(34,197,94,0.12); }}
+:root {{ --bg: #f9fafb; --bg-bubble: #f5f6f8; --text: #1d1d1f; --text2: #6e6e73; --text3: #9ca3af; --border: #e5e7eb; --code-bg: #f3f4f6; --code-fg: #24292e; --inline-code-bg: rgba(0,0,0,0.06); --inline-code-color: #d63384; --user-bg: linear-gradient(135deg, rgba(0,122,255,0.08), rgba(88,86,214,0.06)); --user-border: rgba(0,122,255,0.12); --user-text: #1d1d1f; --user-muted: #6e6e73; --user-link: #007aff; --user-inline-code-bg: rgba(0,122,255,0.08); --user-inline-code-color: #d63384; --user-code-block-bg: #22272e; --user-code-block-fg: #adbac7; --user-code-block-border: rgba(0,122,255,0.14); --user-copy-bg: rgba(255,255,255,0.52); --user-copy-hover-bg: rgba(255,255,255,0.78); --user-copy-color: rgba(29,29,31,0.7); --user-copy-hover-color: #1d1d1f; --user-quote-border: rgba(0,122,255,0.18); --user-hr: rgba(0,122,255,0.12); --user-table-head-bg: rgba(0,122,255,0.06); --user-table-head-border: rgba(0,122,255,0.12); --user-table-head-text: #6e6e73; --user-table-cell-border: rgba(0,0,0,0.08); --user-table-row-hover: rgba(0,122,255,0.04); --link: #2563eb; --diff-old: rgba(239,68,68,0.12); --diff-new: rgba(34,197,94,0.12); }}
 @media (prefers-color-scheme: dark) {{
-  :root {{ --bg: #111; --bg-bubble: #1c1c1e; --text: #e5e5e5; --text2: #9ca3af; --text3: #6b7280; --border: #333; --code-bg: #0d0d0d; --code-fg: #cdd6f4; --inline-code-bg: rgba(255,255,255,0.1); --inline-code-color: #f0abfc; --diff-old: rgba(239,68,68,0.15); --diff-new: rgba(34,197,94,0.15); }}
+  :root {{ --bg: #111; --bg-bubble: #27292f; --text: #e5e5e7; --text2: #a1a1a6; --text3: #636366; --border: rgba(255,255,255,0.1); --code-bg: #22272e; --code-fg: #adbac7; --inline-code-bg: rgba(255,255,255,0.1); --inline-code-color: #f0abfc; --user-bg: linear-gradient(135deg, rgba(10,132,255,0.12), rgba(88,86,214,0.08)); --user-border: rgba(10,132,255,0.2); --user-text: #ffffff; --user-muted: rgba(255,255,255,0.72); --user-link: #b9dbff; --user-inline-code-bg: rgba(255,255,255,0.14); --user-inline-code-color: #fce4ec; --user-code-block-bg: #22272e; --user-code-block-fg: #adbac7; --user-code-block-border: rgba(255,255,255,0.1); --user-copy-bg: rgba(255,255,255,0.08); --user-copy-hover-bg: rgba(255,255,255,0.16); --user-copy-color: rgba(255,255,255,0.78); --user-copy-hover-color: #ffffff; --user-quote-border: rgba(255,255,255,0.22); --user-hr: rgba(255,255,255,0.16); --user-table-head-bg: rgba(255,255,255,0.12); --user-table-head-border: rgba(255,255,255,0.18); --user-table-head-text: rgba(255,255,255,0.84); --user-table-cell-border: rgba(255,255,255,0.16); --user-table-row-hover: rgba(255,255,255,0.06); --link: #8ab4ff; --diff-old: rgba(239,68,68,0.15); --diff-new: rgba(34,197,94,0.15); }}
 }}
 body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; font-size: 15px; line-height: 1.6; color: var(--text); background: var(--bg); margin: 0; padding: 0; }}
 .container {{ max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; }}
@@ -43,18 +43,19 @@ body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helveti
 .avatar {{ width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 4px; }}
 .avatar-user {{ color: #007aff; }}
 .avatar-assistant {{ color: {provider_clr}; }}
-.bubble {{ max-width: 85%; padding: 12px 16px; border-radius: 16px; word-wrap: break-word; overflow-wrap: break-word; }}
-.bubble-user {{ background: #007aff; color: #fff; border-bottom-right-radius: 4px; }}
-.bubble-user .ts, .bubble-user .role-label {{ color: rgba(255,255,255,0.7); }}
-.bubble-user a {{ color: #b3d9ff; }}
+.bubble {{ max-width: 85%; padding: 12px 16px; border-radius: 16px; word-wrap: break-word; overflow-wrap: break-word; box-shadow: 0 8px 24px rgba(15,23,42,0.04); }}
+.bubble-user {{ background: var(--user-bg); color: var(--user-text); border: 1px solid var(--user-border); border-bottom-right-radius: 4px; box-shadow: 0 8px 20px rgba(0,122,255,0.08); }}
+.bubble-user .ts, .bubble-user .role-label {{ color: var(--user-muted); }}
+.bubble-user a {{ color: var(--user-link); }}
 .bubble-assistant {{ background: var(--bg-bubble); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; }}
 .msg-header {{ display: flex; align-items: center; margin-bottom: 4px; gap: 8px; }}
 .msg-actions {{ margin-left: auto; }}
 .role-label {{ font-size: 0.75em; font-weight: 600; color: var(--text2); }}
-.copy-btn {{ background: none; border: none; cursor: pointer; font-size: 0.8em; padding: 2px 4px; border-radius: 4px; opacity: 0; transition: opacity 0.15s; }}
-.bubble:hover .copy-btn {{ opacity: 0.5; }}
-.copy-btn:hover {{ opacity: 1 !important; background: var(--inline-code-bg); }}
-.bubble-user .copy-btn {{ color: rgba(255,255,255,0.7); }}
+.copy-btn {{ background: rgba(255,255,255,0.72); border: 1px solid transparent; cursor: pointer; font-size: 0.8em; padding: 4px; border-radius: 6px; opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s; color: var(--text3); backdrop-filter: blur(10px); }}
+.bubble:hover .copy-btn {{ opacity: 1; }}
+.copy-btn:hover {{ color: var(--text); background: rgba(255,255,255,0.92); }}
+.bubble-user .copy-btn {{ color: var(--user-copy-color); background: var(--user-copy-bg); }}
+.bubble-user .copy-btn:hover {{ color: var(--user-copy-hover-color); background: var(--user-copy-hover-bg); }}
 .ts {{ font-size: 0.7em; color: var(--text3); white-space: nowrap; }}
 .msg-body {{ font-size: 0.95em; }}
 .msg-body > :first-child {{ margin-top: 0; }}
@@ -83,25 +84,40 @@ body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helveti
 .tool-output {{ border-top: 1px solid var(--border); padding: 6px 0; font-family: 'SF Mono',Menlo,monospace; font-size: 0.88em; color: var(--text2); white-space: pre-wrap; max-height: 200px; overflow-y: auto; }}
 .tool-raw {{ margin: 0; font-size: 0.88em; white-space: pre-wrap; word-break: break-word; color: var(--text2); }}
 .system-text {{ font-size: 0.8em; color: var(--text3); text-align: center; padding: 4px 16px; max-width: 70%; }}
-.code-block {{ background: var(--code-bg); color: var(--code-fg); border-radius: 8px; padding: 14px 16px; margin: 8px 0; overflow-x: auto; font-family: 'SF Mono',Menlo,monospace; font-size: 0.88em; line-height: 1.5; }}
+.code-block {{ background: var(--code-bg); color: var(--code-fg); border-radius: 10px; border: 1px solid var(--border); padding: 14px 16px; margin: 8px 0; overflow-x: auto; font-family: 'SF Mono',Menlo,monospace; font-size: 0.88em; line-height: 1.5; }}
 .code-block code {{ background: none; padding: 0; color: inherit; }}
-.bubble-user .code-block {{ background: rgba(0,0,0,0.25); color: #e8eaed; }}
+.bubble-user .code-block {{ background: var(--user-code-block-bg); color: var(--user-code-block-fg); border-color: var(--user-code-block-border); }}
 code {{ background: var(--inline-code-bg); color: var(--inline-code-color); padding: 2px 5px; border-radius: 4px; font-family: 'SF Mono',Menlo,monospace; font-size: 0.85em; }}
-.bubble-user code {{ background: rgba(255,255,255,0.15); color: #fce4ec; }}
+.bubble-user code {{ background: var(--user-inline-code-bg); color: var(--user-inline-code-color); }}
 blockquote {{ border-left: 3px solid var(--border); margin: 8px 0; padding: 2px 12px; color: var(--text2); }}
 blockquote p {{ margin: 4px 0; }}
-h1, h2, h3, h4 {{ margin: 10px 0 4px; font-weight: 600; }}
-h1 {{ font-size: 1.2em; }} h2 {{ font-size: 1.1em; }} h3 {{ font-size: 1.0em; }} h4 {{ font-size: 0.95em; }}
+h1, h2, h3, h4, h5, h6 {{ margin: 10px 0 4px; font-weight: 600; }}
+h1 {{ font-size: 1.2em; }} h2 {{ font-size: 1.1em; }} h3 {{ font-size: 1.0em; }} h4 {{ font-size: 0.95em; }} h5 {{ font-size: 0.9em; }} h6 {{ font-size: 0.85em; }}
 ul, ol {{ margin: 4px 0; padding-left: 22px; }}
 li {{ margin: 2px 0; }}
 li > p {{ margin: 2px 0; }}
-table {{ border-collapse: collapse; margin: 8px 0; font-size: 0.9em; }}
-th, td {{ border: 1px solid var(--border); padding: 5px 10px; text-align: left; }}
+li input[type="checkbox"] {{ margin: 0 8px 0 0; vertical-align: middle; accent-color: #0a84ff; }}
+table {{ border-collapse: collapse; margin: 8px 0; font-size: 0.9em; width: 100%; max-width: 100%; display: block; overflow-x: auto; border-radius: 10px; }}
+th, td {{ border: 1px solid var(--border); padding: 5px 10px; text-align: left; white-space: nowrap; }}
 th {{ background: var(--inline-code-bg); font-weight: 600; }}
-a {{ color: #6366f1; text-decoration: none; }}
+a {{ color: var(--link); text-decoration: none; }}
 a:hover {{ text-decoration: underline; }}
 hr {{ border: none; border-top: 1px solid var(--border); margin: 12px 0; }}
 p {{ margin: 4px 0; }}
+.bubble-user blockquote {{ border-left-color: var(--user-quote-border); color: var(--user-muted); }}
+.bubble-user hr {{ border-top-color: var(--user-hr); }}
+.bubble-user th {{ background: var(--user-table-head-bg); border-color: var(--user-table-head-border); color: var(--user-table-head-text); }}
+.bubble-user td {{ border-color: var(--user-table-cell-border); color: var(--user-text); }}
+.bubble-user tr:hover td {{ background: var(--user-table-row-hover); }}
+.footnote-reference {{ margin-left: 0.12em; font-size: 0.78em; line-height: 0; vertical-align: super; }}
+.footnote-reference a {{ color: var(--link); text-decoration: none; }}
+.footnote-reference a:hover {{ text-decoration: underline; }}
+.footnote-definition {{ margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--text2); display: flex; gap: 8px; }}
+.footnote-definition p {{ margin: 0; }}
+.footnote-definition-label {{ color: var(--text3); font-size: 0.78em; line-height: 1; padding-top: 0.25em; }}
+.bubble-user .footnote-reference a {{ color: var(--user-link); }}
+.bubble-user .footnote-definition {{ border-top-color: var(--user-hr); color: var(--user-muted); }}
+.bubble-user .footnote-definition-label {{ color: var(--user-muted); }}
 .msg-image {{ margin: 8px 0; }}
 .msg-image img {{ border-radius: 8px; border: 1px solid var(--border); }}
 .msg-token-row {{ padding-left: 44px; font-size: 0.78em; color: var(--text3); font-variant-numeric: tabular-nums; margin-top: -12px; }}
