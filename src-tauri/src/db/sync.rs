@@ -138,7 +138,8 @@ impl Database {
         // so free pages remain in the file but get reused by subsequent writes.
         self.with_transaction(|conn| {
             conn.execute_batch(
-                "DELETE FROM favorites;
+                "DELETE FROM session_token_stats;
+                 DELETE FROM favorites;
                  DELETE FROM sessions;
                  DELETE FROM meta;
                  INSERT INTO sessions_fts(sessions_fts) VALUES('rebuild');",
