@@ -42,10 +42,11 @@ fn build_usage_stats(
         .map_err(|e| format!("failed to query daily usage: {e}"))?;
     let daily_usage: Vec<DailyUsage> = daily_rows
         .into_iter()
-        .map(|(date, provider, tokens)| DailyUsage {
+        .map(|(date, provider, tokens, cost)| DailyUsage {
             date,
             provider,
             tokens,
+            cost,
         })
         .collect();
 
@@ -92,6 +93,36 @@ fn build_usage_stats(
         0.0
     };
 
+    // Previous period for trend comparison.
+    // Only computed when a concrete range is given and enough historical data exists.
+    let prev_period = range_days.and_then(|days| {
+        if days == 0 {
+            return None;
+        }
+        let today = chrono::Local::now().date_naive();
+        let cur_start = today - chrono::Duration::days(i64::from(days.saturating_sub(1)));
+        let prev_start = cur_start - chrono::Duration::days(i64::from(days));
+        let prev_start_str = prev_start.format("%Y-%m-%d").to_string();
+        let prev_end_str = cur_start.format("%Y-%m-%d").to_string();
+
+        let (sessions, turns, inp, out, cr, cw, cost) = state
+            .db
+            .usage_totals_range(providers, &prev_start_str, &prev_end_str)
+            .ok()?;
+
+        // Only return if prev period has data
+        let total_tokens = inp + out + cr + cw;
+        if sessions == 0 && turns == 0 {
+            return None;
+        }
+        Some(PrevPeriodTotals {
+            total_sessions: sessions,
+            total_turns: turns,
+            total_tokens,
+            total_cost: cost,
+        })
+    });
+
     Ok(UsageStats {
         total_sessions,
         total_turns,
@@ -105,6 +136,7 @@ fn build_usage_stats(
         model_costs,
         project_costs,
         recent_sessions,
+        prev_period,
     })
 }
 

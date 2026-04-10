@@ -134,6 +134,13 @@ export interface TrashMeta {
   variant_name?: string;
 }
 
+export interface PrevPeriodTotals {
+  total_sessions: number;
+  total_turns: number;
+  total_tokens: number;
+  total_cost: number;
+}
+
 export interface UsageStats {
   total_sessions: number;
   total_turns: number;
@@ -147,12 +154,14 @@ export interface UsageStats {
   model_costs: ModelCost[];
   project_costs: ProjectCost[];
   recent_sessions: SessionCostRow[];
+  prev_period?: PrevPeriodTotals;
 }
 
 export interface DailyUsage {
   date: string;
   provider: string;
   tokens: number;
+  cost: number;
 }
 
 export interface ModelCost {

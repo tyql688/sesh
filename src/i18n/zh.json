@@ -268,6 +268,8 @@
     "input": "输入",
     "output": "输出",
     "cache": "缓存",
+    "cacheRead": "缓存读取",
+    "cacheWrite": "缓存写入",
     "noData": "暂无用量数据",
     "selectProvider": "请至少选择一个提供商后再查看用量。",
     "noResults": "当前筛选条件下没有用量数据。",

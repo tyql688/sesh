@@ -181,6 +181,18 @@ pub struct UsageStats {
     pub model_costs: Vec<ModelCost>,
     pub project_costs: Vec<ProjectCost>,
     pub recent_sessions: Vec<SessionCostRow>,
+    /// Previous period totals for trend comparison (None when range is "All"
+    /// or when insufficient historical data exists).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev_period: Option<PrevPeriodTotals>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrevPeriodTotals {
+    pub total_sessions: u64,
+    pub total_turns: u64,
+    pub total_tokens: u64,
+    pub total_cost: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,6 +200,7 @@ pub struct DailyUsage {
     pub date: String,
     pub provider: String,
     pub tokens: u64,
+    pub cost: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

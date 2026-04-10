@@ -331,12 +331,13 @@ impl Database {
         &self,
         providers: &[String],
         cutoff_date: Option<&str>,
-    ) -> Result<Vec<(String, String, u64)>, rusqlite::Error> {
+    ) -> Result<Vec<(String, String, u64, f64)>, rusqlite::Error> {
         let conn = self.lock_read()?;
         let (where_clause, params) = build_usage_where(providers, cutoff_date);
         let sql = format!(
             "SELECT s.date, sess.provider, \
-                    SUM(s.input_tokens + s.output_tokens + s.cache_read_tokens + s.cache_write_tokens) \
+                    SUM(s.input_tokens + s.output_tokens + s.cache_read_tokens + s.cache_write_tokens), \
+                    SUM(s.cost_usd) \
              FROM session_token_stats s \
              JOIN sessions sess ON s.session_id = sess.id{} \
              GROUP BY s.date, sess.provider \
@@ -347,7 +348,7 @@ impl Database {
             params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
         })?;
         let mut result = Vec::new();
         for row in rows {
@@ -530,6 +531,54 @@ impl Database {
             result.push(row?);
         }
         Ok(result)
+    }
+
+    /// Totals for a specific date range [start, end).
+    pub fn usage_totals_range(
+        &self,
+        providers: &[String],
+        date_start: &str,
+        date_end: &str,
+    ) -> Result<(u64, u64, u64, u64, u64, u64, f64), rusqlite::Error> {
+        let conn = self.lock_read()?;
+        if providers.is_empty() {
+            return Ok((0, 0, 0, 0, 0, 0, 0.0));
+        }
+        let placeholders: Vec<String> = (0..providers.len())
+            .map(|i| format!("?{}", i + 1))
+            .collect();
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            providers.iter().map(|p| Box::new(p.clone()) as _).collect();
+        params.push(Box::new(date_start.to_string()));
+        params.push(Box::new(date_end.to_string()));
+        let sql = format!(
+            "SELECT COUNT(DISTINCT s.session_id), \
+                    COALESCE(SUM(s.turn_count),0), \
+                    COALESCE(SUM(s.input_tokens),0), \
+                    COALESCE(SUM(s.output_tokens),0), \
+                    COALESCE(SUM(s.cache_read_tokens),0), \
+                    COALESCE(SUM(s.cache_write_tokens),0), \
+                    COALESCE(SUM(s.cost_usd),0.0) \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id \
+             WHERE sess.provider IN ({}) AND s.date >= ?{} AND s.date < ?{}",
+            placeholders.join(","),
+            params.len() - 1,
+            params.len()
+        );
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        conn.query_row(&sql, param_refs.as_slice(), |row: &rusqlite::Row| {
+            Ok((
+                row.get::<_, u64>(0)?,
+                row.get::<_, u64>(1)?,
+                row.get::<_, u64>(2)?,
+                row.get::<_, u64>(3)?,
+                row.get::<_, u64>(4)?,
+                row.get::<_, u64>(5)?,
+                row.get::<_, f64>(6)?,
+            ))
+        })
     }
 }
 

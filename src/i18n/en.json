@@ -270,6 +270,8 @@
     "input": "Input",
     "output": "Output",
     "cache": "Cache",
+    "cacheRead": "Cache Read",
+    "cacheWrite": "Cache Write",
     "noData": "No usage data",
     "selectProvider": "Select at least one provider to view usage.",
     "noResults": "No usage data for the current filters.",
