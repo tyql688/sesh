@@ -556,12 +556,19 @@ mod tests {
 
     #[test]
     fn compute_token_stats_groups_dates_in_local_timezone() {
+        let ts = "2026-04-08T16:30:00Z";
+        let expected_date = chrono::DateTime::parse_from_rfc3339(ts)
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d")
+            .to_string();
+
         let parsed = make_session(
             Some("claude-opus-4-6"),
             vec![Message {
                 role: MessageRole::Assistant,
                 content: String::new(),
-                timestamp: Some("2026-04-08T16:30:00Z".into()),
+                timestamp: Some(ts.into()),
                 tool_name: None,
                 tool_input: None,
                 token_usage: token_usage(10, 5),
@@ -572,7 +579,7 @@ mod tests {
 
         let rows = compute_token_stats(&parsed);
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].date, "2026-04-09");
+        assert_eq!(rows[0].date, expected_date);
     }
 
     #[test]
