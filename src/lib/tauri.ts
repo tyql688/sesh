@@ -81,20 +81,12 @@ export async function refreshPricingCatalog(): Promise<PricingCatalogStatus> {
   return invoke<PricingCatalogStatus>("refresh_pricing_catalog");
 }
 
-export async function rebuildIndex(): Promise<number> {
-  return invoke<number>("rebuild_index");
-}
-
 export async function startRebuildIndex(): Promise<boolean> {
   return invoke<boolean>("start_rebuild_index");
 }
 
 export async function clearIndex(): Promise<void> {
   return invoke<void>("clear_index");
-}
-
-export async function clearUsageStats(providers: string[]): Promise<void> {
-  return invoke<void>("clear_usage_stats", { providers });
 }
 
 export async function startRefreshUsage(): Promise<boolean> {

@@ -99,7 +99,6 @@ export interface IndexStats {
 }
 
 export interface PricingCatalogStatus {
-  source_url: string;
   updated_at: string | null;
   model_count: number;
 }

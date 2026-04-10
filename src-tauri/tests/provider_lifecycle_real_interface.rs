@@ -79,7 +79,6 @@ fn build_app() -> (TempDir, App<MockRuntime>, tauri::WebviewWindow<MockRuntime>)
     let app = mock_builder()
         .manage(state)
         .invoke_handler(tauri::generate_handler![
-            commands::rebuild_index,
             commands::get_provider_snapshots,
             commands::get_tree,
             commands::list_recent_sessions,

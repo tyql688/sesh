@@ -284,15 +284,7 @@ impl Indexer {
 /// Compute per-(date, model) token usage aggregates from a parsed session's messages.
 #[cfg(test)]
 pub(crate) fn compute_token_stats(parsed: &ParsedSession) -> Vec<TokenStatRow> {
-    compute_token_stats_with_catalog(parsed, None)
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn compute_token_stats_with_catalog(
-    parsed: &ParsedSession,
-    pricing_catalog: Option<&PricingCatalog>,
-) -> Vec<TokenStatRow> {
-    compute_token_stats_dedup(parsed, pricing_catalog, None)
+    compute_token_stats_dedup(parsed, None, None)
 }
 
 pub(crate) fn compute_token_stats_with_catalog_dedup(

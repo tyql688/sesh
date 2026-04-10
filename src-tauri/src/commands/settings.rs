@@ -6,7 +6,6 @@ use crate::models::{IndexStats, PricingCatalogStatus, ProviderSnapshot};
 use crate::pricing::{
     count_models_dev_models, parse_catalog, parse_models_dev, PRICING_CATALOG_JSON_KEY,
     PRICING_CATALOG_MODEL_COUNT_KEY, PRICING_CATALOG_UPDATED_AT_KEY, PRICING_CATALOG_URL,
-    PRICING_SOURCE_LABEL,
 };
 use crate::services::ProviderSnapshotService;
 
@@ -95,7 +94,6 @@ pub fn get_pricing_catalog_status(state: State<AppState>) -> Result<PricingCatal
         .unwrap_or(0);
 
     Ok(PricingCatalogStatus {
-        source_url: PRICING_SOURCE_LABEL.to_string(),
         updated_at,
         model_count,
     })
@@ -136,7 +134,6 @@ pub async fn refresh_pricing_catalog(
         .map_err(|e| format!("failed to store pricing model count: {e}"))?;
 
     Ok(PricingCatalogStatus {
-        source_url: PRICING_SOURCE_LABEL.to_string(),
         updated_at: Some(updated_at),
         model_count,
     })
@@ -185,14 +182,6 @@ pub fn clear_index(state: State<AppState>) -> Result<(), String> {
         .db
         .clear_all()
         .map_err(|e| format!("failed to clear index: {e}"))
-}
-
-#[tauri::command]
-pub fn clear_usage_stats(providers: Vec<String>, state: State<AppState>) -> Result<(), String> {
-    state
-        .db
-        .clear_usage_stats_for_providers(&providers)
-        .map_err(|e| format!("failed to clear usage stats: {e}"))
 }
 
 #[tauri::command]

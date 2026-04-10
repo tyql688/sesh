@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 /// Primary pricing data source — curated, per-provider, USD/1M tokens.
 pub const PRICING_CATALOG_URL: &str = "https://models.dev/api.json";
-pub const PRICING_SOURCE_LABEL: &str = "models.dev";
 pub const PRICING_CATALOG_JSON_KEY: &str = "pricing_catalog_json";
 pub const PRICING_CATALOG_UPDATED_AT_KEY: &str = "pricing_catalog_updated_at";
 pub const PRICING_CATALOG_MODEL_COUNT_KEY: &str = "pricing_catalog_model_count";

@@ -645,9 +645,6 @@
   -webkit-user-select: none;
 }
 
-.usage-table thead,
-.usage-table tbody,
-.usage-table tr,
 .usage-table th {
   padding: 10px 8px;
   border-bottom: 1px solid var(--border);

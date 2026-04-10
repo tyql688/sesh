@@ -22,6 +22,16 @@ import { listProviderSnapshots } from "../stores/providerSnapshots";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { toast, toastError, toastInfo } from "../stores/toast";
 import { formatLocalDateTime, shortenHomePath } from "../lib/formatters";
+import {
+  buildDailyChartData,
+  buildHoveredDaySummary,
+  compareUsageValues,
+  makeEmptyUsageStats,
+  ROW_LIMIT_OPTIONS,
+  totalUsageTokens,
+  type HoveredDaySummary,
+  type UsageSortState,
+} from "../lib/usage";
 import type {
   MaintenanceEvent,
   MaintenanceJob,
@@ -29,25 +39,9 @@ import type {
   PricingCatalogStatus,
   ProjectCost,
   SessionCostRow,
-  UsageStats,
 } from "../lib/types";
 
-type SortState = { col: string; asc: boolean };
 type LimitOption = 10 | 25 | 50 | 100;
-
-type HoveredDaySummary = {
-  date: string;
-  total: number;
-  xPercent: number;
-  breakdown: Array<{
-    provider: string;
-    label: string;
-    color: string;
-    tokens: number;
-  }>;
-};
-
-const ROW_LIMIT_OPTIONS: LimitOption[] = [10, 25, 50, 100];
 
 const SHORT_PROVIDER_LABELS: Record<string, string> = {
   claude: "Claude",
@@ -59,24 +53,7 @@ const SHORT_PROVIDER_LABELS: Record<string, string> = {
   kimi: "Kimi",
   qwen: "Qwen",
   copilot: "Copilot",
-};
-
-function makeEmptyUsageStats(): UsageStats {
-  return {
-    total_sessions: 0,
-    total_turns: 0,
-    total_input_tokens: 0,
-    total_output_tokens: 0,
-    total_cache_read_tokens: 0,
-    total_cache_write_tokens: 0,
-    total_cost: 0,
-    cache_hit_rate: 0,
-    daily_usage: [],
-    model_costs: [],
-    project_costs: [],
-    recent_sessions: [],
-  };
-}
+} as const;
 
 export function UsagePanel() {
   const { t } = useI18n();
@@ -173,7 +150,7 @@ export function UsagePanel() {
       try {
         return await getPricingCatalogStatus();
       } catch {
-        return { source_url: "", updated_at: null, model_count: 0 };
+        return { updated_at: null, model_count: 0 };
       }
     });
 
@@ -219,43 +196,38 @@ export function UsagePanel() {
     unlistenMaintenance?.();
   });
 
-  const [modelSort, setModelSort] = createSignal<SortState>({
+  const [modelSort, setModelSort] = createSignal<UsageSortState>({
     col: "cost",
     asc: false,
   });
-  const [projectSort, setProjectSort] = createSignal<SortState>({
+  const [projectSort, setProjectSort] = createSignal<UsageSortState>({
     col: "cost",
     asc: false,
   });
-  const [sessionSort, setSessionSort] = createSignal<SortState>({
+  const [sessionSort, setSessionSort] = createSignal<UsageSortState>({
     col: "updated_at",
     asc: false,
   });
 
   const toggleSort = (
-    setter: (fn: (prev: SortState) => SortState) => void,
+    setter: (fn: (prev: UsageSortState) => UsageSortState) => void,
     col: string,
   ) => {
-    setter((prev: SortState) => ({
+    setter((prev: UsageSortState) => ({
       col,
       asc: prev.col === col ? !prev.asc : false,
     }));
-  };
-
-  const compareValues = (va: unknown, vb: unknown, asc: boolean): number => {
-    if (typeof va === "string" && typeof vb === "string") {
-      return asc ? va.localeCompare(vb) : vb.localeCompare(va);
-    }
-    const na = typeof va === "number" ? va : 0;
-    const nb = typeof vb === "number" ? vb : 0;
-    return asc ? na - nb : nb - na;
   };
 
   const sortedModels = createMemo(() => {
     const data = stats()?.model_costs ?? [];
     const { col, asc } = modelSort();
     return [...data].sort((a, b) =>
-      compareValues(a[col as keyof ModelCost], b[col as keyof ModelCost], asc),
+      compareUsageValues(
+        a[col as keyof ModelCost],
+        b[col as keyof ModelCost],
+        asc,
+      ),
     );
   });
 
@@ -263,7 +235,7 @@ export function UsagePanel() {
     const data = stats()?.project_costs ?? [];
     const { col, asc } = projectSort();
     return [...data].sort((a, b) =>
-      compareValues(
+      compareUsageValues(
         a[col as keyof ProjectCost],
         b[col as keyof ProjectCost],
         asc,
@@ -275,7 +247,7 @@ export function UsagePanel() {
     const data = stats()?.recent_sessions ?? [];
     const { col, asc } = sessionSort();
     return [...data].sort((a, b) =>
-      compareValues(
+      compareUsageValues(
         a[col as keyof SessionCostRow],
         b[col as keyof SessionCostRow],
         asc,
@@ -326,77 +298,22 @@ export function UsagePanel() {
     shortenHomePath(projectPath || t("common.unknown"));
 
   const totalTokens = createMemo(() => {
-    const data = stats();
-    if (!data) return 0;
-    return (
-      data.total_input_tokens +
-      data.total_output_tokens +
-      data.total_cache_read_tokens +
-      data.total_cache_write_tokens
-    );
+    return totalUsageTokens(stats());
   });
 
   const dailyChartData = createMemo(() => {
-    const daily = stats()?.daily_usage ?? [];
-    const byDate = new Map<string, Map<string, number>>();
-    let maxTokens = 0;
-
-    for (const item of daily) {
-      if (!byDate.has(item.date)) byDate.set(item.date, new Map());
-      byDate.get(item.date)!.set(item.provider, item.tokens);
-    }
-
-    for (const providerMap of byDate.values()) {
-      const total = [...providerMap.values()].reduce(
-        (sum, value) => sum + value,
-        0,
-      );
-      if (total > maxTokens) maxTokens = total;
-    }
-
-    const providers = selectedProviderKeys().filter((key) =>
-      [...byDate.values()].some(
-        (providerMap) => (providerMap.get(key) ?? 0) > 0,
-      ),
+    return buildDailyChartData(
+      stats()?.daily_usage ?? [],
+      selectedProviderKeys(),
     );
-
-    return {
-      dates: [...byDate.keys()].sort(),
-      byDate,
-      providers,
-      maxTokens: maxTokens || 1,
-    };
   });
 
   const hoveredDaySummary = createMemo<HoveredDaySummary | null>(() => {
-    const date = hoveredDate();
-    if (!date) return null;
-    const dateIndex = dailyChartData().dates.indexOf(date);
-    if (dateIndex === -1) return null;
-
-    const providerMap = dailyChartData().byDate.get(date);
-    if (!providerMap) return null;
-
-    const breakdown = dailyChartData()
-      .providers.map((provider) => {
-        const tokens = providerMap.get(provider) ?? 0;
-        const info = providerInfo(provider);
-        return {
-          provider,
-          label: info.label,
-          color: info.color,
-          tokens,
-        };
-      })
-      .filter((entry) => entry.tokens > 0)
-      .sort((left, right) => right.tokens - left.tokens);
-
-    return {
-      date,
-      total: breakdown.reduce((sum, entry) => sum + entry.tokens, 0),
-      xPercent: ((dateIndex + 0.5) / dailyChartData().dates.length) * 100,
-      breakdown,
-    };
+    return buildHoveredDaySummary(
+      hoveredDate(),
+      dailyChartData(),
+      providerInfo,
+    );
   });
 
   const topModels = createMemo(() => sortedModels().slice(0, 4));
@@ -433,7 +350,7 @@ export function UsagePanel() {
     return t("usage.noResults");
   });
 
-  const sortIcon = (currentSort: SortState, col: string): string => {
+  const sortIcon = (currentSort: UsageSortState, col: string): string => {
     if (currentSort.col !== col) return "↕";
     return currentSort.asc ? "↑" : "↓";
   };

@@ -7,34 +7,46 @@ use crate::models::{SearchFilters, SearchResult, SessionMeta};
 use super::row_mapper::row_to_session_meta;
 use super::Database;
 
-pub(crate) type UsageByModelRow = (String, u64, u64, u64, u64, u64, f64);
-pub(crate) type UsageProjectModelDetailRow = (
-    String,
-    String,
-    String,
-    String,
-    String,
-    u64,
-    u64,
-    u64,
-    u64,
-    u64,
-    f64,
-);
-pub(crate) type UsageSessionModelDetailRow = (
-    String,
-    String,
-    String,
-    String,
-    i64,
-    String,
-    u64,
-    u64,
-    u64,
-    u64,
-    u64,
-    f64,
-);
+#[derive(Debug, Clone)]
+pub(crate) struct UsageByModelRow {
+    pub model: String,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct UsageProjectModelDetailRow {
+    pub project_path: String,
+    pub project_name: String,
+    pub provider: String,
+    pub session_id: String,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct UsageSessionModelDetailRow {
+    pub session_id: String,
+    pub project_path: String,
+    pub project_name: String,
+    pub provider: String,
+    pub updated_at: i64,
+    pub model: String,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub cost_usd: f64,
+}
 
 impl Database {
     pub fn get_session(&self, id: &str) -> Result<Option<SessionMeta>, rusqlite::Error> {
@@ -344,7 +356,7 @@ impl Database {
         Ok(result)
     }
 
-    pub fn usage_by_model(
+    pub(crate) fn usage_by_model(
         &self,
         providers: &[String],
         cutoff_date: Option<&str>,
@@ -369,15 +381,15 @@ impl Database {
             params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-            ))
+            Ok(UsageByModelRow {
+                model: row.get(0)?,
+                turns: row.get(1)?,
+                input_tokens: row.get(2)?,
+                output_tokens: row.get(3)?,
+                cache_read_tokens: row.get(4)?,
+                cache_write_tokens: row.get(5)?,
+                cost_usd: row.get(6)?,
+            })
         })?;
         let mut result = Vec::new();
         for row in rows {
@@ -388,7 +400,7 @@ impl Database {
 
     /// Per-project cost detail grouped by (project_path, provider, session_id, model)
     /// so callers can deduplicate sessions exactly while still pricing by model.
-    pub fn usage_project_model_detail(
+    pub(crate) fn usage_project_model_detail(
         &self,
         providers: &[String],
         cutoff_date: Option<&str>,
@@ -397,7 +409,6 @@ impl Database {
         let (where_clause, params) = build_usage_where(providers, cutoff_date);
         let sql = format!(
             "SELECT sess.project_path, sess.project_name, sess.provider, s.session_id, \
-                    COALESCE(NULLIF(s.model, ''), sess.model, ''), \
                     SUM(s.turn_count), \
                     SUM(s.input_tokens), \
                     SUM(s.output_tokens), \
@@ -415,19 +426,18 @@ impl Database {
             params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-                row.get(8)?,
-                row.get(9)?,
-                row.get(10)?,
-            ))
+            Ok(UsageProjectModelDetailRow {
+                project_path: row.get(0)?,
+                project_name: row.get(1)?,
+                provider: row.get(2)?,
+                session_id: row.get(3)?,
+                turns: row.get(4)?,
+                input_tokens: row.get(5)?,
+                output_tokens: row.get(6)?,
+                cache_read_tokens: row.get(7)?,
+                cache_write_tokens: row.get(8)?,
+                cost_usd: row.get(9)?,
+            })
         })?;
         let mut result = Vec::new();
         for row in rows {
@@ -437,7 +447,7 @@ impl Database {
     }
 
     /// Per-session token detail grouped by (session_id, model) for accurate cost calculation.
-    pub fn usage_session_model_detail(
+    pub(crate) fn usage_session_model_detail(
         &self,
         providers: &[String],
         cutoff_date: Option<&str>,
@@ -499,20 +509,20 @@ impl Database {
             detail_params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&detail_sql)?;
         let rows = stmt.query_map(detail_refs.as_slice(), |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-                row.get(8)?,
-                row.get(9)?,
-                row.get(10)?,
-                row.get(11)?,
-            ))
+            Ok(UsageSessionModelDetailRow {
+                session_id: row.get(0)?,
+                project_path: row.get(1)?,
+                project_name: row.get(2)?,
+                provider: row.get(3)?,
+                updated_at: row.get(4)?,
+                model: row.get(5)?,
+                turns: row.get(6)?,
+                input_tokens: row.get(7)?,
+                output_tokens: row.get(8)?,
+                cache_read_tokens: row.get(9)?,
+                cache_write_tokens: row.get(10)?,
+                cost_usd: row.get(11)?,
+            })
         })?;
         let mut result = Vec::new();
         for row in rows {
@@ -545,11 +555,8 @@ fn build_usage_where(
         conditions.push(format!("s.date >= ?{}", params.len()));
     }
 
-    let clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!(" WHERE {}", conditions.join(" AND "))
-    };
+    // conditions always has at least the provider IN clause (empty providers early-return above)
+    let clause = format!(" WHERE {}", conditions.join(" AND "));
     (clause, params)
 }
 

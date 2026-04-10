@@ -3,35 +3,8 @@ use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 use super::AppState;
+use crate::db::queries::{UsageProjectModelDetailRow, UsageSessionModelDetailRow};
 use crate::models::*;
-
-type ProjectModelRow = (
-    String,
-    String,
-    String,
-    String,
-    String,
-    u64,
-    u64,
-    u64,
-    u64,
-    u64,
-    f64,
-);
-type SessionModelRow = (
-    String,
-    String,
-    String,
-    String,
-    i64,
-    String,
-    u64,
-    u64,
-    u64,
-    u64,
-    u64,
-    f64,
-);
 
 #[tauri::command]
 pub async fn get_usage_stats(
@@ -82,13 +55,13 @@ fn build_usage_stats(
         .map_err(|e| format!("failed to query usage by model: {e}"))?;
     let model_costs: Vec<ModelCost> = model_rows
         .into_iter()
-        .map(|(model, turns, inp, out, cr, cw, cost)| ModelCost {
-            model,
-            turns,
-            input_tokens: inp,
-            output_tokens: out,
-            cache_tokens: cr + cw,
-            cost,
+        .map(|row| ModelCost {
+            model: row.model,
+            turns: row.turns,
+            input_tokens: row.input_tokens,
+            output_tokens: row.output_tokens,
+            cache_tokens: row.cache_read_tokens + row.cache_write_tokens,
+            cost: row.cost_usd,
         })
         .collect();
 
@@ -145,31 +118,30 @@ fn cutoff_date_for_range_days(days: u32) -> Option<String> {
     Some(cutoff.format("%Y-%m-%d").to_string())
 }
 
-fn build_project_costs(project_model_rows: Vec<ProjectModelRow>) -> Vec<ProjectCost> {
+fn build_project_costs(project_model_rows: Vec<UsageProjectModelDetailRow>) -> Vec<ProjectCost> {
     let mut project_map: HashMap<(String, String), ProjectCost> = HashMap::new();
     let mut project_sessions: HashMap<(String, String), HashSet<String>> = HashMap::new();
 
-    for (project_path, project, provider, session_id, _model, turns, inp, out, cr, cw, cost) in
-        project_model_rows
-    {
-        let key = (project_path.clone(), provider.clone());
+    for row in project_model_rows {
+        let key = (row.project_path.clone(), row.provider.clone());
         project_sessions
             .entry(key.clone())
             .or_default()
-            .insert(session_id);
+            .insert(row.session_id);
 
         let entry = project_map.entry(key).or_insert_with(|| ProjectCost {
-            project,
-            project_path,
-            provider,
+            project: row.project_name,
+            project_path: row.project_path,
+            provider: row.provider,
             sessions: 0,
             turns: 0,
             tokens: 0,
             cost: 0.0,
         });
-        entry.turns += turns;
-        entry.tokens += inp + out + cr + cw;
-        entry.cost += cost;
+        entry.turns += row.turns;
+        entry.tokens +=
+            row.input_tokens + row.output_tokens + row.cache_read_tokens + row.cache_write_tokens;
+        entry.cost += row.cost_usd;
     }
 
     let mut project_costs: Vec<ProjectCost> = project_map
@@ -190,38 +162,41 @@ fn build_project_costs(project_model_rows: Vec<ProjectModelRow>) -> Vec<ProjectC
     project_costs
 }
 
-fn build_recent_sessions(session_model_rows: Vec<SessionModelRow>) -> Vec<SessionCostRow> {
+fn build_recent_sessions(
+    session_model_rows: Vec<UsageSessionModelDetailRow>,
+) -> Vec<SessionCostRow> {
     let mut session_map: HashMap<String, SessionCostRow> = HashMap::new();
     let mut session_order: Vec<String> = Vec::new();
     let mut dominant_model: HashMap<String, (String, u64, f64)> = HashMap::new();
 
-    for (id, project_path, project, provider, updated_at, model, turns, inp, out, cr, cw, cost) in
-        session_model_rows
-    {
-        let tokens = inp + out + cr + cw;
-        let entry = session_map.entry(id.clone()).or_insert_with(|| {
-            session_order.push(id.clone());
-            SessionCostRow {
-                id: id.clone(),
-                project,
-                project_path,
-                provider,
-                model: String::new(),
-                updated_at,
-                turns: 0,
-                tokens: 0,
-                cost: 0.0,
-            }
-        });
-        entry.turns += turns;
+    for row in session_model_rows {
+        let tokens =
+            row.input_tokens + row.output_tokens + row.cache_read_tokens + row.cache_write_tokens;
+        let entry = session_map
+            .entry(row.session_id.clone())
+            .or_insert_with(|| {
+                session_order.push(row.session_id.clone());
+                SessionCostRow {
+                    id: row.session_id.clone(),
+                    project: row.project_name.clone(),
+                    project_path: row.project_path.clone(),
+                    provider: row.provider.clone(),
+                    model: String::new(),
+                    updated_at: row.updated_at,
+                    turns: 0,
+                    tokens: 0,
+                    cost: 0.0,
+                }
+            });
+        entry.turns += row.turns;
         entry.tokens += tokens;
-        entry.cost += cost;
+        entry.cost += row.cost_usd;
 
         let best = dominant_model
-            .entry(id)
-            .or_insert_with(|| (model.clone(), tokens, cost));
-        if tokens > best.1 || (tokens == best.1 && cost > best.2 && !model.is_empty()) {
-            *best = (model, tokens, cost);
+            .entry(row.session_id)
+            .or_insert_with(|| (row.model.clone(), tokens, row.cost_usd));
+        if tokens > best.1 || (tokens == best.1 && row.cost_usd > best.2 && !row.model.is_empty()) {
+            *best = (row.model, tokens, row.cost_usd);
         }
     }
 
@@ -240,49 +215,47 @@ fn build_recent_sessions(session_model_rows: Vec<SessionModelRow>) -> Vec<Sessio
 #[cfg(test)]
 mod tests {
     use super::{build_project_costs, build_recent_sessions, cutoff_date_for_range_days};
+    use crate::db::queries::{UsageProjectModelDetailRow, UsageSessionModelDetailRow};
 
     #[test]
     fn project_costs_count_distinct_sessions_exactly() {
         let rows = vec![
-            (
-                "/tmp/drama/ccsession".to_string(),
-                "drama/ccsession".to_string(),
-                "claude".to_string(),
-                "session-a".to_string(),
-                "opus-4-6".to_string(),
-                12,
-                100,
-                50,
-                20,
-                10,
-                1.0,
-            ),
-            (
-                "/tmp/drama/ccsession".to_string(),
-                "drama/ccsession".to_string(),
-                "claude".to_string(),
-                "session-a".to_string(),
-                "sonnet-4-6".to_string(),
-                8,
-                40,
-                10,
-                0,
-                0,
-                0.5,
-            ),
-            (
-                "/tmp/drama/ccsession".to_string(),
-                "drama/ccsession".to_string(),
-                "claude".to_string(),
-                "session-b".to_string(),
-                "opus-4-6".to_string(),
-                4,
-                20,
-                10,
-                0,
-                0,
-                0.25,
-            ),
+            UsageProjectModelDetailRow {
+                project_path: "/tmp/drama/ccsession".to_string(),
+                project_name: "drama/ccsession".to_string(),
+                provider: "claude".to_string(),
+                session_id: "session-a".to_string(),
+                turns: 12,
+                input_tokens: 100,
+                output_tokens: 50,
+                cache_read_tokens: 20,
+                cache_write_tokens: 10,
+                cost_usd: 1.0,
+            },
+            UsageProjectModelDetailRow {
+                project_path: "/tmp/drama/ccsession".to_string(),
+                project_name: "drama/ccsession".to_string(),
+                provider: "claude".to_string(),
+                session_id: "session-a".to_string(),
+                turns: 8,
+                input_tokens: 40,
+                output_tokens: 10,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: 0.5,
+            },
+            UsageProjectModelDetailRow {
+                project_path: "/tmp/drama/ccsession".to_string(),
+                project_name: "drama/ccsession".to_string(),
+                provider: "claude".to_string(),
+                session_id: "session-b".to_string(),
+                turns: 4,
+                input_tokens: 20,
+                output_tokens: 10,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: 0.25,
+            },
         ];
 
         let project_costs = build_project_costs(rows);
@@ -296,34 +269,34 @@ mod tests {
     #[test]
     fn recent_sessions_keep_dominant_model_label() {
         let rows = vec![
-            (
-                "session-a".to_string(),
-                "/tmp/drama/ccsession".to_string(),
-                "drama/ccsession".to_string(),
-                "claude".to_string(),
-                1_700_000_000,
-                "sonnet-4-6".to_string(),
-                6,
-                200,
-                40,
-                0,
-                0,
-                0.5,
-            ),
-            (
-                "session-a".to_string(),
-                "/tmp/drama/ccsession".to_string(),
-                "drama/ccsession".to_string(),
-                "claude".to_string(),
-                1_700_000_000,
-                "opus-4-6".to_string(),
-                2,
-                1_200,
-                300,
-                0,
-                0,
-                1.0,
-            ),
+            UsageSessionModelDetailRow {
+                session_id: "session-a".to_string(),
+                project_path: "/tmp/drama/ccsession".to_string(),
+                project_name: "drama/ccsession".to_string(),
+                provider: "claude".to_string(),
+                updated_at: 1_700_000_000,
+                model: "sonnet-4-6".to_string(),
+                turns: 6,
+                input_tokens: 200,
+                output_tokens: 40,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: 0.5,
+            },
+            UsageSessionModelDetailRow {
+                session_id: "session-a".to_string(),
+                project_path: "/tmp/drama/ccsession".to_string(),
+                project_name: "drama/ccsession".to_string(),
+                provider: "claude".to_string(),
+                updated_at: 1_700_000_000,
+                model: "opus-4-6".to_string(),
+                turns: 2,
+                input_tokens: 1_200,
+                output_tokens: 300,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: 1.0,
+            },
         ];
 
         let recent_sessions = build_recent_sessions(rows);
@@ -337,32 +310,30 @@ mod tests {
     #[test]
     fn project_costs_keep_same_name_different_paths_separate() {
         let rows = vec![
-            (
-                "/tmp/api-server".to_string(),
-                "api-server".to_string(),
-                "codex".to_string(),
-                "session-a".to_string(),
-                "gpt-5.4".to_string(),
-                2,
-                100,
-                40,
-                0,
-                0,
-                0.1,
-            ),
-            (
-                "/work/api-server".to_string(),
-                "api-server".to_string(),
-                "codex".to_string(),
-                "session-b".to_string(),
-                "gpt-5.4".to_string(),
-                3,
-                120,
-                60,
-                0,
-                0,
-                0.2,
-            ),
+            UsageProjectModelDetailRow {
+                project_path: "/tmp/api-server".to_string(),
+                project_name: "api-server".to_string(),
+                provider: "codex".to_string(),
+                session_id: "session-a".to_string(),
+                turns: 2,
+                input_tokens: 100,
+                output_tokens: 40,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: 0.1,
+            },
+            UsageProjectModelDetailRow {
+                project_path: "/work/api-server".to_string(),
+                project_name: "api-server".to_string(),
+                provider: "codex".to_string(),
+                session_id: "session-b".to_string(),
+                turns: 3,
+                input_tokens: 120,
+                output_tokens: 60,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: 0.2,
+            },
         ];
 
         let project_costs = build_project_costs(rows);
