@@ -461,6 +461,7 @@ impl Database {
             "SELECT DISTINCT s.session_id, MAX(sess.updated_at) as max_updated \
              FROM session_token_stats s \
              JOIN sessions sess ON s.session_id = sess.id{} \
+               AND sess.parent_id IS NULL \
              GROUP BY s.session_id \
              ORDER BY max_updated DESC \
              LIMIT ?{}",
