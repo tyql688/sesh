@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -84,6 +84,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let mut model: Option<String> = None;
     let mut cc_version: Option<String> = None;
     let mut git_branch: Option<String> = None;
+    let mut processed_hashes: HashSet<String> = HashSet::new();
 
     for line in reader.lines() {
         let line = match line {
@@ -101,6 +102,12 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                 continue;
             }
         };
+
+        if let Some(unique_hash) = unique_hash_from_entry(&entry) {
+            if !processed_hashes.insert(unique_hash) {
+                continue;
+            }
+        }
 
         let line_type = match entry.get("type").and_then(|t| t.as_str()) {
             Some(t) => t.to_string(),
@@ -306,6 +313,15 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     })
 }
 
+fn unique_hash_from_entry(entry: &Value) -> Option<String> {
+    let message_id = entry
+        .get("message")
+        .and_then(|message| message.get("id"))
+        .and_then(|id| id.as_str())?;
+    let request_id = entry.get("requestId").and_then(|id| id.as_str())?;
+    Some(format!("{message_id}:{request_id}"))
+}
+
 /// Handle a "user" line, which may be a real user message or a tool_result turn.
 fn handle_user_message(entry: &Value, state: &mut ParseState, timestamp: Option<String>) {
     let msg = match entry.get("message") {
@@ -397,6 +413,7 @@ fn handle_tool_result(msg: &Value, state: &mut ParseState, timestamp: &Option<St
                     tool_input: None,
                     token_usage: None,
                     model: None,
+                    usage_hash: None,
                 });
             }
         }
@@ -439,6 +456,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                                 tool_input: None,
                                 token_usage: None,
                                 model: None,
+                                usage_hash: None,
                             });
                         }
                     }
@@ -463,6 +481,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                             tool_input: None,
                             token_usage: None,
                             model: per_message_model.clone(),
+                            usage_hash: None,
                         });
                         text_parts.clear();
                     }
@@ -478,6 +497,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                         tool_input: input,
                         token_usage: None,
                         model: None,
+                        usage_hash: None,
                     });
                     // Record tool_use_id for merging results later
                     if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
@@ -499,6 +519,7 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                 tool_input: None,
                 token_usage: None,
                 model: per_message_model,
+                usage_hash: None,
             });
         }
     } else {
@@ -514,19 +535,42 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                 tool_input: None,
                 token_usage: None,
                 model: per_message_model,
+                usage_hash: None,
             });
         }
     }
 
-    // Attach token usage to the last assistant/tool message of this turn
+    // Attach token usage + dedup hash to the last assistant/tool message of this turn.
+    // When the turn produced only thinking (System) or empty content, insert a
+    // minimal placeholder so the usage is never silently dropped.
     if let Some(usage) = turn_usage {
-        // Find the last non-thinking message in this turn
+        let hash = unique_hash_from_entry(entry);
         if let Some(last_msg) = state.messages[turn_start..]
             .iter_mut()
             .filter(|m| m.role != MessageRole::System)
             .last()
         {
             last_msg.token_usage = Some(usage);
+            last_msg.usage_hash = hash;
+        } else {
+            // timestamp/model may have been moved into earlier messages;
+            // retrieve from the last System message or fall back to None.
+            let fallback_ts = state.messages[turn_start..]
+                .last()
+                .and_then(|m| m.timestamp.clone());
+            let fallback_model = state.messages[turn_start..]
+                .last()
+                .and_then(|m| m.model.clone());
+            state.messages.push(Message {
+                role: MessageRole::Assistant,
+                content: String::new(),
+                timestamp: fallback_ts,
+                tool_name: None,
+                tool_input: None,
+                token_usage: Some(usage),
+                model: fallback_model,
+                usage_hash: hash,
+            });
         }
     }
 }
@@ -650,6 +694,7 @@ fn handle_system_message(entry: &Value, state: &mut ParseState, timestamp: Optio
         tool_input: None,
         token_usage: None,
         model: None,
+        usage_hash: None,
     });
 }
 
@@ -695,6 +740,7 @@ fn append_user_message(
         tool_input: None,
         token_usage: None,
         model: None,
+        usage_hash: None,
     });
 }
 
@@ -901,5 +947,28 @@ fn extract_tool_result_content(result: &Value) -> String {
             parts.join("\n")
         }
         _ => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_session_file;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn parse_session_file_deduplicates_same_message_request_pair() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("session.jsonl");
+        let line = r#"{"type":"assistant","requestId":"req-1","timestamp":"2026-04-10T10:00:00Z","message":{"id":"msg-1","model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":10,"cache_read_input_tokens":20},"content":[{"type":"text","text":"hello"}]}}"#;
+        fs::write(&file, format!("{line}\n{line}\n")).unwrap();
+
+        let parsed = parse_session_file(&file).expect("parsed");
+        assert_eq!(parsed.messages.len(), 1);
+        let usage = parsed.messages[0].token_usage.as_ref().expect("usage");
+        assert_eq!(usage.input_tokens, 100);
+        assert_eq!(usage.output_tokens, 50);
+        assert_eq!(usage.cache_creation_input_tokens, 10);
+        assert_eq!(usage.cache_read_input_tokens, 20);
     }
 }

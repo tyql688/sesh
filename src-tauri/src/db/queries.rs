@@ -7,6 +7,47 @@ use crate::models::{SearchFilters, SearchResult, SessionMeta};
 use super::row_mapper::row_to_session_meta;
 use super::Database;
 
+#[derive(Debug, Clone)]
+pub(crate) struct UsageByModelRow {
+    pub model: String,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct UsageProjectModelDetailRow {
+    pub project_path: String,
+    pub project_name: String,
+    pub provider: String,
+    pub session_id: String,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct UsageSessionModelDetailRow {
+    pub session_id: String,
+    pub project_path: String,
+    pub project_name: String,
+    pub provider: String,
+    pub updated_at: i64,
+    pub model: String,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub cost_usd: f64,
+}
+
 impl Database {
     pub fn get_session(&self, id: &str) -> Result<Option<SessionMeta>, rusqlite::Error> {
         let conn = self.lock_read()?;
@@ -150,6 +191,7 @@ impl Database {
                     created_at, updated_at, message_count, file_size_bytes, source_path, is_sidechain,
                     variant_name, model, cc_version, git_branch, parent_id
              FROM sessions
+             WHERE parent_id IS NULL
              ORDER BY updated_at DESC
              LIMIT ?1",
             params![limit as i64],
@@ -234,6 +276,289 @@ impl Database {
         }
         Ok(sessions)
     }
+
+    // ── Usage stats queries ──────────────────────────────────────────
+
+    pub fn usage_session_count(
+        &self,
+        providers: &[String],
+        cutoff_date: Option<&str>,
+    ) -> Result<u64, rusqlite::Error> {
+        let conn = self.lock_read()?;
+        let (where_clause, params) = build_usage_where(providers, cutoff_date);
+        let sql = format!(
+            "SELECT COUNT(DISTINCT s.session_id) \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id{}",
+            where_clause
+        );
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        conn.query_row(&sql, param_refs.as_slice(), |row| row.get(0))
+    }
+
+    pub fn usage_totals(
+        &self,
+        providers: &[String],
+        cutoff_date: Option<&str>,
+    ) -> Result<(u64, u64, u64, u64, u64), rusqlite::Error> {
+        let conn = self.lock_read()?;
+        let (where_clause, params) = build_usage_where(providers, cutoff_date);
+        let sql = format!(
+            "SELECT COALESCE(SUM(s.turn_count),0), \
+                    COALESCE(SUM(s.input_tokens),0), \
+                    COALESCE(SUM(s.output_tokens),0), \
+                    COALESCE(SUM(s.cache_read_tokens),0), \
+                    COALESCE(SUM(s.cache_write_tokens),0) \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id{}",
+            where_clause
+        );
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        conn.query_row(&sql, param_refs.as_slice(), |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        })
+    }
+
+    pub fn usage_daily(
+        &self,
+        providers: &[String],
+        cutoff_date: Option<&str>,
+    ) -> Result<Vec<(String, String, u64)>, rusqlite::Error> {
+        let conn = self.lock_read()?;
+        let (where_clause, params) = build_usage_where(providers, cutoff_date);
+        let sql = format!(
+            "SELECT s.date, sess.provider, \
+                    SUM(s.input_tokens + s.output_tokens + s.cache_read_tokens + s.cache_write_tokens) \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id{} \
+             GROUP BY s.date, sess.provider \
+             ORDER BY s.date, sess.provider",
+            where_clause
+        );
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    pub(crate) fn usage_by_model(
+        &self,
+        providers: &[String],
+        cutoff_date: Option<&str>,
+    ) -> Result<Vec<UsageByModelRow>, rusqlite::Error> {
+        let conn = self.lock_read()?;
+        let (where_clause, params) = build_usage_where(providers, cutoff_date);
+        let sql = format!(
+            "SELECT COALESCE(NULLIF(s.model, ''), sess.model, ''), \
+                    SUM(s.turn_count), \
+                    SUM(s.input_tokens), \
+                    SUM(s.output_tokens), \
+                    SUM(s.cache_read_tokens), \
+                    SUM(s.cache_write_tokens), \
+                    SUM(s.cost_usd) \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id{} \
+             GROUP BY COALESCE(NULLIF(s.model, ''), sess.model, '') \
+             ORDER BY SUM(s.input_tokens + s.output_tokens) DESC",
+            where_clause
+        );
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            Ok(UsageByModelRow {
+                model: row.get(0)?,
+                turns: row.get(1)?,
+                input_tokens: row.get(2)?,
+                output_tokens: row.get(3)?,
+                cache_read_tokens: row.get(4)?,
+                cache_write_tokens: row.get(5)?,
+                cost_usd: row.get(6)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    /// Per-project cost detail grouped by (project_path, provider, session_id, model)
+    /// so callers can deduplicate sessions exactly while still pricing by model.
+    pub(crate) fn usage_project_model_detail(
+        &self,
+        providers: &[String],
+        cutoff_date: Option<&str>,
+    ) -> Result<Vec<UsageProjectModelDetailRow>, rusqlite::Error> {
+        let conn = self.lock_read()?;
+        let (where_clause, params) = build_usage_where(providers, cutoff_date);
+        let sql = format!(
+            "SELECT sess.project_path, sess.project_name, sess.provider, s.session_id, \
+                    SUM(s.turn_count), \
+                    SUM(s.input_tokens), \
+                    SUM(s.output_tokens), \
+                    SUM(s.cache_read_tokens), \
+                    SUM(s.cache_write_tokens), \
+                    SUM(s.cost_usd) \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id{} \
+             GROUP BY sess.project_path, sess.project_name, sess.provider, s.session_id, \
+                      COALESCE(NULLIF(s.model, ''), sess.model, '') \
+             ORDER BY SUM(s.input_tokens + s.output_tokens) DESC",
+            where_clause
+        );
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            Ok(UsageProjectModelDetailRow {
+                project_path: row.get(0)?,
+                project_name: row.get(1)?,
+                provider: row.get(2)?,
+                session_id: row.get(3)?,
+                turns: row.get(4)?,
+                input_tokens: row.get(5)?,
+                output_tokens: row.get(6)?,
+                cache_read_tokens: row.get(7)?,
+                cache_write_tokens: row.get(8)?,
+                cost_usd: row.get(9)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    /// Per-session token detail grouped by (session_id, model) for accurate cost calculation.
+    pub(crate) fn usage_session_model_detail(
+        &self,
+        providers: &[String],
+        cutoff_date: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<UsageSessionModelDetailRow>, rusqlite::Error> {
+        let conn = self.lock_read()?;
+
+        // Two-step approach: find the top N session IDs, then fetch per-model detail.
+        let (where_clause, params) = build_usage_where(providers, cutoff_date);
+        let session_sql = format!(
+            "SELECT DISTINCT s.session_id, MAX(sess.updated_at) as max_updated \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id{} \
+               AND sess.parent_id IS NULL \
+             GROUP BY s.session_id \
+             ORDER BY max_updated DESC \
+             LIMIT ?{}",
+            where_clause,
+            params.len() + 1
+        );
+        let mut session_params = params;
+        session_params.push(Box::new(limit));
+        let session_refs: Vec<&dyn rusqlite::types::ToSql> =
+            session_params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&session_sql)?;
+        let session_ids: Vec<String> = stmt
+            .query_map(session_refs.as_slice(), |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if session_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Now query detail for those sessions
+        let id_placeholders: Vec<String> = (0..session_ids.len())
+            .map(|i| format!("?{}", i + 1))
+            .collect();
+        let detail_sql = format!(
+            "SELECT s.session_id, sess.project_path, sess.project_name, sess.provider, sess.updated_at, \
+                    COALESCE(NULLIF(s.model, ''), sess.model, ''), \
+                    SUM(s.turn_count), \
+                    SUM(s.input_tokens), \
+                    SUM(s.output_tokens), \
+                    SUM(s.cache_read_tokens), \
+                    SUM(s.cache_write_tokens), \
+                    SUM(s.cost_usd) \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id \
+             WHERE s.session_id IN ({}) \
+             GROUP BY s.session_id, COALESCE(NULLIF(s.model, ''), sess.model, '') \
+             ORDER BY sess.updated_at DESC, s.session_id",
+            id_placeholders.join(",")
+        );
+        let detail_params: Vec<Box<dyn rusqlite::types::ToSql>> = session_ids
+            .into_iter()
+            .map(|id| Box::new(id) as _)
+            .collect();
+        let detail_refs: Vec<&dyn rusqlite::types::ToSql> =
+            detail_params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&detail_sql)?;
+        let rows = stmt.query_map(detail_refs.as_slice(), |row| {
+            Ok(UsageSessionModelDetailRow {
+                session_id: row.get(0)?,
+                project_path: row.get(1)?,
+                project_name: row.get(2)?,
+                provider: row.get(3)?,
+                updated_at: row.get(4)?,
+                model: row.get(5)?,
+                turns: row.get(6)?,
+                input_tokens: row.get(7)?,
+                output_tokens: row.get(8)?,
+                cache_read_tokens: row.get(9)?,
+                cache_write_tokens: row.get(10)?,
+                cost_usd: row.get(11)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+}
+
+fn build_usage_where(
+    providers: &[String],
+    cutoff_date: Option<&str>,
+) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
+    if providers.is_empty() {
+        return (" WHERE 1 = 0".to_string(), Vec::new());
+    }
+
+    let mut conditions = Vec::new();
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    let placeholders: Vec<String> = (0..providers.len())
+        .map(|i| format!("?{}", i + 1))
+        .collect();
+    conditions.push(format!("sess.provider IN ({})", placeholders.join(",")));
+    for p in providers {
+        params.push(Box::new(p.clone()));
+    }
+    if let Some(date) = cutoff_date {
+        params.push(Box::new(date.to_string()));
+        conditions.push(format!("s.date >= ?{}", params.len()));
+    }
+
+    // conditions always has at least the provider IN clause (empty providers early-return above)
+    let clause = format!(" WHERE {}", conditions.join(" AND "));
+    (clause, params)
 }
 
 fn list_sessions_from_query<P>(

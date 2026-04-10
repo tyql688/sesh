@@ -74,6 +74,9 @@ pub struct Message {
     pub token_usage: Option<TokenUsage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// `messageId:requestId` hash for cross-file usage deduplication.
+    #[serde(skip, default)]
+    pub usage_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +120,13 @@ pub struct IndexStats {
     pub session_count: u64,
     pub db_size_bytes: u64,
     pub last_index_time: String,
+    pub usage_last_refreshed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PricingCatalogStatus {
+    pub updated_at: Option<String>,
+    pub model_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,4 +165,61 @@ pub struct TrashMeta {
     /// Parent session ID (set on child entries so restore can group them).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageStats {
+    pub total_sessions: u64,
+    pub total_turns: u64,
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_cache_read_tokens: u64,
+    pub total_cache_write_tokens: u64,
+    pub total_cost: f64,
+    pub cache_hit_rate: f64,
+    pub daily_usage: Vec<DailyUsage>,
+    pub model_costs: Vec<ModelCost>,
+    pub project_costs: Vec<ProjectCost>,
+    pub recent_sessions: Vec<SessionCostRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyUsage {
+    pub date: String,
+    pub provider: String,
+    pub tokens: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCost {
+    pub model: String,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_tokens: u64,
+    pub cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectCost {
+    pub project: String,
+    pub project_path: String,
+    pub provider: String,
+    pub sessions: u64,
+    pub turns: u64,
+    pub tokens: u64,
+    pub cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCostRow {
+    pub id: String,
+    pub project: String,
+    pub project_path: String,
+    pub provider: String,
+    pub model: String,
+    pub updated_at: i64,
+    pub turns: u64,
+    pub tokens: u64,
+    pub cost: f64,
 }

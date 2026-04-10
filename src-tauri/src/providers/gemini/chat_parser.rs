@@ -187,6 +187,7 @@ impl GeminiProvider {
                                 tool_input: None,
                                 token_usage: None,
                                 model: None,
+                                usage_hash: None,
                             });
                         }
                     }
@@ -217,6 +218,7 @@ impl GeminiProvider {
                     } else {
                         None
                     },
+                    usage_hash: None,
                 });
             }
 
@@ -304,6 +306,7 @@ impl GeminiProvider {
                             None
                         },
                         model: None,
+                        usage_hash: None,
                     });
                 }
             }

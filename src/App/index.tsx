@@ -18,15 +18,25 @@ import { TrashView } from "../components/TrashView";
 
 import { FavoritesView } from "../components/FavoritesView";
 import { BlockedView } from "../components/BlockedView";
+import { UsagePanel } from "../components/UsagePanel";
 import { KeyboardOverlay } from "../components/KeyboardOverlay";
 import { ToastContainer } from "../components/ToastContainer";
-import { trashSession, getChildSessions } from "../lib/tauri";
+import {
+  trashSession,
+  getChildSessions,
+  startRebuildIndex,
+} from "../lib/tauri";
 import { isMac, isWindows } from "../lib/platform";
 import { disabledProviders } from "../stores/settings";
 import { loadProviderSnapshots } from "../stores/providerSnapshots";
-import { toastError } from "../stores/toast";
+import { toast, toastError, toastInfo } from "../stores/toast";
 import { checkForUpdate } from "../stores/updater";
-import type { TreeNode, SessionRef, Provider } from "../lib/types";
+import type {
+  TreeNode,
+  SessionRef,
+  Provider,
+  MaintenanceEvent,
+} from "../lib/types";
 import { useI18n } from "../i18n";
 import { createKeyboardHandler } from "./KeyboardShortcuts";
 import { createSyncManager } from "./SyncManager";
@@ -46,6 +56,7 @@ export default function App() {
   const debouncedChangedPaths = new Set<string>();
 
   let unlistenWatcher: UnlistenFn | undefined;
+  let unlistenMaintenance: UnlistenFn | undefined;
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   function syncTabsWithTree(treeData: TreeNode[]) {
@@ -124,6 +135,9 @@ export default function App() {
     setActiveView,
     closeTab,
     closeAllTabs,
+    startRebuildIndex: () => {
+      void startRebuildIndex();
+    },
     syncFromDisk: sync.syncFromDisk,
   });
 
@@ -174,11 +188,42 @@ export default function App() {
         void sync.syncFromDisk({ changedPaths });
       }, 500);
     });
+
+    unlistenMaintenance = await listen<MaintenanceEvent>(
+      "maintenance-status",
+      (event) => {
+        const payload = event.payload;
+        if (payload.phase === "started") {
+          const message =
+            payload.job === "refresh_usage"
+              ? t("toast.refreshUsageStarted")
+              : t("toast.rebuildStarted");
+          toastInfo(message);
+          return;
+        }
+
+        if (payload.phase === "failed") {
+          toastError(payload.message || t("toast.rebuildFailed"));
+          return;
+        }
+
+        if (payload.phase === "finished") {
+          void sync.refreshTree();
+          void loadProviderSnapshots(true);
+          const message =
+            payload.job === "refresh_usage"
+              ? t("toast.refreshUsageOk")
+              : t("toast.rebuildOk");
+          toast(message);
+        }
+      },
+    );
   });
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleGlobalKeyDown);
     unlistenWatcher?.();
+    unlistenMaintenance?.();
     clearTimeout(debounceTimer);
     debouncedChangedPaths.clear();
   });
@@ -188,13 +233,17 @@ export default function App() {
   );
   const showExplorer = createMemo(() => {
     const v = activeView();
-    return v !== "settings" && v !== "trash";
+    return v !== "settings" && v !== "trash" && v !== "usage";
   });
   const showExplorerTree = createMemo(() => {
     if (sidebarCollapsed()) return false;
     const v = activeView();
     return (
-      v !== "settings" && v !== "trash" && v !== "favorites" && v !== "blocked"
+      v !== "settings" &&
+      v !== "trash" &&
+      v !== "favorites" &&
+      v !== "blocked" &&
+      v !== "usage"
     );
   });
 
@@ -353,6 +402,15 @@ export default function App() {
           <Show when={activeView() === "blocked"}>
             <BlockedView onRefreshTree={sync.refreshTree} />
           </Show>
+          <div
+            style={{
+              display: activeView() === "usage" ? "flex" : "none",
+              flex: "1",
+              "min-width": "0",
+            }}
+          >
+            <UsagePanel />
+          </div>
           <Show when={showExplorer()}>
             <EditorArea
               tabs={openTabs()}

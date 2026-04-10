@@ -1,6 +1,6 @@
-mod queries;
+pub(crate) mod queries;
 mod row_mapper;
-mod sync;
+pub(crate) mod sync;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -209,6 +209,43 @@ impl Database {
         };
         if !has_parent_id {
             write_conn.execute_batch("ALTER TABLE sessions ADD COLUMN parent_id TEXT;")?;
+        }
+
+        write_conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS session_token_stats (
+                session_id          TEXT    NOT NULL,
+                date                TEXT    NOT NULL,
+                model               TEXT    NOT NULL DEFAULT '',
+                turn_count          INTEGER NOT NULL DEFAULT 0,
+                input_tokens        INTEGER NOT NULL DEFAULT 0,
+                output_tokens       INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
+                cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+                cost_usd            REAL    NOT NULL DEFAULT 0,
+                PRIMARY KEY (session_id, date, model)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_token_stats_date
+                ON session_token_stats(date);
+
+            CREATE TRIGGER IF NOT EXISTS trg_token_stats_cascade
+            AFTER DELETE ON sessions
+            BEGIN
+                DELETE FROM session_token_stats WHERE session_id = OLD.id;
+            END;",
+        )?;
+
+        let has_token_cost: bool = {
+            let mut stmt = write_conn.prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('session_token_stats') WHERE name = 'cost_usd'",
+            )?;
+            let count: i64 = stmt.query_row([], |row| row.get(0))?;
+            count > 0
+        };
+        if !has_token_cost {
+            write_conn.execute_batch(
+                "ALTER TABLE session_token_stats ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0;",
+            )?;
         }
 
         let read_conn = Connection::open(&db_path)?;

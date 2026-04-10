@@ -95,6 +95,21 @@ export interface IndexStats {
   session_count: number;
   db_size_bytes: number;
   last_index_time: string;
+  usage_last_refreshed_at: string;
+}
+
+export interface PricingCatalogStatus {
+  updated_at: string | null;
+  model_count: number;
+}
+
+export type MaintenanceJob = "rebuild_index" | "refresh_usage";
+export type MaintenancePhase = "started" | "finished" | "failed";
+
+export interface MaintenanceEvent {
+  job: MaintenanceJob;
+  phase: MaintenancePhase;
+  message?: string;
 }
 
 export interface ProviderSnapshot {
@@ -117,4 +132,56 @@ export interface TrashMeta {
   trash_file: string;
   project_name: string;
   variant_name?: string;
+}
+
+export interface UsageStats {
+  total_sessions: number;
+  total_turns: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_read_tokens: number;
+  total_cache_write_tokens: number;
+  total_cost: number;
+  cache_hit_rate: number;
+  daily_usage: DailyUsage[];
+  model_costs: ModelCost[];
+  project_costs: ProjectCost[];
+  recent_sessions: SessionCostRow[];
+}
+
+export interface DailyUsage {
+  date: string;
+  provider: string;
+  tokens: number;
+}
+
+export interface ModelCost {
+  model: string;
+  turns: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_tokens: number;
+  cost: number;
+}
+
+export interface ProjectCost {
+  project: string;
+  project_path: string;
+  provider: string;
+  sessions: number;
+  turns: number;
+  tokens: number;
+  cost: number;
+}
+
+export interface SessionCostRow {
+  id: string;
+  project: string;
+  project_path: string;
+  provider: string;
+  model: string;
+  updated_at: number;
+  turns: number;
+  tokens: number;
+  cost: number;
 }

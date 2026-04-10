@@ -44,6 +44,7 @@ pub(crate) fn parse_transcript_messages(content: &str) -> Vec<Message> {
                     tool_input: None,
                     token_usage: None,
                     model: None,
+                    usage_hash: None,
                 });
             }
         }
@@ -60,6 +61,7 @@ pub(crate) fn parse_transcript_messages(content: &str) -> Vec<Message> {
                     tool_input: None,
                     token_usage: None,
                     model: None,
+                    usage_hash: None,
                 });
             }
 
@@ -74,6 +76,7 @@ pub(crate) fn parse_transcript_messages(content: &str) -> Vec<Message> {
                     tool_input: None,
                     token_usage: None,
                     model: None,
+                    usage_hash: None,
                 });
             }
 
@@ -87,6 +90,7 @@ pub(crate) fn parse_transcript_messages(content: &str) -> Vec<Message> {
                     tool_input: None,
                     token_usage: None,
                     model: None,
+                    usage_hash: None,
                 });
             }
 
@@ -108,6 +112,7 @@ pub(crate) fn parse_transcript_messages(content: &str) -> Vec<Message> {
                     tool_input,
                     token_usage: None,
                     model: None,
+                    usage_hash: None,
                 });
             }
         }

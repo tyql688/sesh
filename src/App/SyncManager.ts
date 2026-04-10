@@ -32,6 +32,7 @@ export function createSyncManager(callbacks: SyncCallbacks) {
     callbacks.setSessionCount(count);
     // Sync open tab titles with latest tree data
     callbacks.syncTabsWithTree(treeData);
+    window.dispatchEvent(new CustomEvent("usage-data-changed"));
   }
 
   async function syncFromDisk(options?: {

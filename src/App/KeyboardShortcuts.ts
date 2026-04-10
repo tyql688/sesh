@@ -9,6 +9,7 @@ export interface KeyboardDeps {
   setActiveView: (view: string) => void;
   closeTab: (id: string) => void;
   closeAllTabs: () => void;
+  startRebuildIndex: () => void;
   syncFromDisk: (opts?: {
     showSpinner?: boolean;
     changedPaths?: string[];
@@ -139,7 +140,7 @@ export function createKeyboardHandler(
     // Cmd+R: Refresh index
     if (mod && !e.shiftKey && e.key === "r") {
       e.preventDefault();
-      void deps.syncFromDisk({ showSpinner: true });
+      deps.startRebuildIndex();
       return;
     }
 

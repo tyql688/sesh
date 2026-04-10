@@ -3,6 +3,7 @@ pub mod db;
 mod exporter;
 pub mod indexer;
 pub mod models;
+pub mod pricing;
 pub mod provider;
 pub mod provider_utils;
 pub mod providers;
@@ -135,6 +136,7 @@ pub fn run() {
     let state = AppState {
         db: Arc::clone(&db),
         indexer,
+        maintenance_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
 
     tauri::Builder::default()
@@ -158,8 +160,11 @@ pub fn run() {
             commands::get_session_count,
             commands::export_session,
             commands::get_index_stats,
-            commands::rebuild_index,
+            commands::get_pricing_catalog_status,
+            commands::start_rebuild_index,
+            commands::refresh_pricing_catalog,
             commands::clear_index,
+            commands::start_refresh_usage,
             commands::get_provider_snapshots,
             commands::get_resume_command,
             commands::detect_terminal,
@@ -178,6 +183,7 @@ pub fn run() {
             commands::read_image_base64,
             commands::open_in_folder,
             commands::open_external,
+            commands::get_usage_stats,
         ])
         .setup(|app| {
             // On Windows, hide native decorations so the custom titlebar is the only one.

@@ -5,9 +5,11 @@ import type {
   SearchFilters,
   TreeNode,
   IndexStats,
+  PricingCatalogStatus,
   ProviderSnapshot,
   TrashMeta,
   SessionMeta,
+  UsageStats,
 } from "./types";
 
 export async function reindex(): Promise<number> {
@@ -71,12 +73,24 @@ export async function getIndexStats(): Promise<IndexStats> {
   return invoke<IndexStats>("get_index_stats");
 }
 
-export async function rebuildIndex(): Promise<number> {
-  return invoke<number>("rebuild_index");
+export async function getPricingCatalogStatus(): Promise<PricingCatalogStatus> {
+  return invoke<PricingCatalogStatus>("get_pricing_catalog_status");
+}
+
+export async function refreshPricingCatalog(): Promise<PricingCatalogStatus> {
+  return invoke<PricingCatalogStatus>("refresh_pricing_catalog");
+}
+
+export async function startRebuildIndex(): Promise<boolean> {
+  return invoke<boolean>("start_rebuild_index");
 }
 
 export async function clearIndex(): Promise<void> {
   return invoke<void>("clear_index");
+}
+
+export async function startRefreshUsage(): Promise<boolean> {
+  return invoke<boolean>("start_refresh_usage");
 }
 
 export async function detectTerminal(): Promise<string> {
@@ -158,4 +172,11 @@ export async function exportSessionsBatch(
   outputPath: string,
 ): Promise<void> {
   return invoke<void>("export_sessions_batch", { items, format, outputPath });
+}
+
+export async function getUsageStats(
+  providers: string[],
+  rangeDays: number | null,
+): Promise<UsageStats> {
+  return invoke<UsageStats>("get_usage_stats", { providers, rangeDays });
 }

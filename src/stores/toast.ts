@@ -33,8 +33,12 @@ function toast(message: string) {
   addToast("success", message);
 }
 
+function toastInfo(message: string) {
+  addToast("info", message);
+}
+
 function toastError(message: string) {
   addToast("error", message, 5000);
 }
 
-export { toasts, toast, toastError };
+export { toasts, toast, toastInfo, toastError };

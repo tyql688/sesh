@@ -389,6 +389,7 @@ impl SessionProvider for OpenCodeProvider {
                             tool_input: None,
                             token_usage: None,
                             model: None,
+                            usage_hash: None,
                         });
                     }
 
@@ -407,6 +408,7 @@ impl SessionProvider for OpenCodeProvider {
                                         tool_input: None,
                                         token_usage: None,
                                         model: None,
+                                        usage_hash: None,
                                     });
                                 }
                             }
@@ -448,6 +450,7 @@ impl SessionProvider for OpenCodeProvider {
                                             tool_input: None,
                                             token_usage: None,
                                             model: None,
+                                            usage_hash: None,
                                         });
                                     }
                                 }
@@ -499,6 +502,7 @@ impl SessionProvider for OpenCodeProvider {
                                     tool_input,
                                     token_usage: None,
                                     model: None,
+                                    usage_hash: None,
                                 });
                             }
                             // Skip step-start, step-finish, reasoning, snapshot, patch, etc.
@@ -525,6 +529,7 @@ impl SessionProvider for OpenCodeProvider {
                                 None
                             },
                             model: msg_model.clone(),
+                            usage_hash: None,
                         });
                     }
 
@@ -556,6 +561,7 @@ impl SessionProvider for OpenCodeProvider {
                             tool_input: None,
                             token_usage,
                             model: msg_model,
+                            usage_hash: None,
                         });
                     }
                 }

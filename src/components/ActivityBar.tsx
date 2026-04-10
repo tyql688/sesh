@@ -71,6 +71,23 @@ function TrashIcon() {
   );
 }
 
+function UsageIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      viewBox="0 0 24 24"
+    >
+      <rect x="3" y="12" width="4" height="9" rx="1" />
+      <rect x="10" y="7" width="4" height="14" rx="1" />
+      <rect x="17" y="3" width="4" height="18" rx="1" />
+    </svg>
+  );
+}
+
 function SettingsIcon() {
   return (
     <svg
@@ -95,6 +112,7 @@ export function ActivityBar(props: {
   const items: ActivityItem[] = [
     { id: "explorer", label: t("explorer.title"), icon: HomeIcon },
     { id: "favorites", label: t("favorites.title"), icon: StarIcon },
+    { id: "usage", label: t("usage.title"), icon: UsageIcon },
     { id: "blocked", label: t("settings.blockedFolders"), icon: BlockedIcon },
     { id: "trash", label: t("trash.title"), icon: TrashIcon },
     {

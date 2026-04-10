@@ -1,5 +1,9 @@
+use std::collections::HashSet;
+
 use crate::db::Database;
+use crate::indexer::compute_token_stats_with_catalog_dedup;
 use crate::models::Provider;
+use crate::pricing::{self, PRICING_CATALOG_JSON_KEY};
 
 pub struct SourceSyncService<'a> {
     db: &'a Database,
@@ -37,7 +41,32 @@ impl<'a> SourceSyncService<'a> {
 
         self.db
             .sync_source_snapshot(&provider, source_path, &sessions)
-            .map_err(|e| format!("failed to sync source snapshot: {e}"))
+            .map_err(|e| format!("failed to sync source snapshot: {e}"))?;
+
+        let pricing_catalog = self
+            .db
+            .get_meta(PRICING_CATALOG_JSON_KEY)
+            .ok()
+            .flatten()
+            .and_then(|json| pricing::parse_catalog(&json));
+
+        let mut seen_hashes = HashSet::new();
+        for parsed in &sessions {
+            let stat_rows = compute_token_stats_with_catalog_dedup(
+                parsed,
+                pricing_catalog.as_ref(),
+                &mut seen_hashes,
+            );
+            if let Err(e) = self.db.replace_token_stats(&parsed.meta.id, &stat_rows) {
+                log::warn!("failed to write token stats for {}: {e}", parsed.meta.id);
+            }
+        }
+
+        self.db
+            .set_meta("usage_last_refreshed_at", &chrono::Utc::now().to_rfc3339())
+            .map_err(|e| format!("failed to store usage_last_refreshed_at: {e}"))?;
+
+        Ok(())
     }
 
     pub fn sync_provider_key(&self, provider_key: &str, source_path: &str) -> Result<(), String> {

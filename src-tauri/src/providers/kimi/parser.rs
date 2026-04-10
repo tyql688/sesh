@@ -185,6 +185,7 @@ impl KimiProvider {
                             tool_input: None,
                             token_usage: None,
                             model: None,
+                            usage_hash: None,
                         });
                     }
                 }
@@ -203,6 +204,7 @@ impl KimiProvider {
                                     tool_input: None,
                                     token_usage: None,
                                     model: None,
+                                    usage_hash: None,
                                 });
                             }
                         }
@@ -218,6 +220,7 @@ impl KimiProvider {
                                     tool_input: None,
                                     token_usage: None,
                                     model: None,
+                                    usage_hash: None,
                                 });
                             }
                         }
@@ -250,6 +253,7 @@ impl KimiProvider {
                         tool_input,
                         token_usage: None,
                         model: None,
+                        usage_hash: None,
                     });
                 }
                 "ToolResult" => {
@@ -276,6 +280,7 @@ impl KimiProvider {
                         tool_input: None,
                         token_usage: None,
                         model: None,
+                        usage_hash: None,
                     });
                 }
                 "StatusUpdate" => {
@@ -549,6 +554,7 @@ impl KimiProvider {
                             tool_input: None,
                             token_usage: None,
                             model: None,
+                            usage_hash: None,
                         });
                     }
                 }
@@ -567,6 +573,7 @@ impl KimiProvider {
                                     tool_input: None,
                                     token_usage: None,
                                     model: None,
+                                    usage_hash: None,
                                 });
                             }
                         }
@@ -582,6 +589,7 @@ impl KimiProvider {
                                     tool_input: None,
                                     token_usage: None,
                                     model: None,
+                                    usage_hash: None,
                                 });
                             }
                         }
@@ -612,6 +620,7 @@ impl KimiProvider {
                         tool_input,
                         token_usage: None,
                         model: None,
+                        usage_hash: None,
                     });
                 }
                 "ToolResult" => {
@@ -634,6 +643,7 @@ impl KimiProvider {
                         tool_input: None,
                         token_usage: None,
                         model: None,
+                        usage_hash: None,
                     });
                 }
                 "StatusUpdate" => {
