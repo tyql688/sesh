@@ -691,6 +691,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.settings-help-text {
+  margin-top: 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Trash View */
 .trash-view {
   flex: 1;

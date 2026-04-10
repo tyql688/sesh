@@ -42,10 +42,8 @@ impl<'a> SourceSyncService<'a> {
 
         for parsed in &sessions {
             let stat_rows = compute_token_stats(parsed);
-            if !stat_rows.is_empty() {
-                if let Err(e) = self.db.replace_token_stats(&parsed.meta.id, &stat_rows) {
-                    log::warn!("failed to write token stats for {}: {e}", parsed.meta.id);
-                }
+            if let Err(e) = self.db.replace_token_stats(&parsed.meta.id, &stat_rows) {
+                log::warn!("failed to write token stats for {}: {e}", parsed.meta.id);
             }
         }
 

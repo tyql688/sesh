@@ -84,7 +84,8 @@
     "rebuildOk": "索引重建成功",
     "rebuildFailed": "索引重建失败",
     "exportOk": "导出成功",
-    "clearIndexOk": "索引已清除"
+    "clearIndexOk": "索引已清除",
+    "clearUsageOk": "用量统计已清除"
   },
   "favorites": {
     "title": "收藏",
@@ -196,6 +197,7 @@
     "providerEnabled": "已启用",
     "providerDisabled": "已禁用",
     "clearIndexConfirm": "清除整个索引？下次重建时将重新扫描会话。",
+    "rebuildIndexNote": "“重建索引”会重新扫描本地会话来源并重算用量，不会删除会话；“清除索引”只会清空本地数据库，之后重建会再次导入会话。",
     "timeGrouping": "按时间分组",
     "timeGroupingDesc": "将会话按今天、本周、本月和更早分组",
     "showOrphans": "显示子代理",
@@ -236,6 +238,7 @@
     "tokens": "token",
     "cacheHit": "缓存命中",
     "estCost": "预估费用",
+    "allProviders": "全部",
     "range7d": "7天",
     "range30d": "30天",
     "range90d": "90天",
@@ -244,16 +247,27 @@
     "costByModel": "按模型",
     "costByProject": "按项目",
     "recentSessions": "最近会话",
+    "topModels": "重点模型",
     "model": "模型",
     "project": "项目",
     "provider": "提供商",
+    "providers": "个提供商",
     "active": "活跃",
     "cost": "费用",
     "input": "输入",
     "output": "输出",
     "cache": "缓存",
     "noData": "暂无用量数据",
+    "selectProvider": "请至少选择一个提供商后再查看用量。",
+    "noResults": "当前筛选条件下没有用量数据。",
     "rebuildHint": "Token 数据尚未索引，请在设置中重建索引。",
-    "pricingNote": "费用基于 LiteLLM 定价"
+    "pricingNote": "费用在可用时基于官方定价估算",
+    "hoverHint": "悬停到某一天可查看提供商分布",
+    "clearUsage": "清理用量",
+    "clearUsageConfirm": "仅清理用量统计？会话本身不会删除。之后点击“重建索引”会根据现有会话重新计算用量。",
+    "clearUsageConfirmSelected": "仅清理当前选中的 {count} 个提供商的用量统计？会话本身不会删除。之后点击“重建索引”会根据现有会话重新计算用量。",
+    "rebuildKeepsSessions": "“重建索引”只会重新扫描会话并重算用量，不会删除任何会话。",
+    "pricingSourceNote": "费用使用应用内置的模型价格表。Claude 已与外部报告结果核对；其他部分提供商目前仍可能是估算值。",
+    "unpriced": "未定价"
   }
 }

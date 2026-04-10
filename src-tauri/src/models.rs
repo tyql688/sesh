@@ -193,6 +193,7 @@ pub struct ModelCost {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectCost {
     pub project: String,
+    pub project_path: String,
     pub provider: String,
     pub sessions: u64,
     pub turns: u64,
@@ -204,6 +205,7 @@ pub struct ProjectCost {
 pub struct SessionCostRow {
     pub id: String,
     pub project: String,
+    pub project_path: String,
     pub provider: String,
     pub model: String,
     pub updated_at: i64,

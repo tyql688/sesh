@@ -221,6 +221,7 @@ impl Database {
                 output_tokens       INTEGER NOT NULL DEFAULT 0,
                 cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
                 cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+                cost_usd            REAL    NOT NULL DEFAULT 0,
                 PRIMARY KEY (session_id, date, model)
             );
 
@@ -233,6 +234,19 @@ impl Database {
                 DELETE FROM session_token_stats WHERE session_id = OLD.id;
             END;",
         )?;
+
+        let has_token_cost: bool = {
+            let mut stmt = write_conn.prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('session_token_stats') WHERE name = 'cost_usd'",
+            )?;
+            let count: i64 = stmt.query_row([], |row| row.get(0))?;
+            count > 0
+        };
+        if !has_token_cost {
+            write_conn.execute_batch(
+                "ALTER TABLE session_token_stats ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0;",
+            )?;
+        }
 
         let read_conn = Connection::open(&db_path)?;
         read_conn.pragma_update(None, "journal_mode", "WAL")?;

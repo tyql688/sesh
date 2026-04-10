@@ -16,6 +16,7 @@ pub struct TokenStatRow {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
+    pub cost_usd: f64,
 }
 
 impl Database {
@@ -158,6 +159,37 @@ impl Database {
         })
     }
 
+    pub fn clear_usage_stats(&self) -> Result<(), rusqlite::Error> {
+        let conn = self.lock_write()?;
+        conn.execute("DELETE FROM session_token_stats", [])?;
+        Ok(())
+    }
+
+    pub fn clear_usage_stats_for_providers(
+        &self,
+        providers: &[String],
+    ) -> Result<(), rusqlite::Error> {
+        if providers.is_empty() {
+            return self.clear_usage_stats();
+        }
+
+        let conn = self.lock_write()?;
+        let placeholders = (0..providers.len())
+            .map(|i| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "DELETE FROM session_token_stats
+             WHERE session_id IN (
+                SELECT id FROM sessions WHERE provider IN ({placeholders})
+             )"
+        );
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            providers.iter().map(|provider| provider as _).collect();
+        conn.execute(&sql, params_refs.as_slice())?;
+        Ok(())
+    }
+
     /// Delete this session and all its children from DB.
     pub fn delete_session(&self, id: &str) -> Result<(), rusqlite::Error> {
         let conn = self.lock_write()?;
@@ -182,8 +214,8 @@ impl Database {
         )?;
         let mut stmt = conn.prepare_cached(
             "INSERT INTO session_token_stats
-                (session_id, date, model, turn_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                (session_id, date, model, turn_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
         for row in stats {
             stmt.execute(params![
@@ -195,6 +227,7 @@ impl Database {
                 row.output_tokens as i64,
                 row.cache_read_tokens as i64,
                 row.cache_write_tokens as i64,
+                row.cost_usd,
             ])?;
         }
         Ok(())
@@ -311,4 +344,179 @@ fn repeat_vars(count: usize) -> String {
     std::iter::repeat_n("?", count)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Database, SessionMeta, TokenStatRow};
+    use crate::models::Provider;
+    use crate::provider::ParsedSession;
+    use tempfile::TempDir;
+
+    fn sample_meta(session_id: &str) -> SessionMeta {
+        SessionMeta {
+            id: session_id.to_string(),
+            provider: Provider::Claude,
+            title: "Test".into(),
+            project_path: "/tmp/project".into(),
+            project_name: "project".into(),
+            created_at: 1_775_635_200,
+            updated_at: 1_775_635_200,
+            message_count: 1,
+            file_size_bytes: 0,
+            source_path: "/tmp/source.jsonl".into(),
+            is_sidechain: false,
+            variant_name: None,
+            model: Some("claude-opus-4-6".into()),
+            cc_version: None,
+            git_branch: None,
+            parent_id: None,
+        }
+    }
+
+    #[test]
+    fn replace_token_stats_clears_existing_rows_when_empty() {
+        let dir = TempDir::new().unwrap();
+        let db = Database::open(dir.path()).unwrap();
+        let meta = sample_meta("session-1");
+        db.sync_provider_snapshot(
+            &Provider::Claude,
+            &[ParsedSession {
+                meta: meta.clone(),
+                messages: Vec::new(),
+                content_text: String::new(),
+            }],
+            true,
+        )
+        .unwrap();
+
+        db.replace_token_stats(
+            &meta.id,
+            &[TokenStatRow {
+                date: "2026-04-09".into(),
+                model: "claude-opus-4-6".into(),
+                turn_count: 1,
+                input_tokens: 100,
+                output_tokens: 50,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: 0.01,
+            }],
+        )
+        .unwrap();
+
+        db.replace_token_stats(&meta.id, &[]).unwrap();
+
+        let conn = db.lock_read().unwrap();
+        let count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_token_stats WHERE session_id = ?1",
+                [meta.id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn clear_usage_stats_preserves_sessions() {
+        let dir = TempDir::new().unwrap();
+        let db = Database::open(dir.path()).unwrap();
+        let meta = sample_meta("session-2");
+        db.sync_provider_snapshot(
+            &Provider::Claude,
+            &[ParsedSession {
+                meta: meta.clone(),
+                messages: Vec::new(),
+                content_text: String::new(),
+            }],
+            true,
+        )
+        .unwrap();
+        db.replace_token_stats(
+            &meta.id,
+            &[TokenStatRow {
+                date: "2026-04-10".into(),
+                model: "claude-opus-4-6".into(),
+                turn_count: 1,
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: 0.001,
+            }],
+        )
+        .unwrap();
+
+        db.clear_usage_stats().unwrap();
+
+        assert!(db.get_session(&meta.id).unwrap().is_some());
+        let conn = db.lock_read().unwrap();
+        let usage_rows: u64 = conn
+            .query_row("SELECT COUNT(*) FROM session_token_stats", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(usage_rows, 0);
+    }
+
+    #[test]
+    fn clear_usage_stats_for_selected_providers_only() {
+        let dir = TempDir::new().unwrap();
+        let db = Database::open(dir.path()).unwrap();
+        let claude_meta = sample_meta("claude-session");
+        let mut codex_meta = sample_meta("codex-session");
+        codex_meta.provider = Provider::Codex;
+
+        for (provider, meta) in [
+            (&Provider::Claude, &claude_meta),
+            (&Provider::Codex, &codex_meta),
+        ] {
+            db.sync_provider_snapshot(
+                provider,
+                &[ParsedSession {
+                    meta: meta.clone(),
+                    messages: Vec::new(),
+                    content_text: String::new(),
+                }],
+                true,
+            )
+            .unwrap();
+            db.replace_token_stats(
+                &meta.id,
+                &[TokenStatRow {
+                    date: "2026-04-10".into(),
+                    model: "model".into(),
+                    turn_count: 1,
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                    cost_usd: 0.001,
+                }],
+            )
+            .unwrap();
+        }
+
+        db.clear_usage_stats_for_providers(&["claude".to_string()])
+            .unwrap();
+
+        let conn = db.lock_read().unwrap();
+        let claude_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_token_stats WHERE session_id = ?1",
+                [claude_meta.id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let codex_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_token_stats WHERE session_id = ?1",
+                [codex_meta.id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(claude_count, 0);
+        assert_eq!(codex_count, 1);
+    }
 }

@@ -161,6 +161,7 @@ pub fn run() {
             commands::get_index_stats,
             commands::rebuild_index,
             commands::clear_index,
+            commands::clear_usage_stats,
             commands::get_provider_snapshots,
             commands::get_resume_command,
             commands::detect_terminal,

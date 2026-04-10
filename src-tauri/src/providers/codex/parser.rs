@@ -15,6 +15,15 @@ use crate::provider_utils::{
 use super::tools::*;
 use super::CodexProvider;
 
+#[derive(Clone, Debug)]
+pub struct CodexUsageEvent {
+    pub timestamp: String,
+    pub model: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_input_tokens: u64,
+}
+
 #[derive(Deserialize)]
 struct CodexLine {
     timestamp: Option<String>,
@@ -550,6 +559,177 @@ impl CodexProvider {
     }
 }
 
+pub fn extract_usage_events_from_file(path: &PathBuf) -> Vec<CodexUsageEvent> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(_) => return Vec::new(),
+    };
+    let reader = BufReader::new(file);
+
+    let mut current_model: Option<String> = None;
+    let mut previous_totals: Option<(u64, u64, u64, u64, u64)> = None;
+    let mut events = Vec::new();
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(line) if !line.trim().is_empty() => line,
+            _ => continue,
+        };
+
+        let entry: CodexLine = match serde_json::from_str(&line) {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+
+        let Some(payload) = entry.payload.as_ref() else {
+            continue;
+        };
+
+        match entry.line_type.as_str() {
+            "turn_context" => {
+                current_model = extract_codex_model(payload).or(current_model);
+            }
+            "event_msg" => {
+                if payload.get("type").and_then(|v| v.as_str()) != Some("token_count") {
+                    continue;
+                }
+                let Some(timestamp) = entry.timestamp.clone() else {
+                    continue;
+                };
+                let Some(info) = payload.get("info") else {
+                    continue;
+                };
+
+                let last_usage = info
+                    .get("last_token_usage")
+                    .and_then(normalize_codex_raw_usage);
+                let total_usage = info
+                    .get("total_token_usage")
+                    .and_then(normalize_codex_raw_usage);
+
+                let raw_usage = match (last_usage, total_usage) {
+                    (Some(last), _) => {
+                        previous_totals = Some(last.1);
+                        Some(last)
+                    }
+                    (None, Some(total)) => {
+                        let delta = subtract_codex_usage(total.1, previous_totals);
+                        previous_totals = Some(total.1);
+                        Some((total.0, delta))
+                    }
+                    (None, None) => None,
+                };
+
+                let Some((model, (input, cached, output, reasoning, total))) = raw_usage else {
+                    continue;
+                };
+                if input == 0 && cached == 0 && output == 0 && reasoning == 0 && total == 0 {
+                    continue;
+                }
+
+                let model = extract_codex_model(info)
+                    .or_else(|| extract_codex_model(payload))
+                    .or_else(|| current_model.clone())
+                    .unwrap_or_else(|| model.unwrap_or_else(|| "gpt-5".to_string()));
+                current_model = Some(model.clone());
+
+                let cache_read = cached.min(input);
+                let non_cached_input = input.saturating_sub(cache_read);
+
+                events.push(CodexUsageEvent {
+                    timestamp,
+                    model,
+                    input_tokens: non_cached_input,
+                    output_tokens: output,
+                    cache_read_input_tokens: cache_read,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    events
+}
+
+fn extract_codex_model(value: &Value) -> Option<String> {
+    value
+        .get("model")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            value
+                .get("info")
+                .and_then(|info| info.get("model"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            value
+                .get("info")
+                .and_then(|info| info.get("model_name"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            value
+                .get("metadata")
+                .and_then(|meta| meta.get("model"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+}
+
+type RawCodexUsage = (Option<String>, (u64, u64, u64, u64, u64));
+
+fn normalize_codex_raw_usage(value: &Value) -> Option<RawCodexUsage> {
+    let input = value
+        .get("input_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let cached = value
+        .get("cached_input_tokens")
+        .or_else(|| value.get("cache_read_input_tokens"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let output = value
+        .get("output_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let reasoning = value
+        .get("reasoning_output_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let total = value
+        .get("total_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_else(|| input + output);
+    let model = value
+        .get("model")
+        .or_else(|| value.get("model_name"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    Some((model, (input, cached, output, reasoning, total)))
+}
+
+fn subtract_codex_usage(
+    current: (u64, u64, u64, u64, u64),
+    previous: Option<(u64, u64, u64, u64, u64)>,
+) -> (u64, u64, u64, u64, u64) {
+    let prev = previous.unwrap_or((0, 0, 0, 0, 0));
+    (
+        current.0.saturating_sub(prev.0),
+        current.1.saturating_sub(prev.1),
+        current.2.saturating_sub(prev.2),
+        current.3.saturating_sub(prev.3),
+        current.4.saturating_sub(prev.4),
+    )
+}
+
 fn append_user_message(
     messages: &mut Vec<Message>,
     content_parts: &mut Vec<String>,
@@ -603,4 +783,32 @@ fn flush_pending_user_message(
         pending.content,
         pending.timestamp,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_usage_events_from_file;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn extract_usage_events_splits_cached_input_from_input() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("codex.jsonl");
+        fs::write(
+            &file,
+            concat!(
+                "{\"timestamp\":\"2026-04-10T10:00:00Z\",\"type\":\"turn_context\",\"payload\":{\"model\":\"gpt-5.4\"}}\n",
+                "{\"timestamp\":\"2026-04-10T10:00:01Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":1000,\"cached_input_tokens\":600,\"output_tokens\":50,\"reasoning_output_tokens\":25,\"total_tokens\":1050}}}}\n"
+            ),
+        )
+        .unwrap();
+
+        let events = extract_usage_events_from_file(&file);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].model, "gpt-5.4");
+        assert_eq!(events[0].input_tokens, 400);
+        assert_eq!(events[0].cache_read_input_tokens, 600);
+        assert_eq!(events[0].output_tokens, 50);
+    }
 }

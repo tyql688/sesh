@@ -53,6 +53,14 @@ pub fn clear_index(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn clear_usage_stats(providers: Vec<String>, state: State<AppState>) -> Result<(), String> {
+    state
+        .db
+        .clear_usage_stats_for_providers(&providers)
+        .map_err(|e| format!("failed to clear usage stats: {e}"))
+}
+
+#[tauri::command]
 pub fn get_provider_snapshots(state: State<AppState>) -> Result<Vec<ProviderSnapshot>, String> {
     ProviderSnapshotService::new(&state.db).list()
 }

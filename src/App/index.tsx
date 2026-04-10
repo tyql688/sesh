@@ -358,9 +358,15 @@ export default function App() {
           <Show when={activeView() === "blocked"}>
             <BlockedView onRefreshTree={sync.refreshTree} />
           </Show>
-          <Show when={activeView() === "usage"}>
+          <div
+            style={{
+              display: activeView() === "usage" ? "flex" : "none",
+              flex: "1",
+              "min-width": "0",
+            }}
+          >
             <UsagePanel />
-          </Show>
+          </div>
           <Show when={showExplorer()}>
             <EditorArea
               tabs={openTabs()}

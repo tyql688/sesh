@@ -75,6 +75,8 @@ export function IndexSettings(props: { onIndexChanged: () => void }) {
           {t("settings.clearIndex")}
         </button>
       </div>
+
+      <div class="settings-help-text">{t("settings.rebuildIndexNote")}</div>
     </div>
   );
 }

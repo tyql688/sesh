@@ -151,6 +151,7 @@ export interface ModelCost {
 
 export interface ProjectCost {
   project: string;
+  project_path: string;
   provider: string;
   sessions: number;
   turns: number;
@@ -161,6 +162,7 @@ export interface ProjectCost {
 export interface SessionCostRow {
   id: string;
   project: string;
+  project_path: string;
   provider: string;
   model: string;
   updated_at: number;
