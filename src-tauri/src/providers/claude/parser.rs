@@ -540,7 +540,9 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
         }
     }
 
-    // Attach token usage + dedup hash to the last assistant/tool message of this turn
+    // Attach token usage + dedup hash to the last assistant/tool message of this turn.
+    // When the turn produced only thinking (System) or empty content, insert a
+    // minimal placeholder so the usage is never silently dropped.
     if let Some(usage) = turn_usage {
         let hash = unique_hash_from_entry(entry);
         if let Some(last_msg) = state.messages[turn_start..]
@@ -550,6 +552,25 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
         {
             last_msg.token_usage = Some(usage);
             last_msg.usage_hash = hash;
+        } else {
+            // timestamp/model may have been moved into earlier messages;
+            // retrieve from the last System message or fall back to None.
+            let fallback_ts = state.messages[turn_start..]
+                .last()
+                .and_then(|m| m.timestamp.clone());
+            let fallback_model = state.messages[turn_start..]
+                .last()
+                .and_then(|m| m.model.clone());
+            state.messages.push(Message {
+                role: MessageRole::Assistant,
+                content: String::new(),
+                timestamp: fallback_ts,
+                tool_name: None,
+                tool_input: None,
+                token_usage: Some(usage),
+                model: fallback_model,
+                usage_hash: hash,
+            });
         }
     }
 }

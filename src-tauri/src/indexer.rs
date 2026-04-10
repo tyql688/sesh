@@ -77,8 +77,20 @@ impl Indexer {
                 .sync_provider_snapshot(&provider_kind, &sessions, aggressive)
                 .map_err(|e| format!("failed to sync {} provider: {}", provider_kind.key(), e))?;
 
-            let mut seen_hashes: HashSet<String> = HashSet::new();
+            // Process parent sessions before subagents so that cross-file
+            // dedup attributes overlapping usage entries to the parent.
+            let mut parents: Vec<&ParsedSession> = Vec::new();
+            let mut children: Vec<&ParsedSession> = Vec::new();
             for parsed in &sessions {
+                if parsed.meta.parent_id.is_none() {
+                    parents.push(parsed);
+                } else {
+                    children.push(parsed);
+                }
+            }
+
+            let mut seen_hashes: HashSet<String> = HashSet::new();
+            for parsed in parents.iter().chain(children.iter()) {
                 let stat_rows = compute_token_stats_dedup(
                     parsed,
                     pricing_catalog.as_ref(),
