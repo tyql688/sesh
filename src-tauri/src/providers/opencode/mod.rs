@@ -1,6 +1,6 @@
 mod parser;
 
-use parser::{extract_tokens, map_opencode_tool_name, ms_to_rfc3339};
+use parser::{extract_tokens, ms_to_rfc3339};
 
 use std::path::PathBuf;
 
@@ -11,6 +11,9 @@ use crate::provider::{
     ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
 };
 use crate::provider_utils::{session_title, truncate_to_bytes, FTS_CONTENT_LIMIT};
+use crate::tool_metadata::{
+    build_tool_metadata, enrich_tool_metadata, ToolCallFacts, ToolResultFacts,
+};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -40,6 +43,31 @@ impl crate::provider::ProviderDescriptor for Descriptor {
     fn watch_strategy(&self) -> crate::provider::WatchStrategy {
         crate::provider::WatchStrategy::Poll
     }
+}
+
+fn opencode_tool_input_value(state: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+    let input = state?.get("input")?;
+    if let Some(text) = input.as_str() {
+        serde_json::from_str(text)
+            .ok()
+            .or_else(|| Some(serde_json::json!({ "input": text })))
+    } else {
+        Some(input.clone())
+    }
+}
+
+fn opencode_tool_result_value(
+    state: Option<&serde_json::Value>,
+    output: &str,
+) -> Option<serde_json::Value> {
+    let state = state?;
+    let mut result = state.clone();
+    if let Some(obj) = result.as_object_mut() {
+        if !output.is_empty() && !obj.contains_key("output") {
+            obj.insert("output".to_string(), serde_json::json!(output));
+        }
+    }
+    Some(result)
 }
 
 pub struct OpenCodeProvider {
@@ -470,9 +498,24 @@ impl SessionProvider for OpenCodeProvider {
                                     .and_then(|s| s.as_str())
                                     .unwrap_or("");
 
+                                let input_value = opencode_tool_input_value(state);
+                                let mut metadata = build_tool_metadata(ToolCallFacts {
+                                    provider: Provider::OpenCode,
+                                    raw_name: &tool_name,
+                                    input: input_value.as_ref(),
+                                    call_id: part
+                                        .get("callID")
+                                        .or_else(|| part.get("id"))
+                                        .and_then(|v| v.as_str()),
+                                    assistant_id: Some(msg_id.as_str()),
+                                });
+
                                 // Tool input
-                                let tool_input =
-                                    state.and_then(|s| s.get("input")).map(|i| i.to_string());
+                                let tool_input = state.and_then(|s| s.get("input")).map(|i| {
+                                    i.as_str()
+                                        .map(str::to_string)
+                                        .unwrap_or_else(|| i.to_string())
+                                });
 
                                 // Tool output
                                 let output = match status {
@@ -489,6 +532,17 @@ impl SessionProvider for OpenCodeProvider {
                                     _ => String::new(),
                                 };
 
+                                let result_value = opencode_tool_result_value(state, &output);
+                                enrich_tool_metadata(
+                                    &mut metadata,
+                                    ToolResultFacts {
+                                        raw_result: result_value.as_ref(),
+                                        is_error: Some(status == "error"),
+                                        status: (!status.is_empty()).then_some(status),
+                                        artifact_path: None,
+                                    },
+                                );
+
                                 let tool_ts = state
                                     .and_then(|s| s.get("time"))
                                     .and_then(|t| t.get("start"))
@@ -501,12 +555,12 @@ impl SessionProvider for OpenCodeProvider {
                                     role: MessageRole::Tool,
                                     content: output,
                                     timestamp: tool_ts,
-                                    tool_name: Some(map_opencode_tool_name(&tool_name)),
+                                    tool_name: Some(metadata.canonical_name.clone()),
                                     tool_input,
                                     token_usage: None,
                                     model: None,
                                     usage_hash: None,
-                                    tool_metadata: None,
+                                    tool_metadata: Some(metadata),
                                 });
                             }
                             // Skip step-start, step-finish, reasoning, snapshot, patch, etc.

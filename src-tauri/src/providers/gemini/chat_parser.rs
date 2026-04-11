@@ -2,16 +2,61 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use serde_json::{json, Value};
+
 use crate::models::{Message, MessageRole, Provider, SessionMeta, TokenUsage};
 use crate::provider::ParsedSession;
 use crate::provider_utils::{
     is_system_content, parse_rfc3339_timestamp, project_name_from_path, session_title,
     truncate_to_bytes, FTS_CONTENT_LIMIT, NO_PROJECT,
 };
+use crate::tool_metadata::{
+    build_tool_metadata, enrich_tool_metadata, ToolCallFacts, ToolResultFacts,
+};
 
 use super::images::strip_at_image_refs;
-use super::tools::{map_gemini_tool_name, normalize_gemini_message};
+use super::tools::normalize_gemini_message;
 use super::{ChatSession, GeminiProvider};
+
+fn gemini_tool_result_value(tc: &Value, result_text: &str) -> Option<Value> {
+    let response = tc
+        .get("result")
+        .and_then(|r| r.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|item| item.get("functionResponse"))
+        .and_then(|fr| fr.get("response"));
+
+    let mut result = response.cloned().unwrap_or_else(|| json!({}));
+    if !result.is_object() {
+        result = json!({ "output": result });
+    }
+
+    if let Some(obj) = result.as_object_mut() {
+        if !result_text.is_empty() && !obj.contains_key("output") {
+            obj.insert("output".to_string(), json!(result_text));
+        }
+        if let Some(display) = tc.get("resultDisplay") {
+            obj.insert("resultDisplay".to_string(), display.clone());
+        }
+    }
+
+    if result.as_object().is_some_and(|obj| obj.is_empty()) {
+        None
+    } else {
+        Some(result)
+    }
+}
+
+fn gemini_tool_status(tc: &Value) -> Option<&str> {
+    tc.get("status").and_then(|v| v.as_str())
+}
+
+fn gemini_tool_is_error(tc: &Value) -> Option<bool> {
+    tc.get("isError")
+        .and_then(|v| v.as_bool())
+        .or_else(|| tc.get("error").map(|v| !v.is_null()))
+        .or_else(|| gemini_tool_status(tc).map(|status| matches!(status, "error" | "failed")))
+}
 
 impl GeminiProvider {
     /// Parse a chat JSON file and return all sessions found (main + extracted subagent children).
@@ -233,7 +278,22 @@ impl GeminiProvider {
                         .and_then(|n| n.as_str())
                         .or_else(|| tc.get("name").and_then(|n| n.as_str()))
                         .unwrap_or("tool");
-                    let name = map_gemini_tool_name(display_name).to_string();
+                    let raw_name = tc
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or(display_name);
+                    let metadata_input = tc.get("args");
+                    let mut metadata = build_tool_metadata(ToolCallFacts {
+                        provider: Provider::Gemini,
+                        raw_name,
+                        input: metadata_input,
+                        call_id: tc
+                            .get("id")
+                            .or_else(|| tc.get("callId"))
+                            .and_then(|v| v.as_str()),
+                        assistant_id: msg.id.as_deref(),
+                    });
+                    let name = metadata.canonical_name.clone();
 
                     let is_agent = name == "Agent";
 
@@ -289,6 +349,17 @@ impl GeminiProvider {
                         result_text.clone()
                     };
 
+                    let result_value = gemini_tool_result_value(tc, &result_text);
+                    enrich_tool_metadata(
+                        &mut metadata,
+                        ToolResultFacts {
+                            raw_result: result_value.as_ref(),
+                            is_error: gemini_tool_is_error(tc),
+                            status: gemini_tool_status(tc),
+                            artifact_path: None,
+                        },
+                    );
+
                     // Use tool-level timestamp if available, fall back to parent message
                     let tool_timestamp = tc
                         .get("timestamp")
@@ -309,7 +380,7 @@ impl GeminiProvider {
                         },
                         model: None,
                         usage_hash: None,
-                        tool_metadata: None,
+                        tool_metadata: Some(metadata),
                     });
                 }
             }

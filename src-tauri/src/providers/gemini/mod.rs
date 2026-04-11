@@ -63,6 +63,7 @@ pub(crate) struct ChatSession {
 
 #[derive(Deserialize)]
 pub(crate) struct ChatMessage {
+    pub id: Option<String>,
     pub timestamp: Option<String>,
     #[serde(rename = "type")]
     pub msg_type: Option<String>,

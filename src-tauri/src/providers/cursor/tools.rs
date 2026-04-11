@@ -266,28 +266,6 @@ pub fn strip_redacted(text: &str) -> String {
     lines.join("\n")
 }
 
-/// Map Cursor tool names to canonical display names.
-pub fn map_cursor_tool_name(name: &str) -> &str {
-    match name {
-        "Shell" | "shell" => "Bash",
-        "Write" | "write" => "Write",
-        "Read" | "read" | "ReadFile" => "Read",
-        "StrReplace" | "str_replace" => "Edit",
-        "ApplyPatch" => "Edit",
-        "Glob" | "glob" => "Glob",
-        "Grep" | "grep" | "rg" => "Grep",
-        "Delete" | "delete" => "Delete",
-        "ReadLints" => "Lint",
-        "Task" | "Subagent" => "Agent",
-        "SemanticSearch" => "Search",
-        "EditNotebook" => "Edit",
-        "WebSearch" => "Search",
-        "WebFetch" => "Read",
-        "TodoWrite" => "Plan",
-        _ => name,
-    }
-}
-
 /// Remap tool args to match canonical format for frontend display.
 pub fn remap_tool_args(tool_name: &str, args: &Value) -> Option<String> {
     // ApplyPatch input is raw patch text (a string), not a JSON object.

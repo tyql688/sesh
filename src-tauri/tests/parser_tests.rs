@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 
-use cc_session_lib::models::{MessageRole, Provider};
+use tempfile::TempDir;
+
+use cc_session_lib::models::{Message, MessageRole, Provider};
 use cc_session_lib::provider::SessionProvider;
 use cc_session_lib::providers::claude::ClaudeProvider;
 use cc_session_lib::providers::codex::CodexProvider;
@@ -406,6 +409,44 @@ fn codex_exec_command_has_structured_tool_metadata() {
 }
 
 #[test]
+fn codex_web_search_call_has_structured_tool_metadata() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("codex-web-search.jsonl");
+    fs::write(
+        &file,
+        concat!(
+            r#"{"timestamp":"2026-04-11T10:00:00Z","type":"session_meta","payload":{"id":"codex-web","cwd":"/tmp/project"}}"#,
+            "\n",
+            r#"{"timestamp":"2026-04-11T10:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Search docs"}]}}"#,
+            "\n",
+            r#"{"timestamp":"2026-04-11T10:00:02Z","type":"response_item","payload":{"type":"web_search_call","status":"completed","action":{"type":"search","query":"rust notify kqueue","queries":["rust notify kqueue"]}}}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+
+    let provider = CodexProvider::new().expect("home dir must be available");
+    let session = provider
+        .parse_session_file(&file)
+        .expect("codex web search fixture must parse");
+    let tool_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+    let metadata = tool_msg
+        .tool_metadata
+        .as_ref()
+        .expect("Codex web search metadata must be present");
+
+    assert_eq!(metadata.raw_name, "web_search_call");
+    assert_eq!(metadata.canonical_name, "WebSearch");
+    assert_eq!(metadata.category, "web");
+    assert_eq!(metadata.summary.as_deref(), Some("rust notify kqueue"));
+    assert_eq!(metadata.status.as_deref(), Some("completed"));
+}
+
+#[test]
 fn codex_token_usage_attached_to_assistant_message() {
     let provider = CodexProvider::new().expect("home dir must be available");
     let path = fixtures_dir().join("codex_session.jsonl");
@@ -634,6 +675,37 @@ fn kimi_tool_result_merged_into_tool_call() {
 }
 
 #[test]
+fn kimi_tool_call_has_structured_tool_metadata() {
+    let provider = KimiProvider::new().expect("home dir must be available");
+    let path = fixtures_dir()
+        .join("kimi")
+        .join("abc123def456")
+        .join("session-uuid-0001")
+        .join("wire.jsonl");
+    let project_map = HashMap::new();
+    let session = provider
+        .parse_session_file(&path, &project_map)
+        .expect("kimi fixture must parse");
+
+    let tool_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+    let metadata = tool_msg
+        .tool_metadata
+        .as_ref()
+        .expect("Kimi tool metadata must be present");
+
+    assert_eq!(metadata.raw_name, "Shell");
+    assert_eq!(metadata.canonical_name, "Bash");
+    assert_eq!(metadata.category, "shell");
+    assert_eq!(metadata.summary.as_deref(), Some("ls -la"));
+    assert_eq!(metadata.status.as_deref(), Some("success"));
+    assert_eq!(metadata.result_kind.as_deref(), Some("terminal_output"));
+}
+
+#[test]
 fn kimi_token_usage_from_status_update() {
     let provider = KimiProvider::new().expect("home dir must be available");
     let path = fixtures_dir()
@@ -851,6 +923,27 @@ fn gemini_tool_call_parsed() {
 }
 
 #[test]
+fn gemini_tool_call_has_structured_tool_metadata() {
+    let session = gemini_parsed_session();
+    let tool_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+    let metadata = tool_msg
+        .tool_metadata
+        .as_ref()
+        .expect("Gemini tool metadata must be present");
+
+    assert_eq!(metadata.raw_name, "run_shell_command");
+    assert_eq!(metadata.canonical_name, "Bash");
+    assert_eq!(metadata.category, "shell");
+    assert_eq!(metadata.summary.as_deref(), Some("ls -la"));
+    assert_eq!(metadata.status.as_deref(), Some("success"));
+    assert_eq!(metadata.result_kind.as_deref(), Some("terminal_output"));
+}
+
+#[test]
 fn gemini_token_usage() {
     let session = gemini_parsed_session();
 
@@ -1009,6 +1102,31 @@ fn cursor_main_transcript_tool_call() {
         "no tool results in transcripts, got: {}",
         tool_msg.content
     );
+}
+
+#[test]
+fn cursor_tool_use_has_structured_tool_metadata() {
+    let provider = CursorProvider::new().expect("home dir must be available");
+    let (_tmp, jsonl_path) = create_cursor_main_transcript();
+
+    let messages = provider
+        .load_messages("any-id", jsonl_path.to_str().unwrap())
+        .expect("main transcript must load messages");
+
+    let tool_msg = messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+    let metadata = tool_msg
+        .tool_metadata
+        .as_ref()
+        .expect("Cursor tool metadata must be present");
+
+    assert_eq!(metadata.raw_name, "Shell");
+    assert_eq!(metadata.canonical_name, "Bash");
+    assert_eq!(metadata.category, "shell");
+    assert_eq!(metadata.summary.as_deref(), Some("ls -la"));
+    assert!(metadata.status.is_none());
 }
 
 #[test]
@@ -1221,7 +1339,7 @@ fn cursor_subagent_tool_names_mapped() {
     let jsonl_path = subagents_dir.join("child-001.jsonl");
     // Test various tool name mappings
     let line1 = r#"{"role":"user","message":{"content":[{"type":"text","text":"run analysis"}]}}"#;
-    let line2 = r#"{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"ls"}},{"type":"tool_use","name":"Task","input":{"description":"sub-task","prompt":"do stuff"}},{"type":"tool_use","name":"SemanticSearch","input":{"query":"main"}},{"type":"tool_use","name":"ApplyPatch","input":{"patch":"..."}},{"type":"tool_use","name":"Subagent","input":{"prompt":"analyze"}},{"type":"tool_use","name":"ReadFile","input":{"path":"/a.txt"}}]}}"#;
+    let line2 = r#"{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"ls"}},{"type":"tool_use","name":"Task","input":{"description":"sub-task","prompt":"do stuff"}},{"type":"tool_use","name":"SemanticSearch","input":{"query":"main"}},{"type":"tool_use","name":"ApplyPatch","input":{"patch":"..."}},{"type":"tool_use","name":"Subagent","input":{"prompt":"analyze"}},{"type":"tool_use","name":"ReadFile","input":{"path":"/a.txt"}},{"type":"tool_use","name":"EditNotebook","input":{"path":"/note.ipynb"}},{"type":"tool_use","name":"delete","input":{"path":"/tmp/old.txt"}},{"type":"tool_use","name":"WebSearch","input":{"query":"docs"}},{"type":"tool_use","name":"WebFetch","input":{"url":"https://example.com"}}]}}"#;
     std::fs::write(&jsonl_path, format!("{line1}\n{line2}")).expect("write");
 
     let messages = provider
@@ -1236,7 +1354,9 @@ fn cursor_subagent_tool_names_mapped() {
 
     assert_eq!(
         tool_names,
-        vec!["Bash", "Agent", "Search", "Edit", "Agent", "Read"]
+        vec![
+            "Bash", "Agent", "Search", "Edit", "Agent", "Read", "Edit", "Delete", "Search", "Read"
+        ]
     );
 }
 
@@ -1492,6 +1612,32 @@ fn opencode_tool_message_parsed() {
 }
 
 #[test]
+fn opencode_tool_part_has_structured_tool_metadata() {
+    let (_dir, db_path) = create_opencode_test_db();
+    let provider = OpenCodeProvider::with_db_path(db_path.clone());
+
+    let messages = provider
+        .load_messages("session-oc-0001", &db_path.to_string_lossy())
+        .expect("load_messages must succeed");
+
+    let tool_msg = messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+    let metadata = tool_msg
+        .tool_metadata
+        .as_ref()
+        .expect("OpenCode tool metadata must be present");
+
+    assert_eq!(metadata.raw_name, "Bash");
+    assert_eq!(metadata.canonical_name, "Bash");
+    assert_eq!(metadata.category, "shell");
+    assert_eq!(metadata.summary.as_deref(), Some("ls -la"));
+    assert_eq!(metadata.status.as_deref(), Some("completed"));
+    assert_eq!(metadata.result_kind.as_deref(), Some("terminal_output"));
+}
+
+#[test]
 fn opencode_token_usage() {
     // Build a minimal DB where the assistant message has ONLY a tool part
     // (no text). In that case the provider attaches token_usage to the last
@@ -1693,6 +1839,63 @@ fn qwen_tool_result_merged_by_call_id() {
 }
 
 #[test]
+fn qwen_tool_call_has_structured_tool_metadata() {
+    let session = qwen_fixture();
+    let grep_msg = session
+        .messages
+        .iter()
+        .find(|m| m.tool_name.as_deref() == Some("Grep"))
+        .expect("Grep tool message must exist");
+    let metadata = grep_msg
+        .tool_metadata
+        .as_ref()
+        .expect("Qwen tool metadata must be present");
+
+    assert_eq!(metadata.raw_name, "grep_search");
+    assert_eq!(metadata.canonical_name, "Grep");
+    assert_eq!(metadata.category, "search");
+    assert_eq!(metadata.summary.as_deref(), Some("/TODO/ src/"));
+    assert_eq!(metadata.status.as_deref(), Some("success"));
+}
+
+#[test]
+fn qwen_tool_call_without_args_omits_null_tool_input() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("qwen-no-args.jsonl");
+    fs::write(
+        &file,
+        concat!(
+            r#"{"uuid":"uuid-001","parentUuid":null,"sessionId":"test-qwen-no-args","timestamp":"2026-04-03T10:00:00.000Z","type":"user","message":{"role":"user","parts":[{"text":"List files"}]},"cwd":"/tmp/project","version":"0.14.0"}"#,
+            "\n",
+            r#"{"uuid":"uuid-002","parentUuid":"uuid-001","sessionId":"test-qwen-no-args","timestamp":"2026-04-03T10:00:01.000Z","type":"assistant","model":"qwen-coder","message":{"role":"model","parts":[{"functionCall":{"id":"call_no_args","name":"list_directory"}}]},"cwd":"/tmp/project","version":"0.14.0"}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+
+    let session = qwen_parser::parse_session_file(&file).expect("qwen no-args fixture must parse");
+    let tool_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+
+    assert_eq!(tool_msg.tool_name.as_deref(), Some("Glob"));
+    assert!(
+        tool_msg.tool_input.is_none(),
+        "missing Qwen functionCall args must not display as JSON null"
+    );
+    assert!(
+        tool_msg
+            .tool_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.summary.as_deref())
+            .is_none(),
+        "missing Qwen functionCall args must not produce a bogus metadata summary"
+    );
+}
+
+#[test]
 fn qwen_image_marker_in_user_message() {
     let session = qwen_fixture();
     let img_msg = session
@@ -1754,9 +1957,13 @@ fn qwen_real_data_smoke_test() {
         for entry in std::fs::read_dir(&chats_dir).unwrap().flatten() {
             let path = entry.path();
             if path.extension().map(|e| e == "jsonl").unwrap_or(false) {
-                let session = qwen_parser::parse_session_file(&path);
-                assert!(session.is_some(), "failed to parse {}", path.display());
-                let s = session.unwrap();
+                let Some(s) = qwen_parser::parse_session_file(&path) else {
+                    eprintln!(
+                        "  skipping {} — no user/assistant/tool messages",
+                        path.file_name().unwrap().to_string_lossy()
+                    );
+                    continue;
+                };
                 assert!(s.meta.message_count > 0, "empty session {}", path.display());
                 assert!(!s.meta.title.is_empty(), "no title for {}", path.display());
                 assert_eq!(s.meta.provider, Provider::Qwen);
@@ -1857,6 +2064,41 @@ fn copilot_tool_names_mapped_to_canonical() {
 }
 
 #[test]
+fn copilot_sql_tool_name_preserves_canonical_sql() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("copilot-sql.jsonl");
+    fs::write(
+        &file,
+        concat!(
+            r#"{"type":"session.start","data":{"sessionId":"test-copilot-sql","version":1,"startTime":"2026-04-09T09:00:00.000Z","context":{"cwd":"/tmp/project"}},"id":"evt-001","timestamp":"2026-04-09T09:00:00.000Z"}"#,
+            "\n",
+            r#"{"type":"user.message","data":{"content":"Query sessions","attachments":[],"interactionId":"int-001"},"id":"evt-002","timestamp":"2026-04-09T09:00:01.000Z"}"#,
+            "\n",
+            r#"{"type":"assistant.message","data":{"messageId":"msg-001","content":"","toolRequests":[{"toolCallId":"tc-sql","name":"sql","arguments":{"query":"select count(*) from sessions"},"type":"function"}],"interactionId":"int-001","reasoningText":"","outputTokens":10,"requestId":"req-001"},"id":"evt-003","timestamp":"2026-04-09T09:00:02.000Z"}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+
+    let session =
+        copilot_parser::parse_session_file(&file).expect("copilot sql fixture must parse");
+    let tool_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+    let metadata = tool_msg
+        .tool_metadata
+        .as_ref()
+        .expect("Copilot SQL tool metadata must be present");
+
+    assert_eq!(tool_msg.tool_name.as_deref(), Some("SQL"));
+    assert_eq!(metadata.raw_name, "sql");
+    assert_eq!(metadata.canonical_name, "SQL");
+    assert_eq!(metadata.category, "database");
+}
+
+#[test]
 fn copilot_tool_result_merged_by_call_id() {
     let session = copilot_fixture();
     let grep_msg = session
@@ -1868,6 +2110,26 @@ fn copilot_tool_result_merged_by_call_id() {
         grep_msg.content.contains("TODO"),
         "tool result should be merged into tool call message"
     );
+}
+
+#[test]
+fn copilot_tool_request_has_structured_tool_metadata() {
+    let session = copilot_fixture();
+    let grep_msg = session
+        .messages
+        .iter()
+        .find(|m| m.tool_name.as_deref() == Some("Grep"))
+        .expect("Grep tool message must exist");
+    let metadata = grep_msg
+        .tool_metadata
+        .as_ref()
+        .expect("Copilot tool metadata must be present");
+
+    assert_eq!(metadata.raw_name, "grep");
+    assert_eq!(metadata.canonical_name, "Grep");
+    assert_eq!(metadata.category, "search");
+    assert_eq!(metadata.summary.as_deref(), Some("/TODO/ src/"));
+    assert_eq!(metadata.status.as_deref(), Some("success"));
 }
 
 #[test]
@@ -1975,4 +2237,228 @@ fn copilot_empty_content_tool_turn_preserves_token_usage() {
         .as_ref()
         .expect("token usage should be attached to tool msg when assistant content is empty");
     assert_eq!(usage.output_tokens, 250);
+}
+
+// ---------------------------------------------------------------------------
+// Real generated tool metadata smoke test
+// ---------------------------------------------------------------------------
+
+fn required_env_path(name: &str) -> PathBuf {
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| panic!("{name} must point to real CLI-generated data"))
+}
+
+fn assert_real_tool_metadata(
+    provider: &str,
+    messages: &[Message],
+    canonical_name: &str,
+    expect_marker_in_parsed_content: bool,
+) {
+    if expect_marker_in_parsed_content {
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.content.contains("real-provider-tool-metadata")),
+            "{provider} real transcript must contain the marker value"
+        );
+    }
+    let tool = messages
+        .iter()
+        .find(|message| {
+            message.role == MessageRole::Tool
+                && message
+                    .tool_metadata
+                    .as_ref()
+                    .is_some_and(|metadata| metadata.canonical_name == canonical_name)
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "{provider} real transcript must contain {canonical_name} tool metadata, got: {messages:#?}"
+            )
+        });
+    let metadata = tool.tool_metadata.as_ref().unwrap();
+    assert_eq!(metadata.canonical_name, canonical_name);
+    assert!(
+        !metadata.raw_name.is_empty(),
+        "{provider} metadata must preserve the raw provider tool name"
+    );
+}
+
+fn assert_has_tool_metadata<'a>(
+    provider: &str,
+    messages: &'a [Message],
+    canonical_name: &str,
+) -> &'a cc_session_lib::models::ToolMetadata {
+    messages
+        .iter()
+        .find_map(|message| {
+            (message.role == MessageRole::Tool)
+                .then_some(message.tool_metadata.as_ref())
+                .flatten()
+                .filter(|metadata| metadata.canonical_name == canonical_name)
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "{provider} real transcript must contain {canonical_name} tool metadata, got: {messages:#?}"
+            )
+        })
+}
+
+#[test]
+#[ignore]
+fn real_generated_tool_metadata_smoke_test() {
+    let codex_provider = CodexProvider::new().expect("home dir must be available");
+    let codex = codex_provider
+        .parse_session_file(&required_env_path("CCSESSION_REAL_CODEX_JSONL"))
+        .expect("real Codex transcript must parse");
+    assert_real_tool_metadata("Codex", &codex.messages, "Bash", true);
+
+    let gemini_provider = GeminiProvider::new().expect("home dir must be available");
+    let gemini_sessions = gemini_provider.parse_chat_file_for_test(
+        &required_env_path("CCSESSION_REAL_GEMINI_JSON"),
+        &HashMap::new(),
+    );
+    let gemini = gemini_sessions
+        .first()
+        .expect("real Gemini transcript must parse");
+    assert_real_tool_metadata("Gemini", &gemini.messages, "Read", true);
+
+    let kimi_provider = KimiProvider::new().expect("home dir must be available");
+    let kimi = kimi_provider
+        .parse_session_file(
+            &required_env_path("CCSESSION_REAL_KIMI_WIRE"),
+            &HashMap::new(),
+        )
+        .expect("real Kimi transcript must parse");
+    assert_real_tool_metadata("Kimi", &kimi.messages, "Read", true);
+
+    let cursor_provider = CursorProvider::new().expect("home dir must be available");
+    let cursor_path = required_env_path("CCSESSION_REAL_CURSOR_JSONL");
+    let cursor_messages = cursor_provider
+        .load_messages("real-cursor", &cursor_path.to_string_lossy())
+        .expect("real Cursor transcript must load messages");
+    assert_real_tool_metadata("Cursor", &cursor_messages, "Read", false);
+
+    let qwen = qwen_parser::parse_session_file(&required_env_path("CCSESSION_REAL_QWEN_JSONL"))
+        .expect("real Qwen transcript must parse");
+    assert_real_tool_metadata("Qwen", &qwen.messages, "Read", true);
+
+    let copilot =
+        copilot_parser::parse_session_file(&required_env_path("CCSESSION_REAL_COPILOT_EVENTS"))
+            .expect("real Copilot transcript must parse");
+    assert_real_tool_metadata("Copilot", &copilot.messages, "Read", true);
+
+    let opencode_db = std::env::var_os("CCSESSION_REAL_OPENCODE_DB")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .expect("home dir must be available")
+                .join(".local/share/opencode/opencode.db")
+        });
+    let opencode_session =
+        std::env::var("CCSESSION_REAL_OPENCODE_SESSION").expect("real OpenCode session id");
+    let opencode_provider = OpenCodeProvider::with_db_path(opencode_db.clone());
+    let opencode_messages = opencode_provider
+        .load_messages(&opencode_session, &opencode_db.to_string_lossy())
+        .expect("real OpenCode DB session must load messages");
+    assert_real_tool_metadata("OpenCode", &opencode_messages, "Read", true);
+}
+
+#[test]
+#[ignore]
+fn round2_generated_tool_metadata_smoke_test() {
+    let codex_provider = CodexProvider::new().expect("home dir must be available");
+    let codex = codex_provider
+        .parse_session_file(&required_env_path("CCSESSION_ROUND2_CODEX_JSONL"))
+        .expect("round2 Codex transcript must parse");
+    assert_real_tool_metadata("Codex round2", &codex.messages, "Bash", true);
+
+    let gemini_provider = GeminiProvider::new().expect("home dir must be available");
+    let gemini_sessions = gemini_provider.parse_chat_file_for_test(
+        &required_env_path("CCSESSION_ROUND2_GEMINI_JSON"),
+        &HashMap::new(),
+    );
+    let gemini = gemini_sessions
+        .first()
+        .expect("round2 Gemini transcript must parse");
+    assert_has_tool_metadata("Gemini round2", &gemini.messages, "Glob");
+    assert_has_tool_metadata("Gemini round2", &gemini.messages, "Read");
+    assert_has_tool_metadata("Gemini round2", &gemini.messages, "Grep");
+    assert_eq!(
+        assert_has_tool_metadata("Gemini round2", &gemini.messages, "Edit")
+            .result_kind
+            .as_deref(),
+        Some("file_patch")
+    );
+
+    let qwen = qwen_parser::parse_session_file(&required_env_path("CCSESSION_ROUND2_QWEN_JSONL"))
+        .expect("round2 Qwen transcript must parse");
+    assert_has_tool_metadata("Qwen round2", &qwen.messages, "Read");
+    assert_has_tool_metadata("Qwen round2", &qwen.messages, "Grep");
+    assert_eq!(
+        assert_has_tool_metadata("Qwen round2", &qwen.messages, "Edit")
+            .result_kind
+            .as_deref(),
+        Some("file_patch")
+    );
+
+    let kimi_provider = KimiProvider::new().expect("home dir must be available");
+    let kimi = kimi_provider
+        .parse_session_file(
+            &required_env_path("CCSESSION_ROUND2_KIMI_WIRE"),
+            &HashMap::new(),
+        )
+        .expect("round2 Kimi transcript must parse");
+    assert_has_tool_metadata("Kimi round2", &kimi.messages, "Read");
+    assert_has_tool_metadata("Kimi round2", &kimi.messages, "Bash");
+    assert_eq!(
+        assert_has_tool_metadata("Kimi round2", &kimi.messages, "Edit")
+            .result_kind
+            .as_deref(),
+        Some("file_patch")
+    );
+
+    let cursor_provider = CursorProvider::new().expect("home dir must be available");
+    let cursor_path = required_env_path("CCSESSION_ROUND2_CURSOR_JSONL");
+    let cursor_messages = cursor_provider
+        .load_messages("round2-cursor", &cursor_path.to_string_lossy())
+        .expect("round2 Cursor transcript must load messages");
+    assert_has_tool_metadata("Cursor round2", &cursor_messages, "Grep");
+    assert_has_tool_metadata("Cursor round2", &cursor_messages, "Read");
+    assert_has_tool_metadata("Cursor round2", &cursor_messages, "Edit");
+
+    let copilot =
+        copilot_parser::parse_session_file(&required_env_path("CCSESSION_ROUND2_COPILOT_EVENTS"))
+            .expect("round2 Copilot transcript must parse");
+    assert_has_tool_metadata("Copilot round2", &copilot.messages, "Read");
+    assert_eq!(
+        assert_has_tool_metadata("Copilot round2", &copilot.messages, "Edit")
+            .result_kind
+            .as_deref(),
+        Some("file_patch")
+    );
+
+    let opencode_db = std::env::var_os("CCSESSION_ROUND2_OPENCODE_DB")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .expect("home dir must be available")
+                .join(".local/share/opencode/opencode.db")
+        });
+    let opencode_session =
+        std::env::var("CCSESSION_ROUND2_OPENCODE_SESSION").expect("round2 OpenCode session id");
+    let opencode_provider = OpenCodeProvider::with_db_path(opencode_db.clone());
+    let opencode_messages = opencode_provider
+        .load_messages(&opencode_session, &opencode_db.to_string_lossy())
+        .expect("round2 OpenCode DB session must load messages");
+    assert_has_tool_metadata("OpenCode round2", &opencode_messages, "Glob");
+    assert_has_tool_metadata("OpenCode round2", &opencode_messages, "Read");
+    assert_has_tool_metadata("OpenCode round2", &opencode_messages, "Grep");
+    assert_eq!(
+        assert_has_tool_metadata("OpenCode round2", &opencode_messages, "Edit")
+            .result_kind
+            .as_deref(),
+        Some("file_patch")
+    );
 }

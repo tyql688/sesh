@@ -31,20 +31,44 @@ pub fn parse_mcp_tool_name(name: &str) -> Option<McpToolMetadata> {
     })
 }
 
-pub fn canonical_tool_name(_provider: Provider, name: &str) -> String {
-    match name {
-        "Shell" | "exec_command" | "run_in_terminal" => "Bash",
-        "ReadFile" | "read_file" | "view" => "Read",
-        "WriteFile" | "write_file" => "Write",
-        "ApplyPatch" | "Apply_patch" | "MultiEdit" | "str_replace_editor" | "apply_patch" => "Edit",
-        "Search" | "SemanticSearch" | "grep_search" => "Grep",
-        "file_search" => "Glob",
-        "Task" | "Subagent" | "spawn_agent" | "wait_agent" | "send_input" | "close_agent" => {
-            "Agent"
+pub fn canonical_tool_name(provider: Provider, name: &str) -> String {
+    if provider == Provider::Cursor {
+        match name {
+            "SemanticSearch" | "WebSearch" => return "Search".to_string(),
+            "WebFetch" => return "Read".to_string(),
+            _ => {}
         }
-        "update_plan" => "Plan",
-        "request_user_input" => "AskUserQuestion",
-        "write_stdin" => "Bash",
+    }
+    if provider == Provider::Gemini && (name.contains("Agent") || name.contains("agent")) {
+        return "Agent".to_string();
+    }
+
+    match name {
+        "Shell" | "shell" | "bash" | "exec_command" | "shell_command" | "run_shell_command"
+        | "run_in_terminal" | "write_stdin" => "Bash",
+        "Read" | "read" | "ReadFile" | "read_file" | "view" => "Read",
+        "Write" | "write" | "WriteFile" | "write_file" | "create" => "Write",
+        "Edit" | "edit" | "edit_file" | "replace" | "StrReplace" | "str_replace"
+        | "StrReplaceFile" | "ApplyPatch" | "Apply_patch" | "MultiEdit" | "str_replace_editor"
+        | "apply_patch" | "EditNotebook" => "Edit",
+        "Delete" | "delete" => "Delete",
+        "Grep"
+        | "grep"
+        | "rg"
+        | "Search"
+        | "SemanticSearch"
+        | "grep_search"
+        | "search_file_content" => "Grep",
+        "Glob" | "glob" | "file_search" | "ReadFolder" | "list_directory" => "Glob",
+        "Task" | "task" | "Subagent" | "agent" | "read_agent" | "spawn_agent" | "wait_agent"
+        | "send_input" | "close_agent" => "Agent",
+        "update_plan" | "TodoWrite" | "todo" | "Enter Plan Mode" | "enter_plan_mode"
+        | "exit_plan_mode" => "Plan",
+        "request_user_input" | "ask_user" => "AskUserQuestion",
+        "ReadLints" => "Lint",
+        "web_fetch" => "WebFetch",
+        "web_search" | "web_search_call" => "WebSearch",
+        "sql" | "SQL" => "SQL",
         other => other,
     }
     .to_string()
@@ -57,8 +81,8 @@ fn tool_category(canonical_name: &str, raw_name: &str) -> String {
 
     match canonical_name {
         "Bash" => "shell",
-        "Read" | "Write" | "Edit" => "file",
-        "Grep" | "Glob" | "ToolSearch" | "ListMcpResourcesTool" => "search",
+        "Read" | "Write" | "Edit" | "Delete" => "file",
+        "Grep" | "Glob" | "Search" | "ToolSearch" | "ListMcpResourcesTool" => "search",
         "Agent" | "SendMessage" => "agent",
         "TaskCreate" | "TaskUpdate" | "TaskList" | "TaskStop" => "task",
         "WebSearch" | "WebFetch" => "web",
@@ -66,6 +90,7 @@ fn tool_category(canonical_name: &str, raw_name: &str) -> String {
         "CronCreate" | "CronDelete" => "cron",
         "EnterPlanMode" | "ExitPlanMode" | "Plan" => "plan",
         "AskUserQuestion" => "interaction",
+        "SQL" => "database",
         _ => "unknown",
     }
     .to_string()
@@ -113,7 +138,7 @@ fn input_summary(canonical_name: &str, raw_name: &str, input: Option<&Value>) ->
         "Grep" => string_field(input, &["pattern", "query"])
             .map(|pattern| {
                 let mut value = format!("/{}/", compact_string(pattern, 60));
-                if let Some(path) = string_field(input, &["path"]) {
+                if let Some(path) = string_field(input, &["path", "dir_path"]) {
                     value.push(' ');
                     value.push_str(&shorten_home_path(path));
                 }
@@ -121,6 +146,7 @@ fn input_summary(canonical_name: &str, raw_name: &str, input: Option<&Value>) ->
             })
             .unwrap_or_default(),
         "Glob" => string_field(input, &["pattern"])
+            .or_else(|| string_field(input, &["dir_path", "path"]))
             .unwrap_or_default()
             .to_string(),
         "Agent" => string_field(input, &["description", "prompt"])
@@ -286,14 +312,20 @@ fn result_kind_for_tool(raw_name: &str, result: Option<&Value>) -> Option<String
     if result.get("persistedOutputPath").is_some() {
         return Some("persisted_output".to_string());
     }
+
+    let canonical_name = canonical_tool_name(Provider::Claude, raw_name);
     if result.get("stdout").is_some()
         || result.get("stderr").is_some()
         || result.get("exitCode").is_some()
+        || (canonical_name == "Bash" && result.get("output").is_some())
     {
         return Some("terminal_output".to_string());
     }
-    if result.get("structuredPatch").is_some()
+    if has_patch_result(result)
         || (result.get("oldString").is_some() && result.get("newString").is_some())
+        || (result.get("old_string").is_some() && result.get("new_string").is_some())
+        || (canonical_name == "Edit" && result.get("output").is_some())
+        || (canonical_name == "Edit" && result.get("message").is_some())
     {
         return Some("file_patch".to_string());
     }
@@ -304,6 +336,34 @@ fn result_kind_for_tool(raw_name: &str, result: Option<&Value>) -> Option<String
         return Some("task_status".to_string());
     }
     None
+}
+
+fn has_patch_result(result: &Value) -> bool {
+    result.get("structuredPatch").is_some()
+        || result.get("fileDiff").is_some()
+        || result.get("diff").is_some()
+        || result.get("filediff").is_some()
+        || result.get("metadata").is_some_and(|metadata| {
+            metadata.get("diff").is_some() || metadata.get("filediff").is_some()
+        })
+        || result
+            .get("resultDisplay")
+            .is_some_and(|display| display.get("fileDiff").is_some())
+        || result
+            .get("display")
+            .and_then(|v| v.as_array())
+            .is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|item| item.get("type").and_then(|v| v.as_str()) == Some("diff"))
+            })
+        || result
+            .get("detailedContent")
+            .and_then(|v| v.as_str())
+            .is_some_and(|content| {
+                content.contains("diff --git")
+                    || (content.contains("\n--- ") && content.contains("\n+++ "))
+            })
 }
 
 fn normalized_status(result: ToolResultFacts<'_>) -> Option<String> {
@@ -399,12 +459,15 @@ mod tests {
             ("ReadFile", "Read"),
             ("apply_patch", "Edit"),
             ("ApplyPatch", "Edit"),
+            ("EditNotebook", "Edit"),
+            ("delete", "Delete"),
             ("update_plan", "Plan"),
             ("write_stdin", "Bash"),
             ("request_user_input", "AskUserQuestion"),
             ("SemanticSearch", "Grep"),
             ("Subagent", "Agent"),
             ("spawn_agent", "Agent"),
+            ("sql", "SQL"),
         ] {
             let metadata = build_tool_metadata(ToolCallFacts {
                 provider: Provider::Claude,
@@ -414,6 +477,26 @@ mod tests {
                 assistant_id: None,
             });
             assert_eq!(metadata.canonical_name, canonical);
+        }
+    }
+
+    #[test]
+    fn preserves_provider_specific_tool_aliases() {
+        for (provider, raw, canonical, category) in [
+            (Provider::Cursor, "SemanticSearch", "Search", "search"),
+            (Provider::Cursor, "WebSearch", "Search", "search"),
+            (Provider::Cursor, "WebFetch", "Read", "file"),
+            (Provider::Copilot, "sql", "SQL", "database"),
+        ] {
+            let metadata = build_tool_metadata(ToolCallFacts {
+                provider,
+                raw_name: raw,
+                input: None,
+                call_id: None,
+                assistant_id: None,
+            });
+            assert_eq!(metadata.canonical_name, canonical);
+            assert_eq!(metadata.category, category);
         }
     }
 

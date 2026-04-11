@@ -7,6 +7,7 @@ use crate::provider::ParsedSession;
 use crate::provider_utils::{
     project_name_from_path, session_title, truncate_to_bytes, FTS_CONTENT_LIMIT,
 };
+use crate::tool_metadata::{build_tool_metadata, ToolCallFacts};
 
 use super::tools::*;
 use super::CursorProvider;
@@ -104,20 +105,30 @@ pub(crate) fn parse_transcript_messages(content: &str) -> Vec<Message> {
                     continue;
                 }
                 let raw_name = part.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
-                let display_name = map_cursor_tool_name(raw_name);
                 let args = part.get("input");
-                let tool_input = args.and_then(|a| remap_tool_args(display_name, a));
+                let metadata = build_tool_metadata(ToolCallFacts {
+                    provider: Provider::Cursor,
+                    raw_name,
+                    input: args,
+                    call_id: part
+                        .get("id")
+                        .or_else(|| part.get("tool_use_id"))
+                        .and_then(|v| v.as_str()),
+                    assistant_id: None,
+                });
+                let display_name = metadata.canonical_name.clone();
+                let tool_input = args.and_then(|a| remap_tool_args(&display_name, a));
 
                 messages.push(Message {
                     role: MessageRole::Tool,
                     content: String::new(),
                     timestamp: None,
-                    tool_name: Some(display_name.to_string()),
+                    tool_name: Some(display_name),
                     tool_input,
                     token_usage: None,
                     model: None,
                     usage_hash: None,
-                    tool_metadata: None,
+                    tool_metadata: Some(metadata),
                 });
             }
         }

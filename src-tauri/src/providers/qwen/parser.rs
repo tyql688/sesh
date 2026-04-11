@@ -11,24 +11,9 @@ use crate::provider_utils::{
     parse_rfc3339_timestamp, project_name_from_path, session_title, truncate_to_bytes,
     FTS_CONTENT_LIMIT,
 };
-
-/// Map Qwen tool names to canonical CC Session names.
-fn canonical_tool_name(name: &str) -> &str {
-    match name {
-        "run_shell_command" => "Bash",
-        "edit" | "replace" => "Edit",
-        "read_file" => "Read",
-        "write_file" => "Write",
-        "glob" => "Glob",
-        "grep_search" | "search_file_content" => "Grep",
-        "agent" | "task" => "Agent",
-        "exit_plan_mode" => "Plan",
-        "list_directory" => "Bash",
-        "web_fetch" => "WebFetch",
-        "web_search" => "WebSearch",
-        other => other,
-    }
-}
+use crate::tool_metadata::{
+    build_tool_metadata, enrich_tool_metadata, ToolCallFacts, ToolResultFacts,
+};
 
 /// Strip Qwen `@`-file references and "Content from referenced files" boilerplate
 /// from user text parts, keeping only the actual user input.
@@ -135,8 +120,8 @@ fn extract_image_markers(parts: &[Value]) -> Vec<String> {
 }
 
 /// Extract tool call info from functionCall parts.
-fn extract_function_calls(parts: &[Value]) -> Vec<(String, String, String)> {
-    // Returns: Vec<(call_id, tool_name, args_json)>
+fn extract_function_calls(parts: &[Value]) -> Vec<(String, String, Value)> {
+    // Returns: Vec<(call_id, tool_name, args)>
     let mut calls = Vec::new();
     for part in parts {
         if let Some(fc) = part.get("functionCall") {
@@ -150,14 +135,53 @@ fn extract_function_calls(parts: &[Value]) -> Vec<(String, String, String)> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let args = fc
-                .get("args")
-                .map(|a| serde_json::to_string(a).unwrap_or_default())
-                .unwrap_or_default();
+            let args = fc.get("args").cloned().unwrap_or(Value::Null);
             calls.push((id, name, args));
         }
     }
     calls
+}
+
+fn qwen_tool_result_value(entry: &Value, response: Option<&Value>, output: &str) -> Option<Value> {
+    let mut result = response.cloned().unwrap_or(Value::Null);
+    if result.is_null() {
+        result = if output.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::json!({ "output": output })
+        };
+    } else if !result.is_object() {
+        result = serde_json::json!({ "output": result });
+    }
+
+    if let Some(obj) = result.as_object_mut() {
+        if !output.is_empty() && !obj.contains_key("output") {
+            obj.insert("output".to_string(), serde_json::json!(output));
+        }
+        if let Some(result_display) = entry
+            .get("toolCallResult")
+            .and_then(|tool| tool.get("resultDisplay"))
+        {
+            obj.insert("resultDisplay".to_string(), result_display.clone());
+        }
+    }
+
+    if result.as_object().is_some_and(|obj| obj.is_empty()) {
+        None
+    } else {
+        Some(result)
+    }
+}
+
+fn qwen_tool_status(entry: &Value) -> Option<&str> {
+    entry
+        .get("toolCallResult")
+        .and_then(|tool| tool.get("status"))
+        .and_then(|v| v.as_str())
+}
+
+fn qwen_tool_is_error(entry: &Value) -> Option<bool> {
+    qwen_tool_status(entry).map(|status| matches!(status, "error" | "failed" | "failure"))
 }
 
 /// Parse token usage from usageMetadata.
@@ -368,18 +392,26 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                 // Handle function calls
                 let function_calls = extract_function_calls(parts);
                 for (call_id, name, args) in &function_calls {
-                    let canonical = canonical_tool_name(name);
+                    let metadata = build_tool_metadata(ToolCallFacts {
+                        provider: Provider::Qwen,
+                        raw_name: name,
+                        input: (!args.is_null()).then_some(args),
+                        call_id: (!call_id.is_empty()).then_some(call_id.as_str()),
+                        assistant_id: entry.get("uuid").and_then(|v| v.as_str()),
+                    });
+                    let canonical = metadata.canonical_name.clone();
                     let idx = messages.len();
                     messages.push(Message {
                         role: MessageRole::Tool,
                         content: String::new(), // filled by tool_result
                         timestamp: timestamp.clone(),
-                        tool_name: Some(canonical.to_string()),
-                        tool_input: Some(args.to_string()),
+                        tool_name: Some(canonical),
+                        tool_input: (!args.is_null())
+                            .then(|| serde_json::to_string(args).unwrap_or_default()),
                         token_usage: None,
                         model: None,
                         usage_hash: None,
-                        tool_metadata: None,
+                        tool_metadata: Some(metadata),
                     });
                     if !call_id.is_empty() {
                         call_id_map.insert(call_id.to_string(), idx);
@@ -417,6 +449,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                 // Extract tool output from functionResponse
                 let mut tool_output = String::new();
                 let mut tool_name_from_result = String::new();
+                let mut response_value: Option<Value> = None;
                 if let Some(parts) = parts {
                     for part in parts {
                         if let Some(fr) = part.get("functionResponse") {
@@ -424,6 +457,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                                 tool_name_from_result = name.to_string();
                             }
                             if let Some(resp) = fr.get("response") {
+                                response_value = Some(resp.clone());
                                 if let Some(output) = resp.get("output").and_then(|o| o.as_str()) {
                                     tool_output = output.to_string();
                                 } else {
@@ -439,6 +473,22 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                     if let Some(&idx) = call_id_map.get(call_id) {
                         if let Some(msg) = messages.get_mut(idx) {
                             msg.content = tool_output;
+                            let result_value = qwen_tool_result_value(
+                                &entry,
+                                response_value.as_ref(),
+                                &msg.content,
+                            );
+                            if let Some(metadata) = msg.tool_metadata.as_mut() {
+                                enrich_tool_metadata(
+                                    metadata,
+                                    ToolResultFacts {
+                                        raw_result: result_value.as_ref(),
+                                        is_error: qwen_tool_is_error(&entry),
+                                        status: qwen_tool_status(&entry),
+                                        artifact_path: None,
+                                    },
+                                );
+                            }
                         }
                         continue;
                     }
@@ -446,17 +496,35 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
 
                 // Fallback: no matching call_id, create standalone tool message
                 if !tool_output.is_empty() || !tool_name_from_result.is_empty() {
-                    let canonical = canonical_tool_name(&tool_name_from_result);
+                    let mut metadata = build_tool_metadata(ToolCallFacts {
+                        provider: Provider::Qwen,
+                        raw_name: &tool_name_from_result,
+                        input: None,
+                        call_id: (!call_id.is_empty()).then_some(call_id),
+                        assistant_id: entry.get("uuid").and_then(|v| v.as_str()),
+                    });
+                    let result_value =
+                        qwen_tool_result_value(&entry, response_value.as_ref(), &tool_output);
+                    enrich_tool_metadata(
+                        &mut metadata,
+                        ToolResultFacts {
+                            raw_result: result_value.as_ref(),
+                            is_error: qwen_tool_is_error(&entry),
+                            status: qwen_tool_status(&entry),
+                            artifact_path: None,
+                        },
+                    );
+                    let canonical = metadata.canonical_name.clone();
                     messages.push(Message {
                         role: MessageRole::Tool,
                         content: tool_output,
                         timestamp,
-                        tool_name: Some(canonical.to_string()),
+                        tool_name: Some(canonical),
                         tool_input: None,
                         token_usage: None,
                         model: None,
                         usage_hash: None,
-                        tool_metadata: None,
+                        tool_metadata: Some(metadata),
                     });
                 }
             }

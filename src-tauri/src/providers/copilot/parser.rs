@@ -11,28 +11,46 @@ use crate::provider_utils::{
     parse_rfc3339_timestamp, project_name_from_path, session_title, truncate_to_bytes,
     FTS_CONTENT_LIMIT,
 };
-
-/// Map Copilot tool names to canonical CC Session names.
-fn canonical_tool_name(name: &str) -> &str {
-    match name {
-        "bash" => "Bash",
-        "view" => "Read",
-        "create" => "Write",
-        "edit" => "Edit",
-        "glob" => "Glob",
-        "grep" => "Grep",
-        "task" | "read_agent" => "Agent",
-        "ask_user" => "AskUser",
-        "sql" => "SQL",
-        // Internal tools — skip in display but keep for merge
-        "report_intent" | "task_complete" => name,
-        other => other,
-    }
-}
+use crate::tool_metadata::{
+    build_tool_metadata, enrich_tool_metadata, ToolCallFacts, ToolResultFacts,
+};
 
 /// Returns true for internal tool names that should not produce visible messages.
 fn is_internal_tool(name: &str) -> bool {
     matches!(name, "report_intent" | "task_complete")
+}
+
+fn copilot_tool_result_value(data: &Value, content: &str) -> Option<Value> {
+    let result = data.get("result");
+    let mut value = result.cloned().unwrap_or(Value::Null);
+    if value.is_null() {
+        value = if content.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::json!({ "output": content })
+        };
+    } else if !value.is_object() {
+        value = serde_json::json!({ "output": value });
+    }
+
+    if let Some(obj) = value.as_object_mut() {
+        if !content.is_empty() && !obj.contains_key("output") {
+            obj.insert("output".to_string(), serde_json::json!(content));
+        }
+        if let Some(success) = data.get("success") {
+            obj.insert("success".to_string(), success.clone());
+        }
+    }
+
+    if value.as_object().is_some_and(|obj| obj.is_empty()) {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn copilot_success(data: &Value) -> Option<bool> {
+    data.get("success").and_then(|v| v.as_bool())
 }
 
 /// Extract user-visible content from `user.message`.
@@ -250,7 +268,14 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                             .and_then(|id| id.as_str())
                             .unwrap_or("")
                             .to_string();
-                        let canonical = canonical_tool_name(name);
+                        let metadata = build_tool_metadata(ToolCallFacts {
+                            provider: Provider::Copilot,
+                            raw_name: name,
+                            input: tr.get("arguments"),
+                            call_id: (!call_id.is_empty()).then_some(call_id.as_str()),
+                            assistant_id: data.get("messageId").and_then(|v| v.as_str()),
+                        });
+                        let canonical = metadata.canonical_name.clone();
                         let args = tr
                             .get("arguments")
                             .map(|a| serde_json::to_string(a).unwrap_or_default())
@@ -270,12 +295,12 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                             role: MessageRole::Tool,
                             content: String::new(),
                             timestamp: timestamp.clone(),
-                            tool_name: Some(canonical.to_string()),
+                            tool_name: Some(canonical),
                             tool_input: Some(args),
                             token_usage: tool_usage,
                             model: None,
                             usage_hash: None,
-                            tool_metadata: None,
+                            tool_metadata: Some(metadata),
                         });
                         if !call_id.is_empty() {
                             call_id_map.insert(call_id, idx);
@@ -311,6 +336,15 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                                     let args_str = serde_json::to_string(args).unwrap_or_default();
                                     if !args_str.is_empty() && args_str != "{}" {
                                         msg.tool_input = Some(args_str);
+                                        msg.tool_metadata =
+                                            Some(build_tool_metadata(ToolCallFacts {
+                                                provider: Provider::Copilot,
+                                                raw_name: tool_name,
+                                                input: Some(args),
+                                                call_id: (!call_id.is_empty())
+                                                    .then_some(call_id.as_str()),
+                                                assistant_id: None,
+                                            }));
                                     }
                                 }
                             }
@@ -320,7 +354,14 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                 }
 
                 // Subagent tool call (parentToolCallId present) — create new entry
-                let canonical = canonical_tool_name(tool_name);
+                let metadata = build_tool_metadata(ToolCallFacts {
+                    provider: Provider::Copilot,
+                    raw_name: tool_name,
+                    input: data.get("arguments"),
+                    call_id: (!call_id.is_empty()).then_some(call_id.as_str()),
+                    assistant_id: None,
+                });
+                let canonical = metadata.canonical_name.clone();
                 let args = data
                     .get("arguments")
                     .map(|a| serde_json::to_string(a).unwrap_or_default())
@@ -331,12 +372,12 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                     role: MessageRole::Tool,
                     content: String::new(),
                     timestamp: timestamp.clone(),
-                    tool_name: Some(canonical.to_string()),
+                    tool_name: Some(canonical),
                     tool_input: Some(args),
                     token_usage: None,
                     model: None,
                     usage_hash: None,
-                    tool_metadata: None,
+                    tool_metadata: Some(metadata),
                 });
                 if !call_id.is_empty() {
                     call_id_map.insert(call_id, idx);
@@ -359,6 +400,24 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
                             .unwrap_or("");
                         if !result_content.is_empty() {
                             msg.content = result_content.to_string();
+                        }
+                        let result_value = copilot_tool_result_value(data, &msg.content);
+                        if let Some(metadata) = msg.tool_metadata.as_mut() {
+                            enrich_tool_metadata(
+                                metadata,
+                                ToolResultFacts {
+                                    raw_result: result_value.as_ref(),
+                                    is_error: copilot_success(data).map(|success| !success),
+                                    status: copilot_success(data).map(|success| {
+                                        if success {
+                                            "success"
+                                        } else {
+                                            "error"
+                                        }
+                                    }),
+                                    artifact_path: None,
+                                },
+                            );
                         }
                     }
                 }

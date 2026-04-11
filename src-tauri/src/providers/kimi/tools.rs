@@ -1,19 +1,5 @@
 use serde_json::Value;
 
-/// Map Kimi CLI tool names to canonical display names.
-pub fn map_kimi_tool_name(name: &str) -> &str {
-    match name {
-        "WriteFile" => "Write",
-        "Shell" => "Bash",
-        "ReadFile" => "Read",
-        "StrReplaceFile" => "Edit",
-        "Glob" => "Glob",
-        "Grep" => "Grep",
-        "Agent" => "Agent",
-        _ => name,
-    }
-}
-
 /// Extract readable output from a Kimi ToolResult payload.
 pub fn extract_tool_output(payload: &Value) -> String {
     if let Some(rv) = payload.get("return_value") {

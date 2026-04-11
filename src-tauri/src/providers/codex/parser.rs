@@ -290,11 +290,14 @@ impl CodexProvider {
 
                             // For exec_command, remap arguments to match Bash tool format
                             let tool_input = match raw_name {
-                                "exec_command" => {
-                                    // Remap {"cmd": "..."} to {"command": "..."}
+                                "exec_command" | "shell_command" => {
+                                    // Remap {"cmd": "..."} to {"command": "..."}; keep already-normalized command args.
                                     arguments_str.and_then(|s| {
                                         let v: Value = serde_json::from_str(s).ok()?;
-                                        let cmd = v.get("cmd").and_then(|c| c.as_str())?;
+                                        let cmd = v
+                                            .get("cmd")
+                                            .or_else(|| v.get("command"))
+                                            .and_then(|c| c.as_str())?;
                                         Some(json!({"command": cmd}).to_string())
                                     })
                                 }
@@ -421,6 +424,46 @@ impl CodexProvider {
                                 model: None,
                                 usage_hash: None,
                                 tool_metadata: None,
+                            });
+                        }
+                        "web_search_call" => {
+                            let action = payload.get("action");
+                            let query = action
+                                .and_then(|a| a.get("query"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let mut metadata = build_tool_metadata(ToolCallFacts {
+                                provider: Provider::Codex,
+                                raw_name: "web_search_call",
+                                input: action,
+                                call_id: payload.get("id").and_then(|v| v.as_str()),
+                                assistant_id: None,
+                            });
+                            enrich_tool_metadata(
+                                &mut metadata,
+                                ToolResultFacts {
+                                    raw_result: Some(payload),
+                                    is_error: payload
+                                        .get("status")
+                                        .and_then(|v| v.as_str())
+                                        .map(|status| matches!(status, "failed" | "error")),
+                                    status: payload.get("status").and_then(|v| v.as_str()),
+                                    artifact_path: None,
+                                },
+                            );
+                            if !query.is_empty() {
+                                content_parts.push(query.to_string());
+                            }
+                            messages.push(Message {
+                                role: MessageRole::Tool,
+                                content: query.to_string(),
+                                timestamp: entry.timestamp.clone(),
+                                tool_name: Some(metadata.canonical_name.clone()),
+                                tool_input: action.map(|value| value.to_string()),
+                                tool_metadata: Some(metadata),
+                                token_usage: None,
+                                model: None,
+                                usage_hash: None,
                             });
                         }
                         "custom_tool_call" => {

@@ -1,17 +1,3 @@
-/// Map Gemini tool display names to canonical names.
-pub fn map_gemini_tool_name(display_name: &str) -> &str {
-    match display_name {
-        "Shell" | "shell" | "run_shell_command" => "Bash",
-        "WriteFile" | "write_file" => "Write",
-        "ReadFile" | "read_file" => "Read",
-        "ReadFolder" | "list_directory" => "Glob",
-        "Edit" | "edit_file" => "Edit",
-        "Enter Plan Mode" | "enter_plan_mode" => "Plan",
-        s if s.contains("Agent") || s.contains("agent") => "Agent",
-        _ => display_name,
-    }
-}
-
 pub fn normalize_gemini_message(text: &str, project_path: &str) -> String {
     use super::images::{looks_like_image_path, resolve_gemini_image_path};
 

@@ -10,9 +10,64 @@ use crate::provider::ParsedSession;
 use crate::provider_utils::{
     project_name_from_path, session_title, truncate_to_bytes, FTS_CONTENT_LIMIT, NO_PROJECT,
 };
+use crate::tool_metadata::{
+    build_tool_metadata, enrich_tool_metadata, ToolCallFacts, ToolResultFacts,
+};
 
 use super::tools::*;
 use super::KimiProvider;
+
+fn parse_json_value(text: Option<&str>) -> Option<Value> {
+    serde_json::from_str(text?).ok()
+}
+
+fn kimi_result_status(payload: &Value) -> Option<&str> {
+    payload.get("status").and_then(|v| v.as_str()).or_else(|| {
+        payload
+            .get("return_value")
+            .and_then(|rv| rv.get("status"))
+            .and_then(|v| v.as_str())
+    })
+}
+
+fn kimi_result_is_error(payload: &Value) -> Option<bool> {
+    payload
+        .get("is_error")
+        .and_then(|v| v.as_bool())
+        .or_else(|| {
+            payload
+                .get("return_value")
+                .and_then(|rv| rv.get("is_error"))
+                .and_then(|v| v.as_bool())
+        })
+        .or_else(|| payload.get("error").map(|v| !v.is_null()))
+        .or_else(|| {
+            payload
+                .get("return_value")
+                .and_then(|rv| rv.get("success"))
+                .and_then(|v| v.as_bool())
+                .map(|success| !success)
+        })
+        .or_else(|| {
+            kimi_result_status(payload)
+                .map(|status| matches!(status, "error" | "failed" | "failure"))
+        })
+}
+
+fn enrich_kimi_tool_metadata(message: &mut Message, payload: &Value) {
+    let raw_result = payload.get("return_value").or(Some(payload));
+    if let Some(metadata) = message.tool_metadata.as_mut() {
+        enrich_tool_metadata(
+            metadata,
+            ToolResultFacts {
+                raw_result,
+                is_error: kimi_result_is_error(payload),
+                status: kimi_result_status(payload),
+                artifact_path: None,
+            },
+        );
+    }
+}
 
 /// Read subagent description from meta.json in the subagents directory.
 fn subagent_title_from_meta(session_dir: &std::path::Path, agent_id: &str) -> Option<String> {
@@ -127,7 +182,26 @@ impl KimiProvider {
             match msg_type {
                 "TurnBegin" => {
                     // Extract user input text + images
-                    if let Some(Value::Array(parts)) = payload.get("user_input") {
+                    if let Some(Value::String(text)) = payload.get("user_input") {
+                        if text.is_empty() {
+                            continue;
+                        }
+                        if first_user_message.is_none() {
+                            first_user_message = Some(text.to_string());
+                        }
+                        content_parts.push(text.to_string());
+                        messages.push(Message {
+                            role: MessageRole::User,
+                            content: text.to_string(),
+                            timestamp: ts_str.clone(),
+                            tool_name: None,
+                            tool_input: None,
+                            token_usage: None,
+                            model: None,
+                            usage_hash: None,
+                            tool_metadata: None,
+                        });
+                    } else if let Some(Value::Array(parts)) = payload.get("user_input") {
                         let has_image = parts
                             .iter()
                             .any(|p| p.get("type").and_then(|t| t.as_str()) == Some("image_url"));
@@ -241,7 +315,15 @@ impl KimiProvider {
                         .and_then(|f| f.get("arguments"))
                         .and_then(|v| v.as_str());
 
-                    let display_name = map_kimi_tool_name(raw_name);
+                    let input_value = parse_json_value(arguments_str);
+                    let metadata = build_tool_metadata(ToolCallFacts {
+                        provider: Provider::Kimi,
+                        raw_name,
+                        input: input_value.as_ref(),
+                        call_id,
+                        assistant_id: None,
+                    });
+                    let display_name = metadata.canonical_name.clone();
                     let tool_input = arguments_str.map(|s| s.to_string());
 
                     let idx = messages.len();
@@ -257,7 +339,7 @@ impl KimiProvider {
                         token_usage: None,
                         model: None,
                         usage_hash: None,
-                        tool_metadata: None,
+                        tool_metadata: Some(metadata),
                     });
                 }
                 "ToolResult" => {
@@ -272,6 +354,7 @@ impl KimiProvider {
                     if let Some(idx) = call_id.and_then(|cid| call_id_map.get(cid)).copied() {
                         if idx < messages.len() {
                             messages[idx].content = output;
+                            enrich_kimi_tool_metadata(&mut messages[idx], payload);
                             continue;
                         }
                     }
@@ -504,7 +587,26 @@ impl KimiProvider {
 
             match msg_type {
                 "TurnBegin" => {
-                    if let Some(Value::Array(parts)) = payload.get("user_input") {
+                    if let Some(Value::String(text)) = payload.get("user_input") {
+                        if text.is_empty() {
+                            continue;
+                        }
+                        if first_user_message.is_none() {
+                            first_user_message = Some(text.to_string());
+                        }
+                        content_parts.push(text.to_string());
+                        messages.push(Message {
+                            role: MessageRole::User,
+                            content: text.to_string(),
+                            timestamp: ts_str.clone(),
+                            tool_name: None,
+                            tool_input: None,
+                            token_usage: None,
+                            model: None,
+                            usage_hash: None,
+                            tool_metadata: None,
+                        });
+                    } else if let Some(Value::Array(parts)) = payload.get("user_input") {
                         let has_image = parts
                             .iter()
                             .any(|p| p.get("type").and_then(|t| t.as_str()) == Some("image_url"));
@@ -614,7 +716,15 @@ impl KimiProvider {
                     let arguments_str = func
                         .and_then(|f| f.get("arguments"))
                         .and_then(|v| v.as_str());
-                    let display_name = map_kimi_tool_name(raw_name);
+                    let input_value = parse_json_value(arguments_str);
+                    let metadata = build_tool_metadata(ToolCallFacts {
+                        provider: Provider::Kimi,
+                        raw_name,
+                        input: input_value.as_ref(),
+                        call_id,
+                        assistant_id: None,
+                    });
+                    let display_name = metadata.canonical_name.clone();
                     let tool_input = arguments_str.map(|s| s.to_string());
                     let idx = messages.len();
                     if let Some(cid) = call_id {
@@ -629,7 +739,7 @@ impl KimiProvider {
                         token_usage: None,
                         model: None,
                         usage_hash: None,
-                        tool_metadata: None,
+                        tool_metadata: Some(metadata),
                     });
                 }
                 "ToolResult" => {
@@ -641,6 +751,7 @@ impl KimiProvider {
                     if let Some(idx) = call_id.and_then(|cid| call_id_map.get(cid)).copied() {
                         if idx < messages.len() {
                             messages[idx].content = output;
+                            enrich_kimi_tool_metadata(&mut messages[idx], payload);
                             continue;
                         }
                     }
