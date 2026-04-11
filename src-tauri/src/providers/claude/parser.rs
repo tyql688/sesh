@@ -28,6 +28,15 @@ struct ParseState {
     pending_user_message: Option<(String, Option<String>)>,
     tool_use_id_map: HashMap<String, usize>,
     assistant_tool_indices_by_uuid: HashMap<String, Vec<usize>>,
+    pending_tool_results_by_use_id: HashMap<String, PendingToolResult>,
+}
+
+struct PendingToolResult {
+    result_text: String,
+    result_item: Value,
+    top_level_result: Option<Value>,
+    timestamp: Option<String>,
+    source_tool_assistant_uuid: Option<String>,
 }
 
 fn preserves_pending_user_message(line_type: &str) -> bool {
@@ -67,6 +76,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         pending_user_message: None,
         tool_use_id_map: HashMap::new(),
         assistant_tool_indices_by_uuid: HashMap::new(),
+        pending_tool_results_by_use_id: HashMap::new(),
     };
     let mut summary_text: Option<String> = None;
     let mut custom_title: Option<String> = None;
@@ -107,8 +117,8 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
             }
         };
 
-        if let Some(unique_hash) = unique_hash_from_entry(&entry) {
-            if !processed_hashes.insert(unique_hash) {
+        if let Some(dedup_hash) = dedup_hash_from_entry(&entry) {
+            if !processed_hashes.insert(dedup_hash) {
                 continue;
             }
         }
@@ -224,6 +234,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     }
 
     flush_pending(&mut state);
+    flush_pending_tool_results(&mut state);
 
     // Subagent files detected by path are always sidechains
     let is_sidechain = is_sidechain || parent_id.is_some();
@@ -326,6 +337,16 @@ fn unique_hash_from_entry(entry: &Value) -> Option<String> {
     Some(format!("{message_id}:{request_id}"))
 }
 
+fn dedup_hash_from_entry(entry: &Value) -> Option<String> {
+    let base = unique_hash_from_entry(entry)?;
+    let content = entry
+        .get("message")
+        .and_then(|message| message.get("content"))
+        .map(|content| serde_json::to_string(content).unwrap_or_else(|_| content.to_string()))
+        .unwrap_or_default();
+    Some(format!("{base}:{content}"))
+}
+
 fn infer_tool_name_from_result(result: Option<&Value>) -> Option<String> {
     let result = result?;
     if result.get("oldString").is_some() && result.get("newString").is_some() {
@@ -353,6 +374,59 @@ fn infer_tool_name_from_result(result: Option<&Value>) -> Option<String> {
         return Some("Write".to_string());
     }
     None
+}
+
+fn standalone_tool_result_message(
+    result_text: String,
+    result_item: &Value,
+    top_level_result: Option<&Value>,
+    use_id: Option<&str>,
+    source_tool_assistant_uuid: Option<&str>,
+    timestamp: Option<String>,
+) -> Message {
+    let inferred_name = infer_tool_name_from_result(top_level_result);
+    let raw_name = inferred_name
+        .as_deref()
+        .or(use_id)
+        .unwrap_or("UnknownToolResult");
+    let canonical_name = canonical_tool_name(Provider::Claude, raw_name);
+    let mut metadata = build_tool_metadata(ToolCallFacts {
+        provider: Provider::Claude,
+        raw_name,
+        input: None,
+        call_id: use_id,
+        assistant_id: source_tool_assistant_uuid,
+    });
+    enrich_tool_metadata(
+        &mut metadata,
+        tool_result_facts(result_item, top_level_result),
+    );
+
+    Message {
+        role: MessageRole::Tool,
+        content: result_text,
+        timestamp,
+        tool_name: Some(canonical_name),
+        tool_input: None,
+        tool_metadata: Some(metadata),
+        token_usage: None,
+        model: None,
+        usage_hash: None,
+    }
+}
+
+fn flush_pending_tool_results(state: &mut ParseState) {
+    let pending = std::mem::take(&mut state.pending_tool_results_by_use_id);
+    for (use_id, result) in pending {
+        state.messages.push(standalone_tool_result_message(
+            result.result_text,
+            &result.result_item,
+            result.top_level_result.as_ref(),
+            Some(&use_id),
+            result.source_tool_assistant_uuid.as_deref(),
+            result.timestamp,
+        ));
+    }
 }
 
 fn tool_result_facts<'a>(
@@ -484,38 +558,34 @@ fn handle_tool_result(
                     );
                 }
             } else {
-                let inferred_name = infer_tool_name_from_result(top_level_result);
-                let raw_name = inferred_name
-                    .as_deref()
-                    .or(use_id)
-                    .unwrap_or("UnknownToolResult");
-                let canonical_name = canonical_tool_name(Provider::Claude, raw_name);
-                let mut metadata = build_tool_metadata(ToolCallFacts {
-                    provider: Provider::Claude,
-                    raw_name,
-                    input: None,
-                    call_id: use_id,
-                    assistant_id: entry
-                        .get("sourceToolAssistantUUID")
-                        .and_then(|id| id.as_str()),
-                });
-                enrich_tool_metadata(
-                    &mut metadata,
-                    tool_result_facts(result_item, top_level_result),
-                );
+                if let Some(use_id) = use_id {
+                    state.pending_tool_results_by_use_id.insert(
+                        use_id.to_string(),
+                        PendingToolResult {
+                            result_text,
+                            result_item: result_item.clone(),
+                            top_level_result: top_level_result.cloned(),
+                            timestamp: timestamp.clone(),
+                            source_tool_assistant_uuid: entry
+                                .get("sourceToolAssistantUUID")
+                                .and_then(|id| id.as_str())
+                                .map(str::to_string),
+                        },
+                    );
+                    continue;
+                }
 
                 // No matching tool_use found -- emit as standalone
-                state.messages.push(Message {
-                    role: MessageRole::Tool,
-                    content: result_text,
-                    timestamp: timestamp.clone(),
-                    tool_name: Some(canonical_name),
-                    tool_input: None,
-                    tool_metadata: Some(metadata),
-                    token_usage: None,
-                    model: None,
-                    usage_hash: None,
-                });
+                state.messages.push(standalone_tool_result_message(
+                    result_text,
+                    result_item,
+                    top_level_result,
+                    None,
+                    entry
+                        .get("sourceToolAssistantUUID")
+                        .and_then(|id| id.as_str()),
+                    timestamp.clone(),
+                ));
             }
         }
     }
@@ -617,6 +687,18 @@ fn handle_assistant_message(entry: &Value, state: &mut ParseState, timestamp: Op
                     // Record tool_use_id for merging results later
                     if let Some(id) = use_id {
                         state.tool_use_id_map.insert(id.to_string(), msg_idx);
+                        if let Some(pending) = state.pending_tool_results_by_use_id.remove(id) {
+                            state.messages[msg_idx].content = pending.result_text;
+                            if let Some(metadata) = state.messages[msg_idx].tool_metadata.as_mut() {
+                                enrich_tool_metadata(
+                                    metadata,
+                                    tool_result_facts(
+                                        &pending.result_item,
+                                        pending.top_level_result.as_ref(),
+                                    ),
+                                );
+                            }
+                        }
                     }
                 }
                 _ => {}
@@ -1097,6 +1179,56 @@ mod tests {
         assert_eq!(usage.output_tokens, 50);
         assert_eq!(usage.cache_creation_input_tokens, 10);
         assert_eq!(usage.cache_read_input_tokens, 20);
+    }
+
+    #[test]
+    fn parse_session_file_keeps_distinct_chunks_with_same_message_request_pair() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("session.jsonl");
+        let thinking = r#"{"type":"assistant","requestId":"req-1","uuid":"assistant-thinking","timestamp":"2026-04-10T10:00:00Z","message":{"id":"msg-1","model":"claude-opus-4-6","role":"assistant","content":[{"type":"thinking","thinking":"I should inspect a file."}]}}"#;
+        let tool_use = r#"{"type":"assistant","requestId":"req-1","uuid":"assistant-tool","timestamp":"2026-04-10T10:00:01Z","message":{"id":"msg-1","model":"claude-opus-4-6","role":"assistant","content":[{"type":"tool_use","id":"toolu_same_request","name":"Read","input":{"file_path":"/Users/alice/project/src/App.tsx"}}]}}"#;
+        let result = r#"{"type":"user","timestamp":"2026-04-10T10:00:02Z","sourceToolAssistantUUID":"assistant-tool","toolUseResult":{"type":"text","file":{"filePath":"/Users/alice/project/src/App.tsx","content":"export default App;","numLines":1,"startLine":1,"totalLines":1}},"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_same_request","content":"1\texport default App;"}]}}"#;
+        fs::write(&file, format!("{thinking}\n{tool_use}\n{result}\n")).unwrap();
+
+        let parsed = parse_session_file(&file).expect("parsed");
+        assert!(
+            parsed
+                .messages
+                .iter()
+                .any(|message| message.content.starts_with("[thinking]")),
+            "thinking chunk should be preserved"
+        );
+        let tool = parsed
+            .messages
+            .iter()
+            .find(|message| message.role == crate::models::MessageRole::Tool)
+            .expect("tool message");
+
+        assert_eq!(tool.tool_name.as_deref(), Some("Read"));
+        assert_eq!(tool.content, "1\texport default App;");
+        assert_ne!(tool.tool_name.as_deref(), Some("toolu_same_request"));
+    }
+
+    #[test]
+    fn parse_session_file_matches_tool_result_that_arrives_before_tool_use() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("session.jsonl");
+        let result = r#"{"type":"user","timestamp":"2026-04-10T10:00:00Z","sourceToolAssistantUUID":"assistant-late","toolUseResult":"Error: File has not been read yet. Read it first before writing to it.","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_late","content":"<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"}]}}"#;
+        let tool_use = r#"{"type":"assistant","requestId":"req-1","uuid":"assistant-late","timestamp":"2026-04-10T10:00:01Z","message":{"id":"msg-1","model":"claude-opus-4-6","role":"assistant","content":[{"type":"tool_use","id":"toolu_late","name":"Edit","input":{"file_path":"/Users/alice/project/src/App.tsx","old_string":"old","new_string":"new"}}]}}"#;
+        fs::write(&file, format!("{result}\n{tool_use}\n")).unwrap();
+
+        let parsed = parse_session_file(&file).expect("parsed");
+        let tool_messages = parsed
+            .messages
+            .iter()
+            .filter(|message| message.role == crate::models::MessageRole::Tool)
+            .collect::<Vec<_>>();
+
+        assert_eq!(tool_messages.len(), 1);
+        assert_eq!(tool_messages[0].tool_name.as_deref(), Some("Edit"));
+        assert!(tool_messages[0]
+            .content
+            .contains("File has not been read yet"));
     }
 
     #[test]

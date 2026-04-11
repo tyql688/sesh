@@ -74,9 +74,23 @@ fn test_session(messages: Vec<Message>) -> SessionDetail {
 }
 
 fn tool_message(name: &str, input: Option<String>, metadata: Option<ToolMetadata>) -> Message {
+    tool_message_with_content(
+        name,
+        "raw output that should be hidden for structured diffs",
+        input,
+        metadata,
+    )
+}
+
+fn tool_message_with_content(
+    name: &str,
+    content: &str,
+    input: Option<String>,
+    metadata: Option<ToolMetadata>,
+) -> Message {
     Message {
         role: MessageRole::Tool,
-        content: "raw output that should be hidden for structured diffs".to_string(),
+        content: content.to_string(),
         timestamp: None,
         tool_name: Some(name.to_string()),
         tool_input: input,
@@ -162,6 +176,29 @@ fn test_render_session_html_uses_tool_metadata() {
                 })),
             }),
         ),
+        tool_message_with_content(
+            "TaskUpdate",
+            "task status raw output",
+            None,
+            Some(ToolMetadata {
+                raw_name: "TaskUpdate".to_string(),
+                canonical_name: "TaskUpdate".to_string(),
+                display_name: "TaskUpdate".to_string(),
+                category: "task".to_string(),
+                summary: Some("11 → completed".to_string()),
+                status: Some("success".to_string()),
+                ids: Default::default(),
+                mcp: None,
+                result_kind: Some("task_status".to_string()),
+                structured: Some(json!({
+                    "taskId": "11",
+                    "statusChange": {
+                        "from": "in_progress",
+                        "to": "completed"
+                    }
+                })),
+            }),
+        ),
     ]);
 
     let html = cc_session_lib::exporter_test_helpers::render_session_html_pub(&detail);
@@ -171,6 +208,7 @@ fn test_render_session_html_uses_tool_metadata() {
     assert!(html.contains("@@ -7,2 +7,2 @@"));
     assert!(html.contains("browser snapshot"));
     assert!(html.contains("server"));
+    assert!(html.contains("in_progress → completed"));
     assert_eq!(
         html.matches("raw output that should be hidden").count(),
         1,

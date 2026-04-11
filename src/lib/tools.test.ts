@@ -99,6 +99,28 @@ describe("tool registry", () => {
     ]);
   });
 
+  it("formats task status changes without object stringification", () => {
+    const detail = formatToolResultMetadata({
+      raw_name: "TaskUpdate",
+      canonical_name: "TaskUpdate",
+      display_name: "TaskUpdate",
+      category: "task",
+      status: "success",
+      structured: {
+        taskId: "11",
+        statusChange: { from: "in_progress", to: "completed" },
+      },
+    });
+
+    expect(detail?.lines).toContainEqual({
+      label: "statusChange",
+      value: "in_progress → completed",
+    });
+    expect(detail?.lines.some((line) => line.value === "[object Object]")).toBe(
+      false,
+    );
+  });
+
   it("formats canonical input for known tools", () => {
     const detail = formatToolInput({
       ...baseMessage,

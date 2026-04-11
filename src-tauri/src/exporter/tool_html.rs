@@ -448,7 +448,28 @@ fn value_to_short_string(value: &Value) -> String {
         Value::String(s) => s.clone(),
         Value::Number(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
-        other => other.to_string(),
+        Value::Array(values) => values
+            .iter()
+            .map(value_to_short_string)
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>()
+            .join(", "),
+        Value::Object(obj) => {
+            let from = obj.get("from");
+            let to = obj.get("to");
+            if let (Some(from), Some(to)) = (from, to) {
+                return format!(
+                    "{} → {}",
+                    value_to_short_string(from),
+                    value_to_short_string(to)
+                );
+            }
+            obj.iter()
+                .map(|(key, value)| format!("{key}: {}", value_to_short_string(value)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+        Value::Null => String::new(),
     }
 }
 

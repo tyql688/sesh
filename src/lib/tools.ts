@@ -290,6 +290,30 @@ function maybeNumber(value: unknown): string | undefined {
   return typeof value === "number" ? value.toLocaleString() : undefined;
 }
 
+function valueToDisplayString(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return value.toLocaleString();
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (Array.isArray(value)) {
+    return value.map(valueToDisplayString).filter(Boolean).join(", ");
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const from = record.from;
+    const to = record.to;
+    if (
+      (typeof from === "string" || typeof from === "number") &&
+      (typeof to === "string" || typeof to === "number")
+    ) {
+      return `${valueToDisplayString(from)} → ${valueToDisplayString(to)}`;
+    }
+    return Object.entries(record)
+      .map(([key, nested]) => `${key}: ${valueToDisplayString(nested)}`)
+      .join(", ");
+  }
+  return "";
+}
+
 function structuredRecord(
   metadata: ToolMetadata | undefined,
 ): Record<string, unknown> | null {
@@ -411,7 +435,10 @@ export function formatToolResultMetadata(
       if (metadata.category === "task") {
         for (const key of ["taskId", "task_id", "statusChange", "message"]) {
           if (structured[key] !== undefined) {
-            lines.push({ label: key, value: String(structured[key]) });
+            lines.push({
+              label: key,
+              value: valueToDisplayString(structured[key]),
+            });
           }
         }
       } else if (metadata.category === "mcp" && metadata.mcp) {
