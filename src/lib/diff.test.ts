@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildToolLineDiff } from "./diff";
+import { buildPatchLineDiff, buildToolLineDiff } from "./diff";
 
 describe("buildToolLineDiff", () => {
   it("renders unchanged lines as context and changed lines as remove/add", () => {
@@ -37,5 +37,46 @@ describe("buildToolLineDiff", () => {
 
     expect(lines.length).toBe(25);
     expect(lines.some((line) => line.type === "skip")).toBe(true);
+  });
+});
+
+describe("buildPatchLineDiff", () => {
+  it("converts apply_patch hunks into diff rows", () => {
+    const lines = buildPatchLineDiff(`*** Begin Patch
+*** Update File: src/app.ts
+@@
+-const oldValue = 1;
++const newValue = 2;
+ const same = true;
+*** End Patch
+`);
+
+    expect(lines).toEqual([
+      {
+        type: "skip",
+        oldLine: null,
+        newLine: null,
+        text: "*** Update File: src/app.ts",
+      },
+      { type: "skip", oldLine: null, newLine: null, text: "@@" },
+      {
+        type: "remove",
+        oldLine: null,
+        newLine: null,
+        text: "const oldValue = 1;",
+      },
+      {
+        type: "add",
+        oldLine: null,
+        newLine: null,
+        text: "const newValue = 2;",
+      },
+      {
+        type: "context",
+        oldLine: null,
+        newLine: null,
+        text: "const same = true;",
+      },
+    ]);
   });
 });

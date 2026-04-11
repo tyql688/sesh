@@ -82,3 +82,83 @@ export function buildToolLineDiff(
     ...lines.slice(lines.length - tailCount),
   ];
 }
+
+export function buildPatchLineDiff(
+  patchText: string,
+  maxVisibleLines = MAX_VISIBLE_DIFF_LINES,
+): ToolDiffLine[] {
+  const lines: ToolDiffLine[] = [];
+
+  for (const rawLine of patchText.split("\n")) {
+    if (
+      rawLine === "*** Begin Patch" ||
+      rawLine === "*** End Patch" ||
+      rawLine.length === 0
+    ) {
+      continue;
+    }
+
+    if (
+      rawLine.startsWith("*** Update File: ") ||
+      rawLine.startsWith("*** Add File: ") ||
+      rawLine.startsWith("*** Delete File: ") ||
+      rawLine.startsWith("*** Move to: ") ||
+      rawLine.startsWith("@@")
+    ) {
+      lines.push({
+        type: "skip",
+        oldLine: null,
+        newLine: null,
+        text: rawLine,
+      });
+      continue;
+    }
+
+    if (rawLine.startsWith("+")) {
+      pushLine(lines, "add", rawLine.slice(1), null, null);
+      continue;
+    }
+
+    if (rawLine.startsWith("-")) {
+      pushLine(lines, "remove", rawLine.slice(1), null, null);
+      continue;
+    }
+
+    if (rawLine.startsWith(" ")) {
+      pushLine(lines, "context", rawLine.slice(1), null, null);
+      continue;
+    }
+
+    lines.push({
+      type: "skip",
+      oldLine: null,
+      newLine: null,
+      text: rawLine,
+    });
+  }
+
+  if (lines.length <= maxVisibleLines) {
+    return lines;
+  }
+
+  const headCount = Math.min(
+    EDGE_CONTEXT_LINES,
+    Math.floor(maxVisibleLines / 2),
+  );
+  const tailCount = Math.min(
+    EDGE_CONTEXT_LINES,
+    Math.max(0, maxVisibleLines - headCount - 1),
+  );
+  const hiddenCount = Math.max(0, lines.length - headCount - tailCount);
+
+  return [
+    ...lines.slice(0, headCount),
+    {
+      type: "skip",
+      oldLine: null,
+      newLine: null,
+      text: `${hiddenCount.toLocaleString()} patch lines hidden`,
+    },
+    ...lines.slice(lines.length - tailCount),
+  ];
+}

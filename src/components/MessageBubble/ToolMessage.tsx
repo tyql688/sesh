@@ -1,7 +1,7 @@
 import { createSignal, createMemo, Show, For } from "solid-js";
 import type { Message } from "../../lib/types";
 import { readToolResultText } from "../../lib/tauri";
-import { buildToolLineDiff } from "../../lib/diff";
+import { buildToolLineDiff, type ToolDiffLine } from "../../lib/diff";
 import {
   formatToolInput,
   formatToolResultMetadata,
@@ -42,10 +42,10 @@ const SUBAGENT_FILE_PROVIDERS = new Set([
   "cc-mirror",
 ]);
 
-function LineDiff(props: { oldText: string; newText: string }) {
+function DiffRows(props: { lines: ToolDiffLine[] }) {
   return (
     <div class="msg-tool-line-diff">
-      <For each={buildToolLineDiff(props.oldText, props.newText)}>
+      <For each={props.lines}>
         {(line) => (
           <div class={`msg-tool-diff-line ${line.type}`}>
             <span class="msg-tool-diff-gutter msg-tool-diff-gutter-old">
@@ -69,6 +69,10 @@ function LineDiff(props: { oldText: string; newText: string }) {
       </For>
     </div>
   );
+}
+
+function LineDiff(props: { oldText: string; newText: string }) {
+  return <DiffRows lines={buildToolLineDiff(props.oldText, props.newText)} />;
 }
 
 export function ToolMessage(props: { message: Message; provider?: string }) {
@@ -205,6 +209,9 @@ export function ToolMessage(props: { message: Message; provider?: string }) {
                 newText={formatted()!.diff!.new}
               />
             </Show>
+            <Show when={formatted()!.patchDiff}>
+              <DiffRows lines={formatted()!.patchDiff!} />
+            </Show>
           </div>
         </Show>
         <Show when={resultMetadata()}>
@@ -222,6 +229,9 @@ export function ToolMessage(props: { message: Message; provider?: string }) {
                 oldText={resultMetadata()!.diff!.old}
                 newText={resultMetadata()!.diff!.new}
               />
+            </Show>
+            <Show when={resultMetadata()!.patchDiff}>
+              <DiffRows lines={resultMetadata()!.patchDiff!} />
             </Show>
             <Show when={persistedOutputPath()}>
               <button

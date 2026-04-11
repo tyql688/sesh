@@ -89,4 +89,28 @@ describe("tool registry", () => {
       value: "fn main",
     });
   });
+
+  it("formats Codex apply_patch input as patch diff rows", () => {
+    const detail = formatToolInput({
+      ...baseMessage,
+      tool_name: "Edit",
+      tool_input: JSON.stringify({
+        patch: `*** Begin Patch
+*** Update File: src/app.ts
+@@
+-old
++new
+*** End Patch
+`,
+      }),
+    });
+
+    expect(detail?.patchDiff?.map((line) => line.type)).toEqual([
+      "skip",
+      "skip",
+      "remove",
+      "add",
+    ]);
+    expect(detail?.lines).toEqual([{ label: "file", value: "" }]);
+  });
 });

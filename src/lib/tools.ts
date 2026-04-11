@@ -1,8 +1,11 @@
 import type { Message, ToolMetadata } from "./types";
+import type { ToolDiffLine } from "./diff";
+import { buildPatchLineDiff } from "./diff";
 
 export interface ToolDetail {
   lines: { label: string; value: string }[];
   diff?: { old: string; new: string };
+  patchDiff?: ToolDiffLine[];
   persistedOutputPath?: string;
 }
 
@@ -157,8 +160,8 @@ export function formatToolInput(message: Message): ToolDetail | null {
                 label: "file",
                 value: String(obj.file_path || obj.filePath || ""),
               },
-              { label: "patch", value: obj.patch },
             ],
+            patchDiff: buildPatchLineDiff(obj.patch),
           };
         }
         return {
@@ -256,8 +259,8 @@ export function formatToolInput(message: Message): ToolDetail | null {
           ...(files.length > 0
             ? [{ label: "files", value: files.join("\n") }]
             : []),
-          { label: "patch", value: inputJson },
         ],
+        patchDiff: buildPatchLineDiff(inputJson),
       };
     }
     return { lines: [{ label: "raw", value: inputJson }] };
