@@ -5,6 +5,7 @@ import { useI18n } from "../../i18n/index";
 import { getProviderLabel } from "../../stores/providerSnapshots";
 import {
   formatTimestamp,
+  formatDuration,
   fmtK,
   formatFileSize,
   shortenHomePath,
@@ -135,6 +136,15 @@ export function SessionToolbar(props: {
           {t("session.created")}:{" "}
           {formatTimestamp(props.meta().created_at, locale())}
         </span>
+        <Show when={props.meta().updated_at > props.meta().created_at}>
+          <span class="info-sep">&middot;</span>
+          <span title={t("session.duration")}>
+            {"\u23F1"}{" "}
+            {formatDuration(
+              (props.meta().updated_at - props.meta().created_at) * 1000,
+            )}
+          </span>
+        </Show>
         <span class="info-sep">&middot;</span>
         <span>
           {props.meta().message_count || props.messages().length}{" "}

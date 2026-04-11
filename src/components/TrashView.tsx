@@ -26,6 +26,12 @@ import { ConfirmDialog } from "./ConfirmDialog";
 export function TrashView(props: { onRefreshTree: () => void }) {
   const { t } = useI18n();
   const [showEmptyConfirm, setShowEmptyConfirm] = createSignal(false);
+  const [showRestoreConfirm, setShowRestoreConfirm] = createSignal(false);
+  const [restoreTarget, setRestoreTarget] = createSignal<TreeNode | null>(null);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = createSignal(false);
+  const [deleteAllTarget, setDeleteAllTarget] = createSignal<TreeNode | null>(
+    null,
+  );
   const [expandedIds, setExpandedIds] = createSignal<Set<string>>(new Set());
 
   const [trashItems, { refetch }] = createResource<TrashMeta[]>(async () => {
@@ -217,7 +223,8 @@ export function TrashView(props: { onRefreshTree: () => void }) {
                 class="trash-action-btn trash-action-btn-restore"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleRestoreAll(nodeProps.node);
+                  setRestoreTarget(nodeProps.node);
+                  setShowRestoreConfirm(true);
                 }}
                 title={t("trash.restore")}
               >
@@ -237,7 +244,8 @@ export function TrashView(props: { onRefreshTree: () => void }) {
                 class="trash-action-btn trash-action-btn-danger"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteAll(nodeProps.node);
+                  setDeleteAllTarget(nodeProps.node);
+                  setShowDeleteAllConfirm(true);
                 }}
                 title={t("trash.permanentDelete")}
               >
@@ -377,6 +385,41 @@ export function TrashView(props: { onRefreshTree: () => void }) {
         onConfirm={handleEmptyTrash}
         onCancel={() => setShowEmptyConfirm(false)}
         danger={true}
+      />
+
+      <ConfirmDialog
+        open={showDeleteAllConfirm()}
+        title={t("trash.permanentDelete")}
+        message={t("trash.deleteAllConfirm")}
+        confirmLabel={t("trash.permanentDelete")}
+        onConfirm={async () => {
+          const node = deleteAllTarget();
+          setShowDeleteAllConfirm(false);
+          setDeleteAllTarget(null);
+          if (node) await handleDeleteAll(node);
+        }}
+        onCancel={() => {
+          setShowDeleteAllConfirm(false);
+          setDeleteAllTarget(null);
+        }}
+        danger={true}
+      />
+
+      <ConfirmDialog
+        open={showRestoreConfirm()}
+        title={t("trash.restore")}
+        message={t("trash.restoreAllConfirm")}
+        confirmLabel={t("trash.restore")}
+        onConfirm={async () => {
+          const node = restoreTarget();
+          setShowRestoreConfirm(false);
+          setRestoreTarget(null);
+          if (node) await handleRestoreAll(node);
+        }}
+        onCancel={() => {
+          setShowRestoreConfirm(false);
+          setRestoreTarget(null);
+        }}
       />
     </div>
   );

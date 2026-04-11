@@ -480,6 +480,7 @@ export function Explorer(props: {
         label={t("inputDialog.newTitle")}
         defaultValue={renameTarget()?.label ?? ""}
         confirmLabel={t("inputDialog.rename")}
+        maxLength={200}
         onConfirm={async (newTitle) => {
           const target = renameTarget();
           if (target) {

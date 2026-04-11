@@ -67,7 +67,8 @@
     "filterSystem": "系统",
     "searchPlaceholder": "在会话中搜索...",
     "searchNoMatch": "无匹配",
-    "subagent": "子代理"
+    "subagent": "子代理",
+    "duration": "持续时间"
   },
   "toast": {
     "copied": "已复制到剪贴板",
@@ -240,7 +241,9 @@
     "restoreOk": "会话恢复成功",
     "permanentDelete": "永久删除",
     "emptyTrash": "清空回收站",
-    "emptyTrashConfirm": "永久删除所有已回收的会话？此操作无法撤销。"
+    "emptyTrashConfirm": "永久删除所有已回收的会话？此操作无法撤销。",
+    "restoreAllConfirm": "恢复该组中的所有会话？",
+    "deleteAllConfirm": "永久删除该组中的所有会话？此操作无法撤销。"
   },
   "usage": {
     "title": "用量统计",

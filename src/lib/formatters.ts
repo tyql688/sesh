@@ -76,6 +76,18 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+export function formatDuration(ms: number): string {
+  if (ms < 60_000) return "< 1 min";
+  const totalMin = Math.floor(ms / 60_000);
+  if (totalMin < 60) return `${totalMin} min`;
+  const hours = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  if (hours < 24) return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remH = hours % 24;
+  return remH > 0 ? `${days}d ${remH}h` : `${days}d`;
+}
+
 /** Replace home directory prefix with ~ for privacy. */
 export function shortenHomePath(path: string): string {
   const normalized = path.replaceAll("\\", "/");

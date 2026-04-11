@@ -67,7 +67,8 @@
     "filterSystem": "System",
     "searchPlaceholder": "Find in session...",
     "searchNoMatch": "No matches",
-    "subagent": "Subagent"
+    "subagent": "Subagent",
+    "duration": "Duration"
   },
   "toast": {
     "copied": "Copied to clipboard",
@@ -242,7 +243,9 @@
     "restoreOk": "Session restored successfully",
     "permanentDelete": "Permanent Delete",
     "emptyTrash": "Empty Trash",
-    "emptyTrashConfirm": "Permanently delete all trashed sessions? This cannot be undone."
+    "emptyTrashConfirm": "Permanently delete all trashed sessions? This cannot be undone.",
+    "restoreAllConfirm": "Restore all sessions in this group?",
+    "deleteAllConfirm": "Permanently delete all sessions in this group? This cannot be undone."
   },
   "usage": {
     "title": "Usage",

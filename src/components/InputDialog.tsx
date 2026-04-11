@@ -7,6 +7,7 @@ export function InputDialog(props: {
   label: string;
   defaultValue: string;
   confirmLabel: string;
+  maxLength?: number;
   onConfirm: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -66,9 +67,15 @@ export function InputDialog(props: {
             class="modal-input"
             type="text"
             value={value()}
+            maxLength={props.maxLength}
             onInput={(e) => setValue(e.currentTarget.value)}
             onKeyDown={handleKeyDown}
           />
+          {props.maxLength !== undefined && (
+            <div class="modal-input-counter">
+              {value().length}/{props.maxLength}
+            </div>
+          )}
           <div class="modal-actions">
             <button class="btn btn-secondary" onClick={props.onCancel}>
               {t("confirm.cancel")}

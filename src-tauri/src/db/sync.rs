@@ -136,10 +136,20 @@ impl Database {
     }
 
     pub fn rename_session(&self, id: &str, new_title: &str) -> Result<(), rusqlite::Error> {
+        let title = if new_title.chars().count() > 200 {
+            new_title
+                .chars()
+                .take(200)
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        } else {
+            new_title.to_string()
+        };
         let conn = self.lock_write()?;
         conn.execute(
             "UPDATE sessions SET title = ?1, title_custom = 1 WHERE id = ?2",
-            params![new_title, id],
+            params![title, id],
         )?;
         Ok(())
     }

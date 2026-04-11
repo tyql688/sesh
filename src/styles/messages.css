@@ -614,6 +614,10 @@
   cursor: pointer;
 }
 
+.msg-tool-header:hover {
+  background: var(--bg-tab-hover);
+}
+
 .msg-tool-icon {
   font-size: 12px;
 }
