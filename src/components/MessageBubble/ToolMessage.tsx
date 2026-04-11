@@ -158,7 +158,7 @@ export function ToolMessage(props: { message: Message; provider?: string }) {
     const kind = props.message.tool_metadata?.result_kind;
     return (
       !!resultMetadata() &&
-      (kind === "terminal_output" || kind === "file_patch")
+      (kind === "terminal_output" || (kind === "file_patch" && resultHasDiff()))
     );
   };
 

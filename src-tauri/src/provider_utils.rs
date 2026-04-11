@@ -36,6 +36,64 @@ pub fn project_name_from_path(project_path: &str) -> String {
     }
 }
 
+fn replace_user_home_patterns(normalized: &str) -> String {
+    let mut value = normalized.to_string();
+
+    while let Some(colon_start) = value.find(":/Users/") {
+        let Some(drive_start) = colon_start.checked_sub(1) else {
+            break;
+        };
+        let Some(drive) = value[drive_start..colon_start].chars().next() else {
+            break;
+        };
+        if !drive.is_ascii_alphabetic() {
+            break;
+        }
+        let rest_start = colon_start + ":/Users/".len();
+        let rest = &value[rest_start..];
+        let user_len = rest
+            .find(|c: char| c == '/' || c.is_whitespace())
+            .unwrap_or(rest.len());
+        value.replace_range(drive_start..rest_start + user_len, "~");
+    }
+
+    for prefix in ["/Users/", "/home/"] {
+        while let Some(start) = value.find(prefix) {
+            let rest_start = start + prefix.len();
+            let rest = &value[rest_start..];
+            let user_len = rest
+                .find(|c: char| c == '/' || c.is_whitespace())
+                .unwrap_or(rest.len());
+            value.replace_range(start..rest_start + user_len, "~");
+        }
+    }
+
+    value
+}
+
+/// Replace a local home directory prefix with `~` for display/privacy.
+///
+/// This is intentionally display-only: callers must keep the original path for
+/// filesystem operations.
+pub fn shorten_home_path(path: &str) -> String {
+    if path.is_empty() || path == "~" || path.starts_with("~/") || path.starts_with("~\\") {
+        return path.to_string();
+    }
+
+    let normalized = path.replace('\\', "/");
+    if let Some(home) = dirs::home_dir() {
+        let home = home.to_string_lossy().replace('\\', "/");
+        if normalized == home {
+            return "~".to_string();
+        }
+        if let Some(rest) = normalized.strip_prefix(&(home + "/")) {
+            return format!("~/{rest}");
+        }
+    }
+
+    replace_user_home_patterns(&normalized)
+}
+
 pub fn parse_rfc3339_timestamp(timestamp: Option<&str>) -> i64 {
     timestamp
         .and_then(|ts| {
@@ -124,6 +182,40 @@ mod tests {
         // Path::new("/").file_name() returns None, so falls through to project_path.to_string()
         let result = project_name_from_path("/");
         assert_eq!(result, "/");
+    }
+
+    #[test]
+    fn shorten_home_path_replaces_unix_home_prefixes() {
+        assert_eq!(
+            shorten_home_path("/Users/alice/project/src/main.rs"),
+            "~/project/src/main.rs"
+        );
+        assert_eq!(
+            shorten_home_path("/home/bob/project/src/main.rs"),
+            "~/project/src/main.rs"
+        );
+    }
+
+    #[test]
+    fn shorten_home_path_replaces_windows_home_prefix() {
+        assert_eq!(
+            shorten_home_path("C:\\Users\\Alice\\project\\src\\main.rs"),
+            "~/project/src/main.rs"
+        );
+    }
+
+    #[test]
+    fn shorten_home_path_replaces_embedded_home_path() {
+        assert_eq!(
+            shorten_home_path("*** Update File: /Users/alice/project/src/main.rs"),
+            "*** Update File: ~/project/src/main.rs"
+        );
+    }
+
+    #[test]
+    fn shorten_home_path_preserves_existing_tilde_and_other_paths() {
+        assert_eq!(shorten_home_path("~/project"), "~/project");
+        assert_eq!(shorten_home_path("/opt/project"), "/opt/project");
     }
 
     // --- truncate_with_ellipsis ---

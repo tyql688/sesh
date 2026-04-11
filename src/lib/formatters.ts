@@ -78,14 +78,12 @@ export function formatFileSize(bytes: number): string {
 
 /** Replace home directory prefix with ~ for privacy. */
 export function shortenHomePath(path: string): string {
-  const homePatterns = [
-    /^\/Users\/[^/]+/,
-    /^\/home\/[^/]+/,
-    /^[A-Z]:\\Users\\[^\\]+/,
-  ];
+  const normalized = path.replaceAll("\\", "/");
+  const homePatterns = [/\/Users\/[^/\s]+/g, /\/home\/[^/\s]+/g];
+  const windowsHomePattern = /[A-Z]:\/Users\/[^/\s]+/gi;
+  let shortened = normalized.replace(windowsHomePattern, "~");
   for (const pat of homePatterns) {
-    const match = path.match(pat);
-    if (match) return path.replace(match[0], "~");
+    shortened = shortened.replace(pat, "~");
   }
-  return path;
+  return shortened;
 }

@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../../i18n/index";
+import { shortenHomePath } from "../../lib/formatters";
 import type { ProviderSnapshot } from "../../lib/types";
 import { disabledProviders, toggleProvider } from "../../stores/settings";
 import { toastError } from "../../stores/toast";
@@ -19,7 +20,9 @@ export function DataSourceSettings(props: {
             <div>
               <div class="settings-label">{info.label}</div>
               <div class="settings-desc flex-center-gap-sm">
-                <span>{info.path}</span>
+                <span title={shortenHomePath(info.path)}>
+                  {shortenHomePath(info.path)}
+                </span>
                 <Show when={info.exists}>
                   <button
                     class="settings-open-folder"

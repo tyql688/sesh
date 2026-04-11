@@ -137,12 +137,38 @@ fn test_render_session_html_uses_tool_metadata() {
                 structured: Some(json!({"list":[{"type":"text","text":"snapshot"}]})),
             }),
         ),
+        tool_message(
+            "Edit",
+            None,
+            Some(ToolMetadata {
+                raw_name: "Edit".to_string(),
+                canonical_name: "Edit".to_string(),
+                display_name: "Edit".to_string(),
+                category: "file".to_string(),
+                summary: Some("src/patch.rs".to_string()),
+                status: Some("success".to_string()),
+                ids: Default::default(),
+                mcp: None,
+                result_kind: Some("file_patch".to_string()),
+                structured: Some(json!({
+                    "filePath": "/tmp/project/src/patch.rs",
+                    "structuredPatch": [{
+                        "oldStart": 7,
+                        "oldLines": 2,
+                        "newStart": 7,
+                        "newLines": 2,
+                        "lines": [" context", "-old", "+new"]
+                    }]
+                })),
+            }),
+        ),
     ]);
 
     let html = cc_session_lib::exporter_test_helpers::render_session_html_pub(&detail);
     assert!(html.contains("tool-line-diff"));
     assert!(html.contains("tool-diff-line remove"));
     assert!(html.contains("tool-diff-line add"));
+    assert!(html.contains("@@ -7,2 +7,2 @@"));
     assert!(html.contains("browser snapshot"));
     assert!(html.contains("server"));
     assert_eq!(
@@ -150,4 +176,16 @@ fn test_render_session_html_uses_tool_metadata() {
         1,
         "structured file_patch output should appear only for the MCP sample, not the Edit diff"
     );
+}
+
+#[test]
+fn test_render_tool_detail_shortens_home_paths_in_patch_headers() {
+    let input = json!({
+        "patch": "*** Begin Patch\n*** Update File: /Users/alice/project/src/app.ts\n@@\n-old\n+new\n*** End Patch\n"
+    })
+    .to_string();
+    let html = cc_session_lib::exporter_test_helpers::render_tool_detail_pub("Edit", &input);
+
+    assert!(html.contains("*** Update File: ~/project/src/app.ts"));
+    assert!(!html.contains("/Users/alice"));
 }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPatchLineDiff, buildToolLineDiff } from "./diff";
+import {
+  buildPatchLineDiff,
+  buildStructuredPatchLineDiff,
+  buildToolLineDiff,
+} from "./diff";
 
 describe("buildToolLineDiff", () => {
   it("renders unchanged lines as context and changed lines as remove/add", () => {
@@ -77,6 +81,32 @@ describe("buildPatchLineDiff", () => {
         newLine: null,
         text: "const same = true;",
       },
+    ]);
+  });
+});
+
+describe("buildStructuredPatchLineDiff", () => {
+  it("converts Claude structuredPatch hunks into numbered diff rows", () => {
+    expect(
+      buildStructuredPatchLineDiff([
+        {
+          oldStart: 12,
+          oldLines: 3,
+          newStart: 12,
+          newLines: 3,
+          lines: [" context", "-old", "+new"],
+        },
+      ]),
+    ).toEqual([
+      {
+        type: "skip",
+        oldLine: null,
+        newLine: null,
+        text: "@@ -12,3 +12,3 @@",
+      },
+      { type: "context", oldLine: 12, newLine: 12, text: "context" },
+      { type: "remove", oldLine: 13, newLine: null, text: "old" },
+      { type: "add", oldLine: null, newLine: 13, text: "new" },
     ]);
   });
 });

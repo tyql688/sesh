@@ -1,6 +1,7 @@
 import type { Message, ToolMetadata } from "./types";
 import type { ToolDiffLine } from "./diff";
-import { buildPatchLineDiff } from "./diff";
+import { buildPatchLineDiff, buildStructuredPatchLineDiff } from "./diff";
+import { shortenHomePath } from "./formatters";
 
 export interface ToolDetail {
   lines: { label: string; value: string }[];
@@ -9,8 +10,24 @@ export interface ToolDetail {
   persistedOutputPath?: string;
 }
 
-export function shortPath(p: string): string {
-  return p?.split("/").slice(-2).join("/") || "";
+function isPathLabel(label: string): boolean {
+  const normalized = label.toLowerCase();
+  return (
+    normalized === "file" ||
+    normalized === "path" ||
+    normalized.endsWith("path")
+  );
+}
+
+function toolLine(
+  label: string,
+  value: unknown,
+): { label: string; value: string } {
+  const stringValue = String(value ?? "");
+  return {
+    label,
+    value: isPathLabel(label) ? shortenHomePath(stringValue) : stringValue,
+  };
 }
 
 function extractPatchedFiles(patchText: string): string[] {
@@ -22,6 +39,12 @@ function extractPatchedFiles(patchText: string): string[] {
       }
       if (line.startsWith("*** Add File: ")) {
         return line.slice("*** Add File: ".length).trim();
+      }
+      if (line.startsWith("*** Delete File: ")) {
+        return line.slice("*** Delete File: ".length).trim();
+      }
+      if (line.startsWith("*** Move to: ")) {
+        return line.slice("*** Move to: ".length).trim();
       }
       return "";
     })
@@ -108,7 +131,9 @@ export function toolSummary(message: Message): string {
       case "Read":
       case "Edit":
       case "Write":
-        return shortPath(firstString(obj, ["file_path", "filePath", "path"]));
+        return shortenHomePath(
+          firstString(obj, ["file_path", "filePath", "path"]),
+        );
       case "Bash":
         return firstString(obj, ["description", "command", "cmd"]).slice(0, 80);
       case "Glob":
@@ -116,7 +141,7 @@ export function toolSummary(message: Message): string {
       case "Grep": {
         const pattern = firstString(obj, ["pattern", "query"]);
         const path = firstString(obj, ["path"]);
-        return `/${pattern}/` + (path ? ` ${shortPath(path)}` : "");
+        return `/${pattern}/` + (path ? ` ${shortenHomePath(path)}` : "");
       }
       case "Agent":
         return firstString(obj, ["description", "prompt"]);
@@ -154,23 +179,23 @@ export function formatToolInput(message: Message): ToolDetail | null {
     switch (name) {
       case "Edit":
         if (typeof obj.patch === "string") {
+          const files = extractPatchedFiles(obj.patch);
           return {
             lines: [
-              {
-                label: "file",
-                value: String(obj.file_path || obj.filePath || ""),
-              },
+              ...(files.length > 0
+                ? [
+                    {
+                      label: "files",
+                      value: files.map(shortenHomePath).join("\n"),
+                    },
+                  ]
+                : [toolLine("file", obj.file_path || obj.filePath || "")]),
             ],
             patchDiff: buildPatchLineDiff(obj.patch),
           };
         }
         return {
-          lines: [
-            {
-              label: "file",
-              value: String(obj.file_path || obj.filePath || ""),
-            },
-          ],
+          lines: [toolLine("file", obj.file_path || obj.filePath || "")],
           diff: {
             old: String(obj.old_string || obj.oldString || ""),
             new: String(obj.new_string || obj.newString || ""),
@@ -179,20 +204,14 @@ export function formatToolInput(message: Message): ToolDetail | null {
       case "Write":
         return {
           lines: [
-            {
-              label: "file",
-              value: String(obj.file_path || obj.filePath || ""),
-            },
+            toolLine("file", obj.file_path || obj.filePath || ""),
             { label: "content", value: String(obj.content || "") },
           ],
         };
       case "Read":
         return {
           lines: [
-            {
-              label: "file",
-              value: String(obj.file_path || obj.filePath || ""),
-            },
+            toolLine("file", obj.file_path || obj.filePath || ""),
             ...(obj.offset
               ? [{ label: "offset", value: String(obj.offset) }]
               : []),
@@ -236,7 +255,7 @@ export function formatToolInput(message: Message): ToolDetail | null {
         return {
           lines: [
             { label: "pattern", value: String(obj.pattern || obj.query || "") },
-            ...(obj.path ? [{ label: "path", value: String(obj.path) }] : []),
+            ...(obj.path ? [toolLine("path", obj.path)] : []),
             ...(obj.glob ? [{ label: "glob", value: String(obj.glob) }] : []),
           ],
         };
@@ -244,7 +263,7 @@ export function formatToolInput(message: Message): ToolDetail | null {
         return {
           lines: Object.entries(obj)
             .filter(([, v]) => typeof v === "string" || typeof v === "number")
-            .map(([k, v]) => ({ label: k, value: String(v) }))
+            .map(([k, v]) => toolLine(k, v))
             .slice(0, 8),
         };
     }
@@ -257,7 +276,7 @@ export function formatToolInput(message: Message): ToolDetail | null {
       return {
         lines: [
           ...(files.length > 0
-            ? [{ label: "files", value: files.join("\n") }]
+            ? [{ label: "files", value: files.map(shortenHomePath).join("\n") }]
             : []),
         ],
         patchDiff: buildPatchLineDiff(inputJson),
@@ -314,16 +333,42 @@ export function formatToolResultMetadata(
     case "Edit":
     case "Write": {
       const file = firstString(structured, ["filePath", "file_path"]);
-      if (file) lines.push({ label: "file", value: file });
+      if (file) lines.push(toolLine("file", file));
+
+      const structuredPatch = buildStructuredPatchLineDiff(
+        structured.structuredPatch,
+      );
+      if (structuredPatch.length > 0) {
+        return {
+          lines,
+          patchDiff: structuredPatch,
+          persistedOutputPath,
+        };
+      }
+
+      const oldText = firstString(structured, ["oldString", "old_string"]);
+      const newText = firstString(structured, ["newString", "new_string"]);
+      if (oldText || newText) {
+        return {
+          lines,
+          diff: {
+            old: oldText,
+            new: newText,
+          },
+          persistedOutputPath,
+        };
+      }
+
       if (
-        typeof structured.oldString === "string" ||
-        typeof structured.newString === "string"
+        structured.type === "create" &&
+        typeof structured.content === "string" &&
+        structured.content.length > 0
       ) {
         return {
           lines,
           diff: {
-            old: String(structured.oldString || ""),
-            new: String(structured.newString || ""),
+            old: "",
+            new: structured.content,
           },
           persistedOutputPath,
         };

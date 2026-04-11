@@ -1,9 +1,8 @@
-use std::path::Path;
-
 use serde_json::Value;
 use similar::{ChangeTag, TextDiff};
 
 use crate::models::ToolMetadata;
+use crate::provider_utils::shorten_home_path;
 
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -24,17 +23,9 @@ fn truncate_char_boundary(s: &str, max: usize) -> &str {
     &s[..end]
 }
 
-fn short_path(p: &str) -> String {
-    let path = Path::new(p);
-    path.iter()
-        .rev()
-        .take(2)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .map(|c| c.to_str().unwrap_or(""))
-        .collect::<Vec<_>>()
-        .join("/")
+fn is_path_label(label: &str) -> bool {
+    let label = label.to_ascii_lowercase();
+    label == "file" || label == "path" || label.ends_with("path")
 }
 
 fn string_field<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Option<&'a str> {
@@ -43,10 +34,15 @@ fn string_field<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> O
 }
 
 fn render_field(label: &str, value: &str) -> String {
+    let display_value = if is_path_label(label) {
+        shorten_home_path(value)
+    } else {
+        value.to_string()
+    };
     format!(
         r#"<div class="tool-field"><span class="tool-field-label">{}</span><span class="tool-field-value">{}</span></div>"#,
         html_escape(label),
-        html_escape(value)
+        html_escape(&display_value)
     )
 }
 
@@ -99,7 +95,7 @@ pub(crate) fn render_patch_diff(patch: &str) -> String {
             continue;
         }
         if line.starts_with("*** ") || line.starts_with("@@") {
-            html.push_str(&render_diff_line("skip", line));
+            html.push_str(&render_diff_line("skip", &shorten_home_path(line)));
         } else if let Some(rest) = line.strip_prefix('+') {
             html.push_str(&render_diff_line("add", rest));
         } else if let Some(rest) = line.strip_prefix('-') {
@@ -113,6 +109,58 @@ pub(crate) fn render_patch_diff(patch: &str) -> String {
 
     html.push_str("</div>");
     html
+}
+
+fn render_structured_patch_diff(structured_patch: &Value) -> String {
+    let Some(hunks) = structured_patch.as_array() else {
+        return String::new();
+    };
+    if hunks.is_empty() {
+        return String::new();
+    }
+
+    let mut html = String::from(r#"<div class="tool-line-diff">"#);
+    let mut rendered_lines = 0usize;
+
+    for hunk in hunks {
+        let Some(lines) = hunk.get("lines").and_then(|value| value.as_array()) else {
+            continue;
+        };
+        let old_start = hunk.get("oldStart").and_then(|value| value.as_i64());
+        let old_lines = hunk.get("oldLines").and_then(|value| value.as_i64());
+        let new_start = hunk.get("newStart").and_then(|value| value.as_i64());
+        let new_lines = hunk.get("newLines").and_then(|value| value.as_i64());
+        if let (Some(old_start), Some(old_lines), Some(new_start), Some(new_lines)) =
+            (old_start, old_lines, new_start, new_lines)
+        {
+            html.push_str(&render_diff_line(
+                "skip",
+                &format!("@@ -{old_start},{old_lines} +{new_start},{new_lines} @@"),
+            ));
+        } else {
+            html.push_str(&render_diff_line("skip", "@@"));
+        }
+
+        for raw_line in lines.iter().filter_map(|line| line.as_str()) {
+            if let Some(rest) = raw_line.strip_prefix('+') {
+                html.push_str(&render_diff_line("add", rest));
+            } else if let Some(rest) = raw_line.strip_prefix('-') {
+                html.push_str(&render_diff_line("remove", rest));
+            } else if let Some(rest) = raw_line.strip_prefix(' ') {
+                html.push_str(&render_diff_line("context", rest));
+            } else {
+                html.push_str(&render_diff_line("skip", raw_line));
+            }
+            rendered_lines += 1;
+        }
+    }
+
+    html.push_str("</div>");
+    if rendered_lines == 0 {
+        String::new()
+    } else {
+        html
+    }
 }
 
 pub(crate) fn tool_icon(name: &str, metadata: Option<&ToolMetadata>) -> &'static str {
@@ -145,7 +193,11 @@ pub(crate) fn tool_summary(name: &str, input: &str, metadata: Option<&ToolMetada
     if let Some(summary) = metadata.and_then(|m| m.summary.as_deref()) {
         return summary.to_string();
     }
-    if name == "Apply_patch" || (name == "Edit" && input.contains("*** Begin Patch")) {
+    let trimmed_input = input.trim_start();
+    if (name == "Apply_patch" || name == "Edit")
+        && !trimmed_input.starts_with('{')
+        && input.contains("*** Begin Patch")
+    {
         return input
             .lines()
             .find(|l| {
@@ -154,7 +206,7 @@ pub(crate) fn tool_summary(name: &str, input: &str, metadata: Option<&ToolMetada
                     || l.starts_with("*** Delete File:")
             })
             .and_then(|l| l.split(':').nth(1))
-            .map(|s| short_path(s.trim()))
+            .map(|s| shorten_home_path(s.trim()))
             .unwrap_or_default();
     }
 
@@ -164,7 +216,7 @@ pub(crate) fn tool_summary(name: &str, input: &str, metadata: Option<&ToolMetada
 
     match name {
         "Read" | "Edit" | "Write" => string_field(&obj, &["file_path", "filePath", "path"])
-            .map(short_path)
+            .map(shorten_home_path)
             .unwrap_or_default(),
         "Bash" => string_field(&obj, &["description", "command", "cmd"])
             .map(|s| {
@@ -186,7 +238,10 @@ pub(crate) fn tool_summary(name: &str, input: &str, metadata: Option<&ToolMetada
 }
 
 pub(crate) fn render_tool_input_detail(tool_name: &str, tool_input: &str) -> String {
-    if (tool_name == "Apply_patch" || tool_name == "Edit") && tool_input.contains("*** Begin Patch")
+    let trimmed_tool_input = tool_input.trim_start();
+    if (tool_name == "Apply_patch" || tool_name == "Edit")
+        && !trimmed_tool_input.starts_with('{')
+        && tool_input.contains("*** Begin Patch")
     {
         let file_line = tool_input
             .lines()
@@ -219,10 +274,14 @@ pub(crate) fn render_tool_input_detail(tool_name: &str, tool_input: &str) -> Str
             if let Some(fp) = string_field(&obj, &["file_path", "filePath"]) {
                 html.push_str(&render_field("file", fp));
             }
+            if let Some(patch) = string_field(&obj, &["patch"]) {
+                html.push_str(&render_patch_diff(patch));
+                return html;
+            }
             let old = string_field(&obj, &["old_string", "oldString"]);
             let new = string_field(&obj, &["new_string", "newString"]);
-            if let (Some(old), Some(new)) = (old, new) {
-                html.push_str(&render_line_diff(old, new));
+            if old.is_some() || new.is_some() {
+                html.push_str(&render_line_diff(old.unwrap_or(""), new.unwrap_or("")));
             }
         }
         "Bash" => {
@@ -318,10 +377,24 @@ pub(crate) fn render_tool_result_detail(metadata: Option<&ToolMetadata>) -> Stri
             if let Some(file) = string_field(structured, &["filePath", "file_path"]) {
                 html.push_str(&render_field("file", file));
             }
+            let structured_patch_html = structured
+                .get("structuredPatch")
+                .map(render_structured_patch_diff)
+                .unwrap_or_default();
+            let has_structured_patch = !structured_patch_html.is_empty();
+            html.push_str(&structured_patch_html);
             let old = string_field(structured, &["oldString", "old_string"]);
             let new = string_field(structured, &["newString", "new_string"]);
-            if let (Some(old), Some(new)) = (old, new) {
-                html.push_str(&render_line_diff(old, new));
+            if !has_structured_patch && (old.is_some() || new.is_some()) {
+                html.push_str(&render_line_diff(old.unwrap_or(""), new.unwrap_or("")));
+            } else if !has_structured_patch
+                && structured.get("type").and_then(|value| value.as_str()) == Some("create")
+            {
+                if let Some(content) = string_field(structured, &["content"]) {
+                    if !content.is_empty() {
+                        html.push_str(&render_line_diff("", content));
+                    }
+                }
             }
         }
         "Agent" => {
@@ -379,11 +452,12 @@ fn value_to_short_string(value: &Value) -> String {
     }
 }
 
-pub(crate) fn suppress_raw_output(metadata: Option<&ToolMetadata>) -> bool {
-    matches!(
-        metadata.and_then(|m| m.result_kind.as_deref()),
-        Some("terminal_output" | "file_patch")
-    )
+pub(crate) fn suppress_raw_output(metadata: Option<&ToolMetadata>, result_has_diff: bool) -> bool {
+    match metadata.and_then(|m| m.result_kind.as_deref()) {
+        Some("terminal_output") => true,
+        Some("file_patch") => result_has_diff,
+        _ => false,
+    }
 }
 
 pub(crate) fn should_skip_tool(name: &str, metadata: Option<&ToolMetadata>) -> bool {

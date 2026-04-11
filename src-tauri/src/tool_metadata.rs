@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde_json::{json, Map, Value};
 
 use crate::models::{McpToolMetadata, Provider, ToolMetadata};
+use crate::provider_utils::shorten_home_path;
 
 pub struct ToolCallFacts<'a> {
     pub provider: Provider,
@@ -95,17 +96,6 @@ fn compact_string(value: &str, limit: usize) -> String {
     format!("{}…", &value[..end])
 }
 
-fn short_path(value: &str) -> String {
-    value
-        .rsplit('/')
-        .take(2)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
 fn string_field<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
     keys.iter()
         .find_map(|key| value.get(*key).and_then(|v| v.as_str()))
@@ -115,7 +105,7 @@ fn input_summary(canonical_name: &str, raw_name: &str, input: Option<&Value>) ->
     let input = input?;
     let summary = match canonical_name {
         "Read" | "Write" | "Edit" => string_field(input, &["file_path", "filePath", "path"])
-            .map(short_path)
+            .map(shorten_home_path)
             .unwrap_or_default(),
         "Bash" => string_field(input, &["description", "command", "cmd"])
             .map(|s| compact_string(s, 80))
@@ -125,7 +115,7 @@ fn input_summary(canonical_name: &str, raw_name: &str, input: Option<&Value>) ->
                 let mut value = format!("/{}/", compact_string(pattern, 60));
                 if let Some(path) = string_field(input, &["path"]) {
                     value.push(' ');
-                    value.push_str(&short_path(path));
+                    value.push_str(&shorten_home_path(path));
                 }
                 value
             })
@@ -229,12 +219,63 @@ fn compact_json_value(value: &Value, depth: usize) -> Value {
                     next.insert(key.clone(), json!("<omitted>"));
                     continue;
                 }
+                if key == "structuredPatch" {
+                    next.insert(key.clone(), compact_structured_patch(value));
+                    continue;
+                }
+                if key == "filePath" || key == "file_path" || key == "path" {
+                    if let Some(path) = value.as_str() {
+                        next.insert(key.clone(), json!(shorten_home_path(path)));
+                        continue;
+                    }
+                }
                 next.insert(key.clone(), compact_json_value(value, depth + 1));
             }
             Value::Object(next)
         }
         _ => value.clone(),
     }
+}
+
+fn compact_structured_patch(value: &Value) -> Value {
+    let Some(hunks) = value.as_array() else {
+        return compact_json_value(value, 0);
+    };
+
+    Value::Array(
+        hunks
+            .iter()
+            .take(25)
+            .map(|hunk| {
+                let Some(obj) = hunk.as_object() else {
+                    return compact_json_value(hunk, 0);
+                };
+                let mut next = Map::new();
+                for (key, value) in obj {
+                    if key == "lines" {
+                        let lines = value
+                            .as_array()
+                            .map(|lines| {
+                                lines
+                                    .iter()
+                                    .take(250)
+                                    .map(|line| {
+                                        line.as_str()
+                                            .map(|line| json!(compact_string(line, 4_000)))
+                                            .unwrap_or_else(|| compact_json_value(line, 0))
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+                        next.insert(key.clone(), Value::Array(lines));
+                    } else {
+                        next.insert(key.clone(), compact_json_value(value, 0));
+                    }
+                }
+                Value::Object(next)
+            })
+            .collect(),
+    )
 }
 
 fn result_kind_for_tool(raw_name: &str, result: Option<&Value>) -> Option<String> {
@@ -400,7 +441,14 @@ mod tests {
                     "filePath": "/repo/src/main.rs",
                     "originalFile": "very large",
                     "oldString": "old",
-                    "newString": "new"
+                    "newString": "new",
+                    "structuredPatch": [{
+                        "oldStart": 1,
+                        "oldLines": 1,
+                        "newStart": 1,
+                        "newLines": 1,
+                        "lines": ["-old", "+new"]
+                    }]
                 })),
                 is_error: Some(false),
                 status: None,
@@ -421,6 +469,17 @@ mod tests {
                 .and_then(|value| value.get("originalFile"))
                 .and_then(|value| value.as_str()),
             Some("<omitted>")
+        );
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("structuredPatch"))
+                .and_then(|value| value.get(0))
+                .and_then(|value| value.get("lines"))
+                .and_then(|value| value.get(0))
+                .and_then(|value| value.as_str()),
+            Some("-old")
         );
     }
 }

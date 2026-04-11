@@ -4,6 +4,7 @@ import {
   fmtK,
   formatFileSize,
   formatTimestamp,
+  shortenHomePath,
 } from "./formatters";
 
 describe("parseTimestamp", () => {
@@ -63,5 +64,22 @@ describe("formatTimestamp", () => {
   it("returns Chinese for zh locale", () => {
     const nowEpoch = Math.floor(Date.now() / 1000);
     expect(formatTimestamp(nowEpoch, "zh")).toBe("\u521a\u521a");
+  });
+});
+
+describe("shortenHomePath", () => {
+  it("replaces unix and windows user homes", () => {
+    expect(shortenHomePath("/Users/alice/project/src/main.ts")).toBe(
+      "~/project/src/main.ts",
+    );
+    expect(shortenHomePath("/home/bob/project/src/main.ts")).toBe(
+      "~/project/src/main.ts",
+    );
+    expect(shortenHomePath("C:\\Users\\Alice\\project\\src\\main.ts")).toBe(
+      "~/project/src/main.ts",
+    );
+    expect(
+      shortenHomePath("*** Update File: /Users/alice/project/src/main.ts"),
+    ).toBe("*** Update File: ~/project/src/main.ts");
   });
 });

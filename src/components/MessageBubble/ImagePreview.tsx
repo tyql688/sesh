@@ -1,5 +1,6 @@
 import { createSignal, createEffect, onCleanup, Show } from "solid-js";
 import { readImageBase64 } from "../../lib/tauri";
+import { shortenHomePath } from "../../lib/formatters";
 import { useI18n } from "../../i18n/index";
 
 export function isLocalPath(source: string): boolean {
@@ -252,8 +253,11 @@ function labelImageSource(source: string, t: (key: string) => string): string {
     }
   }
 
-  const normalized = source.replace(/\\/g, "/");
+  const normalized = shortenHomePath(source).replace(/\\/g, "/");
   const pathSegments = normalized.split("/").filter(Boolean);
+  if (normalized.startsWith("~/")) {
+    return `~/${pathSegments.slice(-2).join("/")}`;
+  }
   return pathSegments.slice(-2).join("/") || source;
 }
 
@@ -261,5 +265,5 @@ function describeImageSource(source: string): string {
   if (source.startsWith("data:")) {
     return "embedded image";
   }
-  return source;
+  return shortenHomePath(source).replaceAll("\\", "/");
 }

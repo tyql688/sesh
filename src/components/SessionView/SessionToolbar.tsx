@@ -187,7 +187,10 @@ export function SessionToolbar(props: {
         </Show>
         <Show when={props.meta().project_path}>
           <span class="info-sep">&middot;</span>
-          <span class="session-info-path" title={props.meta().project_path}>
+          <span
+            class="session-info-path"
+            title={shortenHomePath(props.meta().project_path)}
+          >
             {shortenHomePath(props.meta().project_path)}
           </span>
         </Show>

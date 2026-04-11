@@ -368,7 +368,7 @@ pub fn render(detail: &SessionDetail) -> String {
                         r#"<div class="tool-result-detail">{result_detail}</div>"#
                     ));
                 }
-                if has_output && !super::tool_html::suppress_raw_output(metadata) {
+                if has_output && !super::tool_html::suppress_raw_output(metadata, result_has_diff) {
                     let content_html = render_content(&msg.content);
                     detail_html
                         .push_str(&format!(r#"<div class="tool-output">{content_html}</div>"#));

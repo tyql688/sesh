@@ -57,9 +57,9 @@ describe("tool registry", () => {
       category: "file",
       status: "success",
       structured: {
-        filePath: "/tmp/App.tsx",
-        oldString: "old",
-        newString: "new",
+        file_path: "/tmp/App.tsx",
+        old_string: "old",
+        new_string: "new",
       },
     });
 
@@ -70,23 +70,62 @@ describe("tool registry", () => {
     expect(detail?.diff).toEqual({ old: "old", new: "new" });
   });
 
+  it("formats Claude structuredPatch results as patch diff rows", () => {
+    const detail = formatToolResultMetadata({
+      raw_name: "Edit",
+      canonical_name: "Edit",
+      display_name: "Edit",
+      category: "file",
+      status: "success",
+      structured: {
+        filePath: "/tmp/App.tsx",
+        structuredPatch: [
+          {
+            oldStart: 4,
+            oldLines: 2,
+            newStart: 4,
+            newLines: 2,
+            lines: [" const same = true;", "-old", "+new"],
+          },
+        ],
+      },
+    });
+
+    expect(detail?.patchDiff?.map((line) => line.type)).toEqual([
+      "skip",
+      "context",
+      "remove",
+      "add",
+    ]);
+  });
+
   it("formats canonical input for known tools", () => {
     const detail = formatToolInput({
       ...baseMessage,
       tool_name: "Grep",
-      tool_input: JSON.stringify({ pattern: "fn main", path: "/repo/src" }),
+      tool_input: JSON.stringify({
+        pattern: "fn main",
+        path: "/Users/alice/repo/src",
+      }),
     });
 
     expect(
       toolSummary({
         ...baseMessage,
         tool_name: "Grep",
-        tool_input: JSON.stringify({ pattern: "fn main", path: "/repo/src" }),
+        tool_input: JSON.stringify({
+          pattern: "fn main",
+          path: "/Users/alice/repo/src",
+        }),
       }),
-    ).toBe("/fn main/ repo/src");
+    ).toBe("/fn main/ ~/repo/src");
     expect(detail?.lines).toContainEqual({
       label: "pattern",
       value: "fn main",
+    });
+    expect(detail?.lines).toContainEqual({
+      label: "path",
+      value: "~/repo/src",
     });
   });
 
@@ -96,7 +135,7 @@ describe("tool registry", () => {
       tool_name: "Edit",
       tool_input: JSON.stringify({
         patch: `*** Begin Patch
-*** Update File: src/app.ts
+*** Update File: /Users/alice/project/src/app.ts
 @@
 -old
 +new
@@ -111,6 +150,11 @@ describe("tool registry", () => {
       "remove",
       "add",
     ]);
-    expect(detail?.lines).toEqual([{ label: "file", value: "" }]);
+    expect(detail?.lines).toEqual([
+      { label: "files", value: "~/project/src/app.ts" },
+    ]);
+    expect(detail?.patchDiff?.[0]?.text).toBe(
+      "*** Update File: ~/project/src/app.ts",
+    );
   });
 });
