@@ -154,11 +154,6 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 
 ## Database Optimization / 数据库优化
 
-### Token Stats Index — token_stats 索引
-- Missing covering index on `session_token_stats(session_id, date, model)`
-- Usage queries currently require full table scan (`db/queries.rs:362-402`)
-- 缺少覆盖索引，usage 查询需要全表扫描
-
 ### FTS5 Tokenizer — 全文搜索分词器
 - Current: default tokenizer, suboptimal for code paths and identifiers (`db/mod.rs:89`)
 - Fix: configure `unicode61` tokenizer for better code/path search
@@ -189,11 +184,6 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Fix: build session ID -> project path map during tree construction, O(1) lookup
 - 每个选中 session 遍历整棵树，应在建树时构建映射表
 
-### Redundant Array Allocation — 冗余数组分配
-- `[...slice].reverse()` creates new array on every memo update (`SessionView/index.tsx:94`)
-- Fix: iterate in reverse during render instead of copying
-- 每次 memo 更新都新建反转数组，应在渲染时反向迭代
-
 ---
 
 ## Detail Improvements / 细节改进
@@ -211,11 +201,6 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Audit hardcoded strings and route through `t()`
 - 审查硬编码字符串，全部走 `t()`
 
-### Status Bar Enhancements — 状态栏增强
-- Show last scan time and today's total cost
-- Data already available via `get_usage_stats()`
-- 显示上次扫描时间和今日总花费
-
 ### Image Cache Persistence — 图片缓存持久化
 - Copy temp file images to `~/.cc-session/cache/images/{hash}.ext`
 - Prevent image loss from OS temp cleanup
@@ -225,14 +210,21 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Add token usage and cost summary at the top of markdown exports
 - 在 Markdown 导出顶部添加 token 用量和费用摘要
 
-### Search Debounce Tuning — 搜索去抖调优
-- Current: 150ms (`search.ts:81`), fires too often during fast typing
-- Fix: increase to 300ms or use adaptive debounce based on input length
-- 当前 150ms 太灵敏，快速输入时频繁查询
-
 ---
 
 ## Done / 已完成
+
+### ~~Status Bar Enhancements~~
+- Last scan time and today's total cost displayed in status bar
+
+### ~~Search Debounce Tuning~~
+- Debounce increased from 150ms to 300ms to reduce redundant queries
+
+### ~~Redundant Array Allocation~~
+- Removed spread+reverse in SessionView visibleEntries, using slice().reverse()
+
+### ~~HashMap Pre-allocation~~
+- Token stats computation uses pre-allocated HashMap capacity
 
 ### ~~Session Duration Display~~
 - Show time span from first to last message (e.g., "23 min")
