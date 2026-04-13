@@ -4,6 +4,9 @@ use std::sync::Mutex;
 use crate::db::Database;
 use crate::models::TrashMeta;
 use crate::provider::{FileAction, RestoreAction, SessionProvider};
+use crate::services::image_cache::{
+    image_cache_provider_for, image_cache_provider_for_key, ImageCacheService,
+};
 use crate::services::{resolve_session_deletion, SourceSyncService};
 use crate::trash_state::{
     add_shared_deletion, atomic_write_json, read_trash_meta, remove_shared_deletion,
@@ -72,6 +75,20 @@ impl<'a> SessionLifecycleService<'a> {
 
     pub fn purge_session(&self, session_id: &str) -> Result<(), String> {
         let deletion = resolve_session_deletion(self.db, session_id)?;
+
+        // Clean cached images before deleting session data
+        if let Some(cache_provider) = image_cache_provider_for(&deletion.meta.provider) {
+            if let Ok(messages) = deletion
+                .provider
+                .load_messages(session_id, &deletion.meta.source_path)
+            {
+                if let Some(data_dir) = dirs::data_local_dir().map(|d| d.join("cc-session")) {
+                    ImageCacheService::new(&data_dir)
+                        .cleanup_images(cache_provider.as_ref(), &messages);
+                }
+            }
+        }
+
         crate::provider::execute_purge(&deletion.plan, deletion.provider.as_ref(), &deletion.meta)?;
         if deletion.plan.file_action == FileAction::Remove {
             cleanup_session_dir(&deletion.meta.source_path);
@@ -279,6 +296,22 @@ impl<'a> SessionLifecycleService<'a> {
         let entries = read_trash_meta(&meta_path);
 
         if let Some(entry) = entries.iter().find(|entry| entry.id == trash_id) {
+            // Clean cached images before removing trash entry
+            if let Some(cache_provider) = image_cache_provider_for_key(&entry.provider) {
+                if let Some(provider_enum) = crate::models::Provider::parse(&entry.provider) {
+                    if let Ok(runtime) = provider_enum.require_runtime() {
+                        if let Ok(messages) = runtime.load_messages(&entry.id, &entry.original_path)
+                        {
+                            if let Some(data_dir) =
+                                dirs::data_local_dir().map(|d| d.join("cc-session"))
+                            {
+                                ImageCacheService::new(&data_dir)
+                                    .cleanup_images(cache_provider.as_ref(), &messages);
+                            }
+                        }
+                    }
+                }
+            }
             remove_trash_entry(entry, &trash_dir, &shared_deletions_path, &entries, false)?;
         }
 
