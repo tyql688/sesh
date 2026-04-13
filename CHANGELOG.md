@@ -7,6 +7,31 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-04-13
+
+### Added
+
+- Image cache persistence: session images are copied to `app_data_dir/images/` at index time and served as fallback when originals are deleted
+- Status bar now shows today's token breakdown (↑input ↓output · cache read · cache write) and cost with color-coded highlights
+- Usage panel gains a "Today" time range filter
+- FTS5 tokenizer upgraded to `unicode61` with `tokenchars './_-'` for better code/path search
+- Batch operation feedback: trash/restore/delete now return per-item success/failure counts
+- Markdown export includes token usage summary table
+- Global in-memory image cache deduplicates loads across messages
+
+### Changed
+
+- HTML export conditionally bundles KaTeX and Mermaid only when content uses them (~3.1MB saved)
+- File watcher uses 500ms debounce window to batch change events and reduce redundant reindexing
+- Explorer session lookup uses pre-built Map for O(1) instead of O(n²) tree traversal
+- User bubble code blocks now follow light/dark theme correctly (previously always dark)
+
+### Fixed
+
+- KaTeX detection no longer false-positives on single `$` (shell vars, template literals)
+- Light-mode copy button hover text is now visible (#1d1d1f instead of white)
+- Image cache cleanup runs on all delete paths including empty-trash
+
 ## [0.3.9] - 2026-04-11
 
 ### Added

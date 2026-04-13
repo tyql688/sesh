@@ -22,12 +22,12 @@ src/                       # Solid.js frontend (components, stores, i18n, lib, s
 src-tauri/src/
   providers/               # claude/, codex/, gemini/, kimi/, cursor/, opencode/, qwen/, cc_mirror.rs
   commands/                # sessions.rs, settings.rs, trash.rs, terminal.rs
-  services/                # provider_snapshots.rs, session_lifecycle.rs, session_resolution.rs, source_sync.rs
+  services/                # provider_snapshots.rs, session_lifecycle.rs, session_resolution.rs, source_sync.rs, image_cache.rs
   exporter/                # json.rs, markdown.rs, html.rs, templates.rs
   db/                      # mod.rs, queries.rs, sync.rs, row_mapper.rs
   indexer.rs  watcher.rs  models.rs  provider.rs  provider_utils.rs  trash_state.rs
 src/stores/               # settings, search, selection, providerSnapshots, updater, favorites
-src/lib/                  # tauri.ts, provider-watch.ts, formatters, tree-builders, icons
+src/lib/                  # tauri.ts, provider-watch.ts, formatters, tree-builders, icons, image-cache.ts
 ```
 
 ## Provider Architecture
@@ -60,7 +60,7 @@ Resume: Claude `--resume`, Codex `resume`, Gemini `--resume`, Kimi `--session`, 
 
 - **Message**: `{ role, content, timestamp, tool_name, tool_input, token_usage }` — universal
 - **Thinking**: `MessageRole::System` with `[thinking]\n` prefix
-- **Images**: `[Image: source: ...]` in content
+- **Images**: `[Image: source: ...]` in content; persistent cache at `app_data_dir/images/{sha256}.ext` with fallback in `read_image_base64`
 - **Tool merge**: `call_id` maps pair tool calls with results
 - **Subagents**: `parent_id` links children; "Open" button for providers with separate files (Claude, Codex, Kimi, Cursor, CC-Mirror)
 - **Provider snapshots**: backend derives provider label/color/order/watch strategy/path info; frontend consumes snapshot data
