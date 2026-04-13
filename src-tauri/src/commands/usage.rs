@@ -165,6 +165,14 @@ fn build_usage_stats(
         })
     });
 
+    let provider_session_counts = state
+        .db
+        .usage_session_count_by_provider(providers, cutoff_ref)
+        .map_err(|e| format!("failed to count sessions by provider: {e}"))?
+        .into_iter()
+        .map(|(provider, count)| ProviderSessionCount { provider, count })
+        .collect();
+
     Ok(UsageStats {
         total_sessions,
         total_turns,
@@ -178,6 +186,7 @@ fn build_usage_stats(
         model_costs,
         project_costs,
         recent_sessions,
+        provider_session_counts,
         prev_period,
     })
 }

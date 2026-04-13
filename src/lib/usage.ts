@@ -47,6 +47,7 @@ export function makeEmptyUsageStats(): UsageStats {
     model_costs: [],
     project_costs: [],
     recent_sessions: [],
+    provider_session_counts: [],
     prev_period: undefined,
   };
 }

@@ -220,10 +220,18 @@ pub struct UsageStats {
     pub model_costs: Vec<ModelCost>,
     pub project_costs: Vec<ProjectCost>,
     pub recent_sessions: Vec<SessionCostRow>,
+    /// Session counts per provider, filtered by the current date range.
+    pub provider_session_counts: Vec<ProviderSessionCount>,
     /// Previous period totals for trend comparison (None when range is "All"
     /// or when insufficient historical data exists).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prev_period: Option<PrevPeriodTotals>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderSessionCount {
+    pub provider: String,
+    pub count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

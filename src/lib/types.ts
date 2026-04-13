@@ -180,6 +180,7 @@ export interface UsageStats {
   model_costs: ModelCost[];
   project_costs: ProjectCost[];
   recent_sessions: SessionCostRow[];
+  provider_session_counts: { provider: string; count: number }[];
   prev_period?: PrevPeriodTotals;
 }
 

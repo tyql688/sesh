@@ -630,6 +630,12 @@ export function UsagePanel() {
             {(snapshot) => {
               const info = providerInfo(snapshot.key);
               const active = () => selectedProviders().has(snapshot.key);
+              const filteredCount = () => {
+                const counts = stats()?.provider_session_counts;
+                return (
+                  counts?.find((c) => c.provider === snapshot.key)?.count ?? 0
+                );
+              };
               return (
                 <button
                   class={`usage-chip${active() ? " active" : " inactive"}`}
@@ -644,10 +650,8 @@ export function UsagePanel() {
                     style={{ background: info.color }}
                   />
                   <span class="usage-chip-label">{info.label}</span>
-                  <Show when={snapshot.session_count > 0}>
-                    <span class="usage-chip-count">
-                      {snapshot.session_count}
-                    </span>
+                  <Show when={filteredCount() > 0}>
+                    <span class="usage-chip-count">{filteredCount()}</span>
                   </Show>
                 </button>
               );

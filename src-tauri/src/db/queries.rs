@@ -299,6 +299,29 @@ impl Database {
         conn.query_row(&sql, param_refs.as_slice(), |row| row.get(0))
     }
 
+    pub fn usage_session_count_by_provider(
+        &self,
+        providers: &[String],
+        cutoff_date: Option<&str>,
+    ) -> Result<Vec<(String, u64)>, rusqlite::Error> {
+        let conn = self.lock_read()?;
+        let (where_clause, params) = build_usage_where(providers, cutoff_date);
+        let sql = format!(
+            "SELECT sess.provider, COUNT(DISTINCT s.session_id) \
+             FROM session_token_stats s \
+             JOIN sessions sess ON s.session_id = sess.id{} \
+             GROUP BY sess.provider",
+            where_clause
+        );
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?))
+        })?;
+        rows.collect()
+    }
+
     pub fn usage_totals(
         &self,
         providers: &[String],
