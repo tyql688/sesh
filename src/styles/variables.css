@@ -39,12 +39,12 @@
   --msg-user-code-bg: rgba(0, 122, 255, 0.08);
   --msg-user-code-text: var(--inline-code-text);
   --msg-user-code-inline-border: rgba(0, 122, 255, 0.12);
-  --msg-user-code-block-bg: #22272e;
+  --msg-user-code-block-bg: rgba(0, 0, 0, 0.065);
   --msg-user-code-block-border: rgba(0, 122, 255, 0.14);
-  --msg-user-copy-bg: rgba(0, 0, 0, 0.18);
-  --msg-user-copy-hover-bg: rgba(0, 0, 0, 0.28);
-  --msg-user-copy-border: rgba(255, 255, 255, 0.16);
-  --msg-user-copy-text: rgba(255, 255, 255, 0.78);
+  --msg-user-copy-bg: rgba(0, 0, 0, 0.06);
+  --msg-user-copy-hover-bg: rgba(0, 0, 0, 0.12);
+  --msg-user-copy-border: rgba(0, 0, 0, 0.1);
+  --msg-user-copy-text: rgba(0, 0, 0, 0.55);
   --msg-user-copy-hover-text: #ffffff;
   --msg-user-quote-border: rgba(0, 122, 255, 0.18);
   --msg-user-hr: rgba(0, 122, 255, 0.12);

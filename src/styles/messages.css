@@ -1216,6 +1216,30 @@
   background: var(--msg-user-code-block-bg);
   border-color: var(--msg-user-code-block-border);
   box-shadow: none;
+}
+
+.msg-bubble-user .code-block-header {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.msg-bubble-user .code-block-lang {
+  color: var(--text-tertiary);
+}
+
+.msg-bubble-user .code-block-pre {
+  color: var(--code-text);
+}
+
+.msg-bubble-user .code-block-copy {
+  color: var(--msg-user-copy-text);
+}
+
+.msg-bubble-user .code-block-copy:hover {
+  color: var(--text-primary);
+  background: var(--msg-user-copy-hover-bg);
+}
+
+[data-theme="dark"] .msg-bubble-user .code-block {
   --code-token-default: #adbac7;
   --code-token-keyword: #f47067;
   --code-token-title: #dcbdfb;
@@ -1232,23 +1256,23 @@
   --code-token-deletion-bg: #78191b;
 }
 
-.msg-bubble-user .code-block-header {
+[data-theme="dark"] .msg-bubble-user .code-block-header {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.msg-bubble-user .code-block-lang {
+[data-theme="dark"] .msg-bubble-user .code-block-lang {
   color: rgba(255, 255, 255, 0.68);
 }
 
-.msg-bubble-user .code-block-pre {
+[data-theme="dark"] .msg-bubble-user .code-block-pre {
   color: #adbac7;
 }
 
-.msg-bubble-user .code-block-copy {
+[data-theme="dark"] .msg-bubble-user .code-block-copy {
   color: rgba(255, 255, 255, 0.72);
 }
 
-.msg-bubble-user .code-block-copy:hover {
+[data-theme="dark"] .msg-bubble-user .code-block-copy:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
 }
