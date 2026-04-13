@@ -5,7 +5,7 @@ use crate::db::Database;
 use crate::models::TrashMeta;
 use crate::provider::{FileAction, RestoreAction, SessionProvider};
 use crate::services::image_cache::{
-    image_cache_provider_for, image_cache_provider_for_key, ImageCacheService,
+    image_cache_data_dir, image_cache_provider_for, image_cache_provider_for_key, ImageCacheService,
 };
 use crate::services::{resolve_session_deletion, SourceSyncService};
 use crate::trash_state::{
@@ -82,7 +82,7 @@ impl<'a> SessionLifecycleService<'a> {
                 .provider
                 .load_messages(session_id, &deletion.meta.source_path)
             {
-                if let Some(data_dir) = dirs::data_local_dir().map(|d| d.join("cc-session")) {
+                if let Some(data_dir) = image_cache_data_dir() {
                     ImageCacheService::new(&data_dir)
                         .cleanup_images(cache_provider.as_ref(), &messages);
                 }
@@ -272,6 +272,28 @@ impl<'a> SessionLifecycleService<'a> {
             let entries = read_trash_meta(&meta_path);
 
             for entry in &entries {
+                // Clean cached images before removing trash entry
+                if let Some(cache_provider) = image_cache_provider_for_key(&entry.provider) {
+                    if let Some(provider_enum) = crate::models::Provider::parse(&entry.provider) {
+                        if let Ok(runtime) = provider_enum.require_runtime() {
+                            let messages = runtime
+                                .load_messages(&entry.id, &entry.original_path)
+                                .or_else(|_| {
+                                    let trash_path = trash_dir.join(&entry.trash_file);
+                                    runtime.load_messages(
+                                        &entry.id,
+                                        trash_path.to_str().unwrap_or_default(),
+                                    )
+                                });
+                            if let Ok(messages) = messages {
+                                if let Some(data_dir) = image_cache_data_dir() {
+                                    ImageCacheService::new(&data_dir)
+                                        .cleanup_images(cache_provider.as_ref(), &messages);
+                                }
+                            }
+                        }
+                    }
+                }
                 remove_trash_entry(entry, &trash_dir, &shared_deletions_path, &entries, true)?;
             }
 
@@ -300,11 +322,17 @@ impl<'a> SessionLifecycleService<'a> {
             if let Some(cache_provider) = image_cache_provider_for_key(&entry.provider) {
                 if let Some(provider_enum) = crate::models::Provider::parse(&entry.provider) {
                     if let Ok(runtime) = provider_enum.require_runtime() {
-                        if let Ok(messages) = runtime.load_messages(&entry.id, &entry.original_path)
-                        {
-                            if let Some(data_dir) =
-                                dirs::data_local_dir().map(|d| d.join("cc-session"))
-                            {
+                        let messages = runtime
+                            .load_messages(&entry.id, &entry.original_path)
+                            .or_else(|_| {
+                                let trash_path = trash_dir.join(&entry.trash_file);
+                                runtime.load_messages(
+                                    &entry.id,
+                                    trash_path.to_str().unwrap_or_default(),
+                                )
+                            });
+                        if let Ok(messages) = messages {
+                            if let Some(data_dir) = image_cache_data_dir() {
                                 ImageCacheService::new(&data_dir)
                                     .cleanup_images(cache_provider.as_ref(), &messages);
                             }

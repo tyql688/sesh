@@ -60,6 +60,15 @@ pub fn image_cache_provider_for_key(key: &str) -> Option<Box<dyn ImageCacheProvi
 }
 
 // ---------------------------------------------------------------------------
+// Data directory helper
+// ---------------------------------------------------------------------------
+
+/// Resolve the app data directory for image caching.
+pub fn image_cache_data_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|d| d.join("cc-session"))
+}
+
+// ---------------------------------------------------------------------------
 // ImageCacheService
 // ---------------------------------------------------------------------------
 

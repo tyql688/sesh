@@ -261,7 +261,7 @@ fn tmp_dir_allows_image(canonical: &Path) -> bool {
 
 #[tauri::command]
 pub fn read_image_base64(path: String) -> Result<String, String> {
-    use crate::services::image_cache::ImageCacheService;
+    use crate::services::image_cache::{image_cache_data_dir, ImageCacheService};
     use base64::{engine::general_purpose::STANDARD, Engine};
 
     let path = path.trim().trim_start_matches('\u{feff}').to_string();
@@ -272,9 +272,7 @@ pub fn read_image_base64(path: String) -> Result<String, String> {
         p.to_path_buf()
     } else {
         // Try cache fallback
-        let data_dir = dirs::data_local_dir()
-            .map(|d| d.join("cc-session"))
-            .ok_or_else(|| format!("image not found: {path}"))?;
+        let data_dir = image_cache_data_dir().ok_or_else(|| format!("image not found: {path}"))?;
         let service = ImageCacheService::new(&data_dir);
         service
             .resolve_cached_path(&path)
