@@ -203,6 +203,45 @@ impl SessionProvider for OpenCodeProvider {
             }
         }
 
+        // Batch: aggregate token usage per session for indexer stats
+        let mut usage_map: std::collections::HashMap<
+            String,
+            Vec<(Option<String>, crate::models::TokenUsage)>,
+        > = std::collections::HashMap::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT session_id,
+                        json_extract(data, '$.modelID'),
+                        json_extract(data, '$.tokens.input'),
+                        json_extract(data, '$.tokens.output'),
+                        json_extract(data, '$.tokens.cache.read'),
+                        json_extract(data, '$.tokens.cache.write')
+                 FROM message
+                 WHERE json_extract(data, '$.role') = 'assistant'
+                   AND json_extract(data, '$.tokens') IS NOT NULL",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
+                ))
+            })?;
+            for r in rows.flatten() {
+                let (sid, model, input, output, cache_read, cache_write) = r;
+                let usage = crate::models::TokenUsage {
+                    input_tokens: input.unwrap_or(0) as u32,
+                    output_tokens: output.unwrap_or(0) as u32,
+                    cache_read_input_tokens: cache_read.unwrap_or(0) as u32,
+                    cache_creation_input_tokens: cache_write.unwrap_or(0) as u32,
+                };
+                usage_map.entry(sid).or_default().push((model, usage));
+            }
+        }
+
         // Batch: git branch per session from workspace
         let mut branch_map: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
@@ -284,6 +323,7 @@ impl SessionProvider for OpenCodeProvider {
                 )| {
                     let msg_count = msg_count_map.get(&id).copied().unwrap_or(0);
                     let content_text = content_map.get(&id).cloned().unwrap_or_default();
+                    let usage_entries = usage_map.remove(&id).unwrap_or_default();
 
                     // Prefer session.directory (actual working dir);
                     // fall back to project.worktree only if directory is empty.
@@ -329,7 +369,20 @@ impl SessionProvider for OpenCodeProvider {
                             git_branch: session_branch,
                             parent_id: parent_id.clone(),
                         },
-                        messages: Vec::new(),
+                        messages: usage_entries
+                            .into_iter()
+                            .map(|(model, usage)| Message {
+                                role: MessageRole::Assistant,
+                                content: String::new(),
+                                timestamp: ms_to_rfc3339(time_updated),
+                                tool_name: None,
+                                tool_input: None,
+                                token_usage: Some(usage),
+                                model,
+                                usage_hash: None,
+                                tool_metadata: None,
+                            })
+                            .collect(),
                         content_text: truncate_to_bytes(&content_text, FTS_CONTENT_LIMIT),
                     }
                 },
