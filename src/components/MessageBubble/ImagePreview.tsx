@@ -1,5 +1,6 @@
 import { createSignal, createEffect, onCleanup, Show } from "solid-js";
 import { readImageBase64 } from "../../lib/tauri";
+import { cachedLoad } from "../../lib/image-cache";
 import { shortenHomePath } from "../../lib/formatters";
 import { useI18n } from "../../i18n/index";
 
@@ -24,7 +25,7 @@ export function LocalImage(props: {
     setSrc(null);
     setFailed(false);
 
-    readImageBase64(props.path)
+    cachedLoad(props.path, () => readImageBase64(props.path))
       .then((loaded) => {
         if (!active) return;
         setSrc(loaded);
@@ -76,21 +77,25 @@ export function RemoteImage(props: {
     setLoadedSrc(null);
     setFailed(false);
 
-    const image = new Image();
-    image.onload = () => {
-      if (!active) return;
-      setLoadedSrc(props.src);
-    };
-    image.onerror = () => {
-      if (!active) return;
-      setFailed(true);
-    };
-    image.src = props.src;
+    cachedLoad(props.src, () => {
+      return new Promise<string>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(props.src);
+        image.onerror = () => reject(new Error("remote image load failed"));
+        image.src = props.src;
+      });
+    })
+      .then((src) => {
+        if (!active) return;
+        setLoadedSrc(src);
+      })
+      .catch(() => {
+        if (!active) return;
+        setFailed(true);
+      });
 
     onCleanup(() => {
       active = false;
-      image.onload = null;
-      image.onerror = null;
     });
   });
 

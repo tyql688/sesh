@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  BatchResult,
   SessionDetail,
   SearchResult,
   SearchFilters,
@@ -138,6 +139,30 @@ export async function emptyTrash(): Promise<void> {
 
 export async function permanentDeleteTrash(trashId: string): Promise<void> {
   return invoke<void>("permanent_delete_trash", { trashId });
+}
+
+export async function trashSessionsBatch(
+  items: string[],
+): Promise<BatchResult> {
+  return invoke<BatchResult>("trash_sessions_batch", { items });
+}
+
+export async function restoreSessionsBatch(
+  items: string[],
+): Promise<BatchResult> {
+  return invoke<BatchResult>("restore_sessions_batch", { items });
+}
+
+export async function permanentDeleteTrashBatch(
+  items: string[],
+): Promise<BatchResult> {
+  return invoke<BatchResult>("permanent_delete_trash_batch", { items });
+}
+
+export async function deleteSessionsBatch(
+  items: string[],
+): Promise<BatchResult> {
+  return invoke<BatchResult>("delete_sessions_batch", { items });
 }
 
 export async function listRecentSessions(

@@ -25,9 +25,22 @@ pub fn assemble_html(
     version_html: &str,
     branch_html: &str,
     path_html: &str,
+    needs_katex: bool,
+    needs_mermaid: bool,
 ) -> String {
-    let katex_js = inline_script_asset(EXPORT_KATEX_JS);
-    let mermaid_js = inline_script_asset(EXPORT_MERMAID_JS);
+    let katex_js = if needs_katex {
+        format!("<script>{}</script>", inline_script_asset(EXPORT_KATEX_JS))
+    } else {
+        String::new()
+    };
+    let mermaid_js = if needs_mermaid {
+        format!(
+            "<script>{}</script>",
+            inline_script_asset(EXPORT_MERMAID_JS)
+        )
+    } else {
+        String::new()
+    };
 
     format!(
         r#"<!DOCTYPE html>
@@ -211,8 +224,8 @@ p {{ margin: 4px 0; }}
   </div>
 </div>
 <div class="lightbox" id="lightbox" onclick="closeLightbox()"><img id="lightbox-img" src="" alt="Preview"></div>
-<script>{katex_js}</script>
-<script>{mermaid_js}</script>
+{katex_js}
+{mermaid_js}
 <script>
 function openLightbox(src){{document.getElementById('lightbox-img').src=src;document.getElementById('lightbox').classList.add('open')}}
 function closeLightbox(){{document.getElementById('lightbox').classList.remove('open')}}

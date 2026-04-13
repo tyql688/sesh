@@ -198,6 +198,14 @@ pub struct TrashMeta {
     pub parent_id: Option<String>,
 }
 
+/// Per-item success/failure counts for batch operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchResult {
+    pub succeeded: u32,
+    pub failed: u32,
+    pub errors: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageStats {
     pub total_sessions: u64,

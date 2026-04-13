@@ -154,6 +154,12 @@ export interface TrashMeta {
   variant_name?: string;
 }
 
+export interface BatchResult {
+  succeeded: number;
+  failed: number;
+  errors: string[];
+}
+
 export interface PrevPeriodTotals {
   total_sessions: number;
   total_turns: number;

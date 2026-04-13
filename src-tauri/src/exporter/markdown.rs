@@ -33,6 +33,33 @@ fn should_render_message(msg: &Message) -> bool {
     }
 }
 
+fn fmt_tokens(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}k", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
+}
+
+fn aggregate_token_usage(messages: &[Message]) -> (u64, u64, u64, u64) {
+    messages
+        .iter()
+        .fold((0u64, 0u64, 0u64, 0u64), |(inp, out, cr, cw), msg| {
+            if let Some(u) = &msg.token_usage {
+                (
+                    inp + u.input_tokens as u64,
+                    out + u.output_tokens as u64,
+                    cr + u.cache_read_input_tokens as u64,
+                    cw + u.cache_creation_input_tokens as u64,
+                )
+            } else {
+                (inp, out, cr, cw)
+            }
+        })
+}
+
 pub fn render(detail: &SessionDetail) -> String {
     let mut out = String::new();
 
@@ -46,7 +73,28 @@ pub fn render(detail: &SessionDetail) -> String {
         ));
     }
     out.push_str(&format!("- **Messages**: {}\n", detail.meta.message_count));
-    out.push_str(&format!("- **Session ID**: {}\n\n", detail.meta.id));
+    out.push_str(&format!("- **Session ID**: {}\n", detail.meta.id));
+
+    // Token usage summary
+    let (total_input, total_output, total_cache_read, total_cache_write) =
+        aggregate_token_usage(&detail.messages);
+    if total_input > 0 || total_output > 0 {
+        out.push('\n');
+        out.push_str("### Token Usage\n\n");
+        out.push_str("| Input | Output | Cache Read | Cache Write | Total |\n");
+        out.push_str("| ---: | ---: | ---: | ---: | ---: |\n");
+        let total = total_input + total_output;
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} |\n",
+            fmt_tokens(total_input),
+            fmt_tokens(total_output),
+            fmt_tokens(total_cache_read),
+            fmt_tokens(total_cache_write),
+            fmt_tokens(total),
+        ));
+    }
+
+    out.push('\n');
     out.push_str("---\n\n");
 
     for msg in detail

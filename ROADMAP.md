@@ -117,7 +117,7 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 
 ## Performance Optimization / 性能优化
 
-### Watcher Debouncing — 文件监听去抖
+### Watcher Debouncing — 文件监听去抖 `✅ done`
 - Current: every JSONL chunk write triggers a separate reindex event (`watcher.rs:32`)
 - Fix: batch changed paths and emit after 500ms window of no new changes
 - Impact: ~50% reduction in redundant reindexing
@@ -129,23 +129,25 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Impact: ~80% faster cold-check reindex
 - 当前每次全量扫描，应记录文件修改时间，跳过未变化的文件
 
-### Virtual Scrolling for Messages — 消息虚拟滚动
+### Virtual Scrolling for Messages — 消息虚拟滚动 `🔧 partial`
 - Current: all messages exist as DOM nodes, 500 messages = 500 nodes (`SessionView/index.tsx:51`)
 - Session search mode bypasses lazy loading entirely (`SessionView/index.tsx:92`)
 - Fix: keep only visible + 2-screen buffer in DOM
+- Status: progressive loading (batch=80) exists, but not true virtual scroll; search mode still loads all
 - 当前所有消息都是 DOM 节点，搜索模式更是全量渲染，应改为虚拟滚动
 
-### Conditional Export Bundling — 导出按需打包
+### Conditional Export Bundling — 导出按需打包 `✅ done`
 - Current: KaTeX (264KB) + Mermaid (2.8MB) included in every HTML export (`templates.rs`)
 - Fix: detect usage in session content, only include when needed
 - 当前每个 HTML 导出都打包 3.1MB JS，应检测内容按需包含
 
-### Lazy highlight.js Languages — 按需加载语法高亮
+### Lazy highlight.js Languages — 按需加载语法高亮 `🔧 partial`
 - Current: 30+ languages registered at startup (`CodeBlock.tsx:36-75`)
 - Fix: load language grammars on first encounter
+- Status: static imports at module load, not truly lazy — needs dynamic import
 - 当前启动时全量注册 30+ 语言，应按需加载
 
-### Global Image Cache — 全局图片缓存
+### Global Image Cache — 全局图片缓存 `✅ done`
 - Current: same URL re-fetched per component instance (`ImagePreview.tsx`)
 - Fix: shared cache keyed by URL, deduplicate across messages
 - 同一 URL 图片在不同消息中重复加载，应全局缓存去重
@@ -154,7 +156,7 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 
 ## Database Optimization / 数据库优化
 
-### FTS5 Tokenizer — 全文搜索分词器
+### FTS5 Tokenizer — 全文搜索分词器 `✅ done`
 - Current: default tokenizer, suboptimal for code paths and identifiers (`db/mod.rs:89`)
 - Fix: configure `unicode61` tokenizer for better code/path search
 - 默认分词器对代码和路径搜索效果差，应配置 unicode61
@@ -173,13 +175,14 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Fix: split into `<UsageChart>`, `<ProjectCostTable>`, `<SessionCostTable>`, `<MaintenancePanel>`
 - 1323 行巨型组件，应拆分为独立子组件
 
-### Parser Error Surfacing — 解析错误用户可见
+### Parser Error Surfacing — 解析错误用户可见 `🔧 partial`
 - Current: malformed JSONL silently skipped with `log::warn` (`claude/parser.rs:112-118`)
 - File read failures return `None` silently (`claude/parser.rs:66-70`)
 - Fix: return `Result<ParsedSession, ParseError>`, surface errors as toast notifications
+- Status: errors logged with log::warn but not surfaced to UI
 - 解析失败和文件读取失败静默跳过，用户不知道 session 缺消息
 
-### Explorer O(n^2) Lookup — Explorer 查找优化
+### Explorer O(n^2) Lookup — Explorer 查找优化 `✅ done`
 - Current: `findSessionProjectPath()` traverses full tree per selected session (`Explorer/index.tsx:242-270`)
 - Fix: build session ID -> project path map during tree construction, O(1) lookup
 - 每个选中 session 遍历整棵树，应在建树时构建映射表
@@ -188,17 +191,17 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 
 ## Detail Improvements / 细节改进
 
-### Batch Operation Failure Feedback — 批量操作失败反馈
+### Batch Operation Failure Feedback — 批量操作失败反馈 `✅ done`
 - Show per-item success/failure counts (e.g., "Trashed 8/10, 2 failed")
-- Backend TODO at `sessions.rs:93`
 - 显示逐项成功/失败计数
 
 ### Tab Overflow Handling — Tab 溢出处理
 - Reference: VSCode tab bar (scroll + overflow menu)
 - VSCode 风格 tab 滚动 + 溢出菜单
 
-### i18n Completeness — i18n 完整性
+### i18n Completeness — i18n 完整性 `🔧 partial`
 - Audit hardcoded strings and route through `t()`
+- Status: mostly compliant, a few hardcoded strings remain (e.g., keyboard shortcuts)
 - 审查硬编码字符串，全部走 `t()`
 
 ### Image Cache Persistence — 图片缓存持久化
@@ -206,7 +209,7 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Prevent image loss from OS temp cleanup
 - 将临时目录图片缓存到持久路径，防止 OS 清理丢失
 
-### Markdown Export: Usage Summary — Markdown 导出用量摘要
+### Markdown Export: Usage Summary — Markdown 导出用量摘要 `✅ done`
 - Add token usage and cost summary at the top of markdown exports
 - 在 Markdown 导出顶部添加 token 用量和费用摘要
 

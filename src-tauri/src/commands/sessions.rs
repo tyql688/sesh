@@ -3,7 +3,7 @@ use std::path::Path;
 use tauri::State;
 
 use crate::db::Database;
-use crate::models::{Message, Provider, SessionDetail, SessionMeta};
+use crate::models::{BatchResult, Message, Provider, SessionDetail, SessionMeta};
 use crate::services::{load_session_meta, SessionLifecycleService, SourceSyncService};
 
 use super::AppState;
@@ -90,16 +90,14 @@ pub fn delete_session(session_id: String, state: State<AppState>) -> Result<(), 
     SessionLifecycleService::new(&state.db).purge_session(&session_id)
 }
 
-// TODO: return per-item results when frontend uses this command.
-// Currently, partial failure stops the loop and already-deleted items are not reported.
 #[tauri::command]
 pub async fn delete_sessions_batch(
     items: Vec<String>,
     state: State<'_, AppState>,
-) -> Result<u32, String> {
+) -> Result<BatchResult, String> {
     let state = state.inner().clone();
     tokio::task::spawn_blocking(move || {
-        SessionLifecycleService::new(&state.db).purge_sessions(&items)
+        Ok(SessionLifecycleService::new(&state.db).purge_sessions(&items))
     })
     .await
     .map_err(|e| format!("task join error: {e}"))?

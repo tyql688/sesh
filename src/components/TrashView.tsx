@@ -11,8 +11,10 @@ import type { TreeNode } from "../lib/types";
 import {
   listTrash,
   restoreSession,
+  restoreSessionsBatch,
   emptyTrash,
   permanentDeleteTrash,
+  permanentDeleteTrashBatch,
 } from "../lib/tauri";
 import { ProviderDot } from "../lib/icons";
 import { collectSessionIds } from "../lib/tree-utils";
@@ -105,28 +107,18 @@ export function TrashView(props: { onRefreshTree: () => void }) {
 
   async function handleRestoreAll(node: TreeNode) {
     const ids = collectSessionIds(node);
-    let failed = 0;
-    for (const id of ids) {
-      try {
-        await restoreSession(id);
-      } catch {
-        failed++;
-      }
-    }
+    const result = await restoreSessionsBatch(ids);
     await Promise.all([refetch(), props.onRefreshTree()]);
-    if (failed > 0) toastError(`${failed}/${ids.length} ${t("trash.restore")}`);
-    else toast(`${ids.length} ${t("trash.restoreOk")}`);
+    if (result.failed > 0)
+      toastError(
+        `${result.failed}/${result.succeeded + result.failed} ${t("trash.restore")}`,
+      );
+    else toast(`${result.succeeded} ${t("trash.restoreOk")}`);
   }
 
   async function handleDeleteAll(node: TreeNode) {
     const ids = collectSessionIds(node);
-    for (const id of ids) {
-      try {
-        await permanentDeleteTrash(id);
-      } catch {
-        /* skip */
-      }
-    }
+    await permanentDeleteTrashBatch(ids);
     refetch();
   }
 

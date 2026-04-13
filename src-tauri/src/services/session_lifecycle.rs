@@ -85,13 +85,88 @@ impl<'a> SessionLifecycleService<'a> {
         Ok(())
     }
 
-    pub fn purge_sessions(&self, session_ids: &[String]) -> Result<u32, String> {
-        let mut deleted = 0;
+    pub fn purge_sessions(&self, session_ids: &[String]) -> crate::models::BatchResult {
+        let mut succeeded = 0u32;
+        let mut failed = 0u32;
+        let mut errors = Vec::new();
         for session_id in session_ids {
-            self.purge_session(session_id)?;
-            deleted += 1;
+            match self.purge_session(session_id) {
+                Ok(()) => succeeded += 1,
+                Err(e) => {
+                    log::warn!("batch purge failed for {session_id}: {e}");
+                    errors.push(format!("{session_id}: {e}"));
+                    failed += 1;
+                }
+            }
         }
-        Ok(deleted)
+        crate::models::BatchResult {
+            succeeded,
+            failed,
+            errors,
+        }
+    }
+
+    pub fn trash_sessions(&self, session_ids: &[String]) -> crate::models::BatchResult {
+        let mut succeeded = 0u32;
+        let mut failed = 0u32;
+        let mut errors = Vec::new();
+        for session_id in session_ids {
+            match self.trash_session(session_id) {
+                Ok(()) => succeeded += 1,
+                Err(e) => {
+                    log::warn!("batch trash failed for {session_id}: {e}");
+                    errors.push(format!("{session_id}: {e}"));
+                    failed += 1;
+                }
+            }
+        }
+        crate::models::BatchResult {
+            succeeded,
+            failed,
+            errors,
+        }
+    }
+
+    pub fn restore_sessions(&self, trash_ids: &[String]) -> crate::models::BatchResult {
+        let mut succeeded = 0u32;
+        let mut failed = 0u32;
+        let mut errors = Vec::new();
+        for trash_id in trash_ids {
+            match self.restore_session(trash_id) {
+                Ok(()) => succeeded += 1,
+                Err(e) => {
+                    log::warn!("batch restore failed for {trash_id}: {e}");
+                    errors.push(format!("{trash_id}: {e}"));
+                    failed += 1;
+                }
+            }
+        }
+        crate::models::BatchResult {
+            succeeded,
+            failed,
+            errors,
+        }
+    }
+
+    pub fn permanent_delete_trash_batch(&self, trash_ids: &[String]) -> crate::models::BatchResult {
+        let mut succeeded = 0u32;
+        let mut failed = 0u32;
+        let mut errors = Vec::new();
+        for trash_id in trash_ids {
+            match self.permanent_delete_trash(trash_id) {
+                Ok(()) => succeeded += 1,
+                Err(e) => {
+                    log::warn!("batch permanent delete failed for {trash_id}: {e}");
+                    errors.push(format!("{trash_id}: {e}"));
+                    failed += 1;
+                }
+            }
+        }
+        crate::models::BatchResult {
+            succeeded,
+            failed,
+            errors,
+        }
     }
 
     pub fn list_trash() -> Result<Vec<TrashMeta>, String> {

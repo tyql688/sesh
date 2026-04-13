@@ -3,7 +3,7 @@ import type { SessionRef, TreeNode } from "../../lib/types";
 import {
   getResumeCommand,
   resumeSession,
-  trashSession,
+  trashSessionsBatch,
   exportSessionsBatch,
   toggleFavorite,
   renameSession,
@@ -76,6 +76,37 @@ export function Explorer(props: {
     let tree = filterBlockedFolders(props.tree);
     if (!showOrphans()) tree = filterOrphanSubagents(tree);
     return timeGrouping() ? applyTimeGrouping(tree, t) : tree;
+  });
+
+  // O(1) session ID → project path lookup, rebuilt when props.tree changes
+  const sessionProjectPathMap = createMemo(() => {
+    const map = new Map<string, string>();
+    function walk(
+      nodes: TreeNode[],
+      providerHint: string,
+      projectHint: string,
+    ) {
+      for (const node of nodes) {
+        if (node.node_type === "session") {
+          map.set(node.id, projectHint);
+        }
+        if (node.children && node.children.length > 0) {
+          const nextProvider =
+            node.node_type === "provider"
+              ? (node.provider ?? node.id)
+              : providerHint;
+          const nextProject =
+            node.node_type === "project" && !providerHint
+              ? ""
+              : node.node_type === "project" && providerHint && !projectHint
+                ? (node.project_path ?? "")
+                : projectHint;
+          walk(node.children, nextProvider, nextProject);
+        }
+      }
+    }
+    walk(props.tree, "", "");
+    return map;
   });
   const [expandedIds, setExpandedIds] = createSignal<Set<string>>(new Set());
   const [initialized, setInitialized] = createSignal(false);
@@ -220,70 +251,32 @@ export function Explorer(props: {
   async function trashAllUnderNode(node: TreeNode) {
     const sessions = collectSessionNodes(node);
     if (sessions.length === 0) return;
-    let failed = 0;
-    for (const s of sessions) {
-      try {
-        await trashSession(s.id);
-      } catch (e) {
-        console.warn("failed to trash session:", s.id, e);
-        failed++;
-      }
-    }
+    const result = await trashSessionsBatch(sessions.map((s) => s.id));
     props.onRefreshTree?.();
-    const succeeded = sessions.length - failed;
-    if (failed > 0) {
-      toastError(`${failed}/${sessions.length} ${t("toast.trashFailed")}`);
+    if (result.failed > 0) {
+      toastError(
+        `${result.failed}/${result.succeeded + result.failed} ${t("toast.trashFailed")}`,
+      );
     }
-    if (succeeded > 0) {
-      toast(`${succeeded} ${t("toast.trashed")}`);
+    if (result.succeeded > 0) {
+      toast(`${result.succeeded} ${t("toast.trashed")}`);
     }
   }
 
   function findSessionProjectPath(sessionId: string): string {
-    function search(
-      nodes: TreeNode[],
-      providerHint: string,
-      projectHint: string,
-    ): string | null {
-      for (const node of nodes) {
-        if (node.node_type === "session" && node.id === sessionId) {
-          return projectHint;
-        }
-        if (node.children && node.children.length > 0) {
-          const nextProvider =
-            node.node_type === "provider"
-              ? (node.provider ?? node.id)
-              : providerHint;
-          const nextProject =
-            node.node_type === "project" && !providerHint
-              ? ""
-              : node.node_type === "project" && providerHint && !projectHint
-                ? (node.project_path ?? "")
-                : projectHint;
-          const result = search(node.children, nextProvider, nextProject);
-          if (result) return result;
-        }
-      }
-      return null;
-    }
-    return search(props.tree, "", "") ?? "";
+    return sessionProjectPathMap().get(sessionId) ?? "";
   }
 
   async function trashSelected() {
     const sel = selectedIds();
     if (sel.size === 0) return;
-    let failed = 0;
-    for (const id of sel) {
-      try {
-        await trashSession(id);
-      } catch {
-        failed++;
-      }
-    }
+    const result = await trashSessionsBatch([...sel]);
     clearSelection();
     props.onRefreshTree?.();
-    if (failed > 0) {
-      toastError(`${failed}/${sel.size} ${t("toast.trashFailed")}`);
+    if (result.failed > 0) {
+      toastError(
+        `${result.failed}/${result.succeeded + result.failed} ${t("toast.trashFailed")}`,
+      );
     } else {
       toast(t("toast.trashed"));
     }

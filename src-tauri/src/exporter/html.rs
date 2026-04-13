@@ -226,6 +226,27 @@ fn fmt_k(n: u64) -> String {
     }
 }
 
+/// Detect whether any message content uses KaTeX math notation.
+fn content_needs_katex(messages: &[Message]) -> bool {
+    messages.iter().any(|msg| {
+        let c = &msg.content;
+        // Inline math: $...$  or display math: $$...$$
+        // Also LaTeX delimiters: \( \) \[ \]
+        c.contains('$')
+            || c.contains("\\(")
+            || c.contains("\\)")
+            || c.contains("\\[")
+            || c.contains("\\]")
+    })
+}
+
+/// Detect whether any message content uses Mermaid code blocks.
+fn content_needs_mermaid(messages: &[Message]) -> bool {
+    messages
+        .iter()
+        .any(|msg| msg.content.contains("```mermaid"))
+}
+
 pub fn render(detail: &SessionDetail) -> String {
     let title = html_escape(&detail.meta.title);
     let provider_label = html_escape(detail.meta.provider.label());
@@ -460,6 +481,9 @@ pub fn render(detail: &SessionDetail) -> String {
         String::new()
     };
 
+    let needs_katex = content_needs_katex(&detail.messages);
+    let needs_mermaid = content_needs_mermaid(&detail.messages);
+
     super::templates::assemble_html(
         &title,
         &provider_label,
@@ -473,6 +497,8 @@ pub fn render(detail: &SessionDetail) -> String {
         &version_html,
         &branch_html,
         &path_html,
+        needs_katex,
+        needs_mermaid,
     )
 }
 
