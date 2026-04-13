@@ -125,7 +125,12 @@ impl ImageCacheService {
             let cache_name = Self::cache_name(path);
             let cache_path = self.cache_dir.join(&cache_name);
             if cache_path.exists() {
-                let _ = std::fs::remove_file(&cache_path);
+                if let Err(e) = std::fs::remove_file(&cache_path) {
+                    log::warn!(
+                        "failed to remove cached image {}: {e}",
+                        cache_path.display()
+                    );
+                }
             }
         }
     }
