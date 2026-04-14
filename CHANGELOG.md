@@ -7,6 +7,17 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-04-14
+
+### Added
+
+- Summon-style global search with trigram FTS across dialogue content (1cdbd21)
+
+### Fixed
+
+- Close correctness gaps in global search flow (61cdce0)
+- Skip missing OpenCode DB and hide uninstalled providers in usage panel (7ed5d9d)
+
 ## [0.3.14] - 2026-04-14
 
 ### Fixed
