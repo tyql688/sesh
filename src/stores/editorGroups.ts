@@ -130,7 +130,7 @@ function splitToRight(sessionId: string) {
   const sourceIdx = groups().findIndex((g) => g.id === sourceGroup.id);
   const rightNeighbor = groups()[sourceIdx + 1];
 
-  if (rightNeighbor && groups().length < MAX_GROUPS) {
+  if (rightNeighbor) {
     // move to existing right group
     updateGroup(sourceGroup.id, () => ({
       ...sourceGroup,
@@ -295,6 +295,7 @@ function _reset() {
 }
 
 export {
+  MAX_GROUPS,
   groups,
   activeGroupId,
   activeGroup,
