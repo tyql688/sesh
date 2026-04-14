@@ -55,8 +55,8 @@ export function TabBar(props: {
     onCleanup(() => ro.disconnect());
   });
 
-  // Re-check overflow when tabs change
-  createEffect(on(() => props.tabs.length, checkOverflow, { defer: true }));
+  // Re-check overflow when tabs change (count, titles, or preview state)
+  createEffect(on(() => props.tabs, checkOverflow, { defer: true }));
 
   // Scroll active tab into view
   createEffect(

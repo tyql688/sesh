@@ -205,11 +205,15 @@ export function EditorArea(props: {
                   "min-height": "0",
                 }}
               >
-                <SessionView
-                  session={session()}
-                  onRefreshTree={props.onRefreshTree}
-                  onCloseTab={props.onTabClose}
-                />
+                <Show when={session().id} keyed>
+                  {(_id) => (
+                    <SessionView
+                      session={session()}
+                      onRefreshTree={props.onRefreshTree}
+                      onCloseTab={props.onTabClose}
+                    />
+                  )}
+                </Show>
               </div>
             )}
           </Index>
