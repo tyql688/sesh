@@ -174,7 +174,8 @@
     "toggleFavorite": "Toggle Favorite",
     "rename": "Rename",
     "openInFinder": "Open in Finder",
-    "copyPath": "Copy Path"
+    "copyPath": "Copy Path",
+    "openToSide": "Open to the Side"
   },
   "settings": {
     "title": "Settings",

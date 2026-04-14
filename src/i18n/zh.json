@@ -174,7 +174,8 @@
     "toggleFavorite": "切换收藏",
     "rename": "重命名",
     "openInFinder": "在 Finder 中打开",
-    "copyPath": "复制路径"
+    "copyPath": "复制路径",
+    "openToSide": "在侧边打开"
   },
   "settings": {
     "title": "设置",

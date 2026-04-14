@@ -3,12 +3,14 @@ import type { SessionRef, Provider } from "../lib/types";
 import { useI18n } from "../i18n/index";
 import { ContextMenu, type MenuItemDef } from "./ContextMenu";
 import { isMac } from "../lib/platform";
+import { moveTabToGroup } from "../stores/editorGroups";
 
 function providerColor(provider: Provider): string {
   return `var(--${provider})`;
 }
 
 export function TabBar(props: {
+  groupId: string;
   tabs: SessionRef[];
   activeTabId: string | null;
   onTabSelect: (id: string) => void;
@@ -16,6 +18,7 @@ export function TabBar(props: {
   onCloseAllTabs: () => void;
   onCloseOtherTabs: (keepId: string) => void;
   onCloseTabsToRight: (fromId: string) => void;
+  onSplitToRight: (sessionId: string) => void;
 }) {
   const { t } = useI18n();
   const [menuState, setMenuState] = createSignal<{
@@ -46,6 +49,10 @@ export function TabBar(props: {
         label: t("contextMenu.closeToRight"),
         onClick: () => props.onCloseTabsToRight(m.tabId),
       },
+      {
+        label: t("contextMenu.openToSide"),
+        onClick: () => props.onSplitToRight(m.tabId),
+      },
       { label: "", separator: true, onClick: () => {} },
       {
         label: t("contextMenu.closeAll"),
@@ -56,13 +63,47 @@ export function TabBar(props: {
   }
 
   return (
-    <div class="tab-bar">
+    <div
+      class="tab-bar"
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        try {
+          const data = JSON.parse(
+            e.dataTransfer?.getData("text/plain") ?? "{}",
+          );
+          if (data.sessionId && data.sourceGroupId !== props.groupId) {
+            moveTabToGroup(data.sessionId, props.groupId);
+          }
+        } catch {
+          /* ignore */
+        }
+      }}
+    >
       <For each={props.tabs}>
         {(tab) => {
           const isActive = () => tab.id === props.activeTabId;
           return (
             <div
               class={`tab${isActive() ? " active" : ""}`}
+              draggable={true}
+              onDragStart={(e) => {
+                e.dataTransfer!.setData(
+                  "text/plain",
+                  JSON.stringify({
+                    sessionId: tab.id,
+                    sourceGroupId: props.groupId,
+                  }),
+                );
+                e.dataTransfer!.effectAllowed = "move";
+                (e.currentTarget as HTMLElement).style.opacity = "0.4";
+              }}
+              onDragEnd={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = "";
+              }}
               onClick={(e) => {
                 if (e.button === 0) props.onTabSelect(tab.id);
               }}
