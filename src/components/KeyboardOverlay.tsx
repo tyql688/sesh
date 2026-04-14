@@ -3,6 +3,7 @@ import { useI18n } from "../i18n/index";
 import { isMac } from "../lib/platform";
 const mod = isMac ? "\u2318" : "Ctrl+";
 const shift = isMac ? "\u21E7" : "Shift+";
+const opt = isMac ? "\u2325" : "Alt+";
 
 interface ShortcutItem {
   keys: string;
@@ -43,6 +44,20 @@ const shortcuts: ShortcutCategory[] = [
       { keys: `${mod}B`, descKey: "keyboard.toggleFavorite" },
       { keys: `${mod}L`, descKey: "keyboard.toggleWatch" },
       { keys: `${mod}\u232B`, descKey: "keyboard.deleteSession" },
+    ],
+  },
+  {
+    categoryKey: "keyboard.splitView",
+    items: [
+      { keys: `${mod}\\`, descKey: "keyboard.splitEditor" },
+      {
+        keys: isMac ? `${mod}${opt}←` : `Ctrl+${opt}←`,
+        descKey: "keyboard.focusGroupLeft",
+      },
+      {
+        keys: isMac ? `${mod}${opt}→` : `Ctrl+${opt}→`,
+        descKey: "keyboard.focusGroupRight",
+      },
     ],
   },
   {

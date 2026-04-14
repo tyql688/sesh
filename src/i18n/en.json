@@ -150,7 +150,11 @@
     "findInSession": "Find in Session",
     "openSettings": "Open Settings",
     "globalSearch": "Global Search",
-    "refresh": "Refresh Index"
+    "refresh": "Refresh Index",
+    "splitView": "Split View",
+    "splitEditor": "Split Editor",
+    "focusGroupLeft": "Focus Left Group",
+    "focusGroupRight": "Focus Right Group"
   },
   "contextMenu": {
     "close": "Close",

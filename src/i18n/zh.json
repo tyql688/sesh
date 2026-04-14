@@ -150,7 +150,11 @@
     "findInSession": "在会话中搜索",
     "openSettings": "打开设置",
     "globalSearch": "全局搜索",
-    "refresh": "刷新索引"
+    "refresh": "刷新索引",
+    "splitView": "分屏视图",
+    "splitEditor": "分屏",
+    "focusGroupLeft": "聚焦左侧编辑组",
+    "focusGroupRight": "聚焦右侧编辑组"
   },
   "contextMenu": {
     "close": "关闭",
