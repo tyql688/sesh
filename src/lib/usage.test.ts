@@ -23,6 +23,7 @@ describe("makeEmptyUsageStats", () => {
       daily_usage: [],
       model_costs: [],
       project_costs: [],
+      provider_session_counts: [],
       recent_sessions: [],
       prev_period: undefined,
     });
