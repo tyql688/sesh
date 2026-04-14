@@ -40,12 +40,23 @@ pub fn normalize_model_key(model: &str) -> String {
 }
 
 /// Parse a cached PricingCatalog (our flattened format, stored in SQLite).
+/// Automatically generates short-name aliases for provider-prefixed keys
+/// (e.g. `"vendor/model-1"` → also inserts `"model-1"`) so that
+/// exact-match lookup works without HashMap iteration.
 pub fn parse_catalog(json: &str) -> Result<PricingCatalog, serde_json::Error> {
     let raw: HashMap<String, RemoteModelPricing> = serde_json::from_str(json)?;
-    Ok(raw
-        .into_iter()
-        .map(|(name, pricing)| (normalize_model_key(&name), pricing))
-        .collect())
+    let mut catalog = PricingCatalog::with_capacity(raw.len() * 2);
+    for (name, pricing) in raw {
+        let key = normalize_model_key(&name);
+        // Short-name alias: "vendor/model" → "model" (first writer wins)
+        if let Some((_, suffix)) = key.split_once('/') {
+            if !suffix.is_empty() && !catalog.contains_key(suffix) {
+                catalog.insert(suffix.to_string(), pricing.clone());
+            }
+        }
+        catalog.insert(key, pricing);
+    }
+    Ok(catalog)
 }
 
 // ── models.dev parsing ──────────────────────────────────────────────
@@ -271,75 +282,31 @@ fn model_pricing_from_remote(remote: &RemoteModelPricing) -> Option<ModelPricing
     })
 }
 
-fn provider_model_suffix(model: &str) -> &str {
-    model
-        .rsplit_once('/')
-        .map(|(_, suffix)| suffix)
-        .unwrap_or(model)
-}
-
-fn has_delimited_prefix(longer: &str, shorter: &str) -> bool {
-    longer.strip_prefix(shorter).is_some_and(|suffix| {
-        suffix
-            .chars()
-            .next()
-            .is_some_and(|ch| matches!(ch, '-' | '.'))
-    })
-}
-
-/// Unified matching rule:
-/// - exact match
-/// - prefix/suffix match only across explicit delimiters (`-` / `.`)
-///
-/// This avoids region-specific special casing while still handling common
-/// versioned model names from many providers.
-fn matches_model_name(catalog_name: &str, requested: &str) -> bool {
-    catalog_name == requested
-        || has_delimited_prefix(catalog_name, requested)
-        || has_delimited_prefix(requested, catalog_name)
-}
-
-fn lookup_model_pricing(catalog: &PricingCatalog, model: &str) -> Option<ModelPricing> {
+/// Exact-match only lookup: query → catalog key.
+/// No HashMap iteration, no fuzzy matching.  All fuzziness (version
+/// stripping, variant suffix stripping) lives in `lookup_pricing`'s
+/// candidate pipeline so the resolution order is explicit and
+/// deterministic regardless of HashMap seed.
+fn lookup_exact(catalog: &PricingCatalog, model: &str) -> Option<ModelPricing> {
     let normalized = normalize_model_key(model);
-    if let Some(remote) = catalog.get(&normalized) {
-        if let Some(pricing) = model_pricing_from_remote(remote) {
-            return Some(pricing);
-        }
-    }
-
-    // HashMap iteration order is non-deterministic (random seed per instance).
-    // When the catalog is re-parsed on each poll, a different entry may win.
-    // Pick the shortest matching key (prefers short alias "gpt-5.4" over
-    // "azure/gpt-5.4") to make the result stable across re-parses.
-    let mut best: Option<(&str, &RemoteModelPricing)> = None;
-    for (name, remote) in catalog.iter() {
-        if matches_model_name(name, &normalized)
-            || matches_model_name(provider_model_suffix(name), &normalized)
-        {
-            let dominated = best.is_some_and(|(prev, _)| name.len() < prev.len());
-            if best.is_none() || dominated {
-                best = Some((name, remote));
-            }
-        }
-    }
-    best.and_then(|(_, remote)| model_pricing_from_remote(remote))
+    catalog.get(&normalized).and_then(model_pricing_from_remote)
 }
 
 pub fn lookup_pricing(catalog: Option<&PricingCatalog>, model: &str) -> Option<ModelPricing> {
     let catalog = catalog?;
 
-    // 1. Try exact / version-stripped variants first.
+    // 1. Exact key / version-stripped variants.
     for candidate in model_match_variants(model) {
-        if let Some(pricing) = lookup_model_pricing(catalog, &candidate) {
+        if let Some(pricing) = lookup_exact(catalog, &candidate) {
             return Some(pricing);
         }
     }
 
-    // 2. Last resort: strip known variant suffixes (-fast, -mini, …) and retry.
+    // 2. Strip known variant suffixes (-fast, -mini, …) and retry.
     let normalized = normalize_model_key(model);
     if let Some(base) = strip_variant_suffix(&normalized) {
         for candidate in model_match_variants(&base) {
-            if let Some(pricing) = lookup_model_pricing(catalog, &candidate) {
+            if let Some(pricing) = lookup_exact(catalog, &candidate) {
                 return Some(pricing);
             }
         }
@@ -415,7 +382,7 @@ mod tests {
             r#"{"gpt-5.4":{"input_cost_per_token":2.5e-6,"output_cost_per_token":15e-6,"cache_read_input_token_cost":2.5e-7}}"#,
         )
         .expect("catalog");
-        let pricing = super::lookup_model_pricing(&catalog, "gpt-5.4").expect("pricing");
+        let pricing = super::lookup_pricing(Some(&catalog), "gpt-5.4").expect("pricing");
         assert_close(pricing.input, 2.5e-6);
         assert_close(pricing.output, 15.0e-6);
         assert_close(pricing.cache_read, 0.25e-6);
@@ -617,5 +584,36 @@ mod tests {
             estimate_cost_with_catalog(Some(&catalog), "model-1-20250514", 1_000_000, 0, 0, 0);
 
         assert_close(cost, 4.0);
+    }
+
+    #[test]
+    fn lookup_prefers_most_specific_model_over_shorter_key() {
+        // "gpt-5.4-fast" must match "gpt-5.4" ($2.5/M input), not "gpt-5" ($1.25/M input).
+        let json = r#"{
+            "openai": {
+                "models": {
+                    "gpt-5": {
+                        "cost": {"input": 1.25, "output": 10, "cache_read": 0.125}
+                    },
+                    "gpt-5.4": {
+                        "cost": {"input": 2.5, "output": 15, "cache_read": 0.25}
+                    }
+                }
+            }
+        }"#;
+        let catalog = parse_models_dev(json).expect("catalog");
+
+        // Direct lookup — sanity check
+        let cost_54 = estimate_cost_with_catalog(Some(&catalog), "gpt-5.4", 1_000_000, 0, 0, 0);
+        assert_close(cost_54, 2.5);
+
+        let cost_5 = estimate_cost_with_catalog(Some(&catalog), "gpt-5", 1_000_000, 0, 0, 0);
+        assert_close(cost_5, 1.25);
+
+        // The bug: "gpt-5.4-fast" was resolving to "gpt-5" (shortest match)
+        // instead of "gpt-5.4" (most specific match).
+        let cost_fast =
+            estimate_cost_with_catalog(Some(&catalog), "gpt-5.4-fast", 1_000_000, 0, 0, 0);
+        assert_close(cost_fast, 2.5); // must use gpt-5.4 pricing, not gpt-5
     }
 }
