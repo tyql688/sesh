@@ -237,6 +237,8 @@ function createGroupFromDrop(sessionId: string): void {
   if (groups().length >= MAX_GROUPS) return;
   const sourceGroup = findGroupBySession(sessionId);
   if (!sourceGroup) return;
+  // guard: sole tab in sole group → no-op (same as splitToRight)
+  if (sourceGroup.tabs.length <= 1 && groups().length <= 1) return;
   const session = sourceGroup.tabs.find((t) => t.id === sessionId)!;
 
   const newSourceTabs = sourceGroup.tabs.filter((t) => t.id !== sessionId);
