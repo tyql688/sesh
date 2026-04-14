@@ -284,17 +284,26 @@ function setGroupFlexBasis(groupId: string, basis: number) {
 }
 
 function syncAllTabTitles(titleMap: Map<string, string>) {
-  setGroups((prev) =>
-    prev.map((g) => ({
-      ...g,
-      tabs: g.tabs.map((tab) => {
+  setGroups((prev) => {
+    let anyGroupChanged = false;
+    const next = prev.map((g) => {
+      let anyTabChanged = false;
+      const newTabs = g.tabs.map((tab) => {
         const newTitle = titleMap.get(tab.id);
-        return newTitle && newTitle !== tab.title
-          ? { ...tab, title: newTitle }
-          : tab;
-      }),
-    })),
-  );
+        if (newTitle && newTitle !== tab.title) {
+          anyTabChanged = true;
+          return { ...tab, title: newTitle };
+        }
+        return tab;
+      });
+      if (anyTabChanged) {
+        anyGroupChanged = true;
+        return { ...g, tabs: newTabs };
+      }
+      return g;
+    });
+    return anyGroupChanged ? next : prev;
+  });
 }
 
 /** Reset store state — useful for testing */
