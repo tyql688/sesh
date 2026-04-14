@@ -1277,3 +1277,39 @@ body {
   background: var(--accent);
   opacity: 0.5;
 }
+
+/* Editor Groups Container */
+.editor-groups-container {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Drop zone for creating new group on right edge */
+.editor-groups-drop-right {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.editor-groups-drop-right.active {
+  pointer-events: auto;
+  background: rgba(var(--accent-rgb, 0, 122, 255), 0.12);
+  border-left: 2px solid var(--accent);
+}
+
+/* Focus indicator on active group tab bar */
+.editor-area.focused .tab-bar {
+  border-bottom: 1.5px solid var(--accent);
+}
+
+.editor-area:not(.focused) {
+  opacity: 0.85;
+}
