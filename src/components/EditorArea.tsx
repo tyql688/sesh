@@ -1,6 +1,7 @@
 import {
   Show,
   For,
+  Index,
   createSignal,
   createResource,
   createEffect,
@@ -189,25 +190,25 @@ export function EditorArea(props: {
           onSplitToRight={props.onSplitToRight}
         />
         <div class="editor-content">
-          <For each={props.tabs}>
+          <Index each={props.tabs}>
             {(session) => (
               <div
                 class="editor-tab-pane"
                 style={{
-                  display: session.id === props.activeTabId ? "flex" : "none",
+                  display: session().id === props.activeTabId ? "flex" : "none",
                   flex: "1",
                   "flex-direction": "column",
                   "min-height": "0",
                 }}
               >
                 <SessionView
-                  session={session}
+                  session={session()}
                   onRefreshTree={props.onRefreshTree}
                   onCloseTab={props.onTabClose}
                 />
               </div>
             )}
-          </For>
+          </Index>
         </div>
       </Show>
     </div>
