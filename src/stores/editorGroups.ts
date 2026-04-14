@@ -46,6 +46,19 @@ function removeGroupIfEmpty(groupId: string) {
       if (activeGroupId() === groupId) {
         setActiveGroupId(filtered[filtered.length - 1].id);
       }
+      // Redistribute removed group's width to survivors
+      if (filtered.length === 1) {
+        // sole survivor gets 100%
+        filtered[0] = { ...filtered[0], flexBasis: 100 };
+      } else {
+        // transfer removed width proportionally
+        const removedBasis = g.flexBasis;
+        const share = removedBasis / filtered.length;
+        return filtered.map((x) => ({
+          ...x,
+          flexBasis: x.flexBasis + share,
+        }));
+      }
       return filtered;
     }
     return prev;
@@ -98,7 +111,12 @@ function closeOtherTabs(keepId: string) {
   const g = findGroupBySession(keepId);
   if (!g) return;
   const kept = g.tabs.filter((t) => t.id === keepId);
-  updateGroup(g.id, (prev) => ({ ...prev, tabs: kept, activeTabId: keepId }));
+  updateGroup(g.id, (prev) => ({
+    ...prev,
+    tabs: kept,
+    activeTabId: keepId,
+    flexBasis: 100,
+  }));
   // remove all other groups
   setGroups((prev) => prev.filter((x) => x.id === g.id));
   setActiveGroupId(g.id);

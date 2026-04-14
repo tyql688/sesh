@@ -35,6 +35,7 @@ import { loadProviderSnapshots } from "../stores/providerSnapshots";
 import { toast, toastError, toastInfo } from "../stores/toast";
 import { checkForUpdate } from "../stores/updater";
 import {
+  groups,
   activeGroup,
   openSession,
   closeTab,
@@ -145,22 +146,28 @@ export default function App() {
     // Listen for subagent open requests from ToolMessage
     const handleOpenSubagent = async (e: Event) => {
       const { description, nickname, agentId } = (e as CustomEvent).detail;
-      const ag = activeGroup();
-      if (!ag?.activeTabId) return;
-      try {
-        const children = await getChildSessions(ag.activeTabId);
-        const match = children.find(
-          (c) =>
-            (agentId && c.id === agentId) ||
-            (nickname && c.title === nickname) ||
-            (description &&
-              (c.title === description || c.title.startsWith(description))),
-        );
-        if (match) {
-          openSession(match);
+      // Search all groups' active tabs (not just activeGroup) so clicks in
+      // non-focused panes resolve correctly.
+      const parentIds = groups()
+        .map((g) => g.activeTabId)
+        .filter((id): id is string => id != null);
+      for (const parentId of parentIds) {
+        try {
+          const children = await getChildSessions(parentId);
+          const match = children.find(
+            (c) =>
+              (agentId && c.id === agentId) ||
+              (nickname && c.title === nickname) ||
+              (description &&
+                (c.title === description || c.title.startsWith(description))),
+          );
+          if (match) {
+            openSession(match);
+            return;
+          }
+        } catch {
+          // continue to next group
         }
-      } catch {
-        // silently ignore if query fails
       }
     };
     window.addEventListener("open-subagent", handleOpenSubagent);

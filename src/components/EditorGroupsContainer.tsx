@@ -36,10 +36,13 @@ export function EditorGroupsContainer(props: {
     const totalWidth = container.clientWidth;
     const deltaPct = (deltaX / totalWidth) * 100;
 
-    const newLeft = Math.max(15, left.flexBasis + deltaPct);
-    const newRight = Math.max(15, right.flexBasis - deltaPct);
-    setGroupFlexBasis(left.id, newLeft);
-    setGroupFlexBasis(right.id, newRight);
+    // Clamp delta so neither side goes below 15%, preserving total
+    const sum = left.flexBasis + right.flexBasis;
+    const maxDelta = right.flexBasis - 15;
+    const minDelta = -(left.flexBasis - 15);
+    const clamped = Math.max(minDelta, Math.min(maxDelta, deltaPct));
+    setGroupFlexBasis(left.id, left.flexBasis + clamped);
+    setGroupFlexBasis(right.id, sum - (left.flexBasis + clamped));
   }
 
   function equalizeWidths() {
