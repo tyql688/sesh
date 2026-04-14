@@ -7,6 +7,14 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-04-14
+
+### Fixed
+
+- Atomic token stats writes and deterministic pricing lookup for accurate cost tracking (#16)
+- Enriched tool metadata for Codex and OpenCode with structured result details (#17)
+- Removed silent fallback paths that could mask parser and indexer errors (#17)
+
 ## [0.3.12] - 2026-04-14
 
 ### Added
