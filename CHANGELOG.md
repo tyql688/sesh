@@ -7,6 +7,19 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-04-14
+
+### Added
+
+- VSCode-style preview tabs: single-click opens italic preview, double-click pins (cc991a9)
+- Tab overflow with chevron dropdown for crowded tab bars (cc991a9)
+
+### Fixed
+
+- Subagent Open button not navigating to child session (2f3d2b1)
+- SessionView state not resetting on preview tab replacement (1906a92)
+- Tab overflow detection not triggering on tab array changes (1906a92)
+
 ## [0.3.11] - 2026-04-14
 
 ### Added
