@@ -5,6 +5,7 @@ export interface EditorGroup {
   id: string;
   tabs: SessionRef[];
   activeTabId: string | null;
+  previewTabId: string | null; // at most one preview (unpinned) tab per group
   flexBasis: number; // percentage, e.g. 100 = full width
 }
 
@@ -16,6 +17,7 @@ function makeGroup(tabs: SessionRef[] = [], flexBasis = 100): EditorGroup {
     id: String(nextGroupId++),
     tabs,
     activeTabId: tabs.length > 0 ? tabs[0].id : null,
+    previewTabId: null,
     flexBasis,
   };
 }
@@ -71,7 +73,12 @@ function openSession(session: SessionRef) {
   const existing = findGroupBySession(session.id);
   if (existing) {
     setActiveGroupId(existing.id);
-    updateGroup(existing.id, (g) => ({ ...g, activeTabId: session.id }));
+    updateGroup(existing.id, (g) => ({
+      ...g,
+      activeTabId: session.id,
+      // opening explicitly pins a preview tab
+      previewTabId: g.previewTabId === session.id ? null : g.previewTabId,
+    }));
     return;
   }
   const gId = activeGroupId();
@@ -80,6 +87,36 @@ function openSession(session: SessionRef) {
     tabs: [...g.tabs, session],
     activeTabId: session.id,
   }));
+}
+
+/** Open a session as a preview (unpinned) tab. Replaces the existing preview in the active group. */
+function openPreview(session: SessionRef) {
+  // If already open anywhere, just focus it (don't create a duplicate)
+  const existing = findGroupBySession(session.id);
+  if (existing) {
+    setActiveGroupId(existing.id);
+    updateGroup(existing.id, (g) => ({ ...g, activeTabId: session.id }));
+    return;
+  }
+  const gId = activeGroupId();
+  updateGroup(gId, (prev) => ({
+    ...prev,
+    tabs: [
+      ...(prev.previewTabId
+        ? prev.tabs.filter((t) => t.id !== prev.previewTabId)
+        : prev.tabs),
+      session,
+    ],
+    activeTabId: session.id,
+    previewTabId: session.id,
+  }));
+}
+
+/** Pin a preview tab (make it permanent). */
+function pinTab(sessionId: string) {
+  const g = findGroupBySession(sessionId);
+  if (!g || g.previewTabId !== sessionId) return;
+  updateGroup(g.id, (prev) => ({ ...prev, previewTabId: null }));
 }
 
 function closeTab(sessionId: string) {
@@ -97,6 +134,7 @@ function closeTab(sessionId: string) {
     ...prev,
     tabs: newTabs,
     activeTabId: newActive,
+    previewTabId: prev.previewTabId === sessionId ? null : prev.previewTabId,
   }));
   removeGroupIfEmpty(gId);
 }
@@ -115,6 +153,7 @@ function closeOtherTabs(keepId: string) {
     ...prev,
     tabs: kept,
     activeTabId: keepId,
+    previewTabId: prev.previewTabId === keepId ? prev.previewTabId : null,
     flexBasis: 100,
   }));
   // remove all other groups
@@ -136,6 +175,10 @@ function closeTabsToRight(fromId: string) {
     ...prev,
     tabs: kept,
     activeTabId: newActive,
+    previewTabId:
+      prev.previewTabId && kept.some((t) => t.id === prev.previewTabId)
+        ? prev.previewTabId
+        : null,
   }));
 }
 
@@ -146,6 +189,7 @@ function splitToRight(sessionId: string) {
   if (sourceGroup.tabs.length <= 1 && groups().length <= 1) return;
 
   const session = sourceGroup.tabs.find((t) => t.id === sessionId)!;
+  const isPreview = sourceGroup.previewTabId === sessionId;
   // remove from source
   const newSourceTabs = sourceGroup.tabs.filter((t) => t.id !== sessionId);
   const newSourceActive =
@@ -154,6 +198,7 @@ function splitToRight(sessionId: string) {
         ? newSourceTabs[newSourceTabs.length - 1].id
         : null
       : sourceGroup.activeTabId;
+  const newSourcePreview = isPreview ? null : sourceGroup.previewTabId;
 
   const sourceIdx = groups().findIndex((g) => g.id === sourceGroup.id);
   const rightNeighbor = groups()[sourceIdx + 1];
@@ -164,6 +209,7 @@ function splitToRight(sessionId: string) {
       ...g,
       tabs: newSourceTabs,
       activeTabId: newSourceActive,
+      previewTabId: newSourcePreview,
     }));
     updateGroup(rightNeighbor.id, (g) => ({
       ...g,
@@ -178,6 +224,7 @@ function splitToRight(sessionId: string) {
       ...g,
       tabs: newSourceTabs,
       activeTabId: newSourceActive,
+      previewTabId: newSourcePreview,
       flexBasis: halfBasis,
     }));
     const newGroup = makeGroup([session], halfBasis);
@@ -195,6 +242,7 @@ function splitToRight(sessionId: string) {
       ...g,
       tabs: newSourceTabs,
       activeTabId: newSourceActive,
+      previewTabId: newSourcePreview,
     }));
     updateGroup(rightmost.id, (g) => ({
       ...g,
@@ -232,12 +280,14 @@ function moveTabToGroup(
         ? newSourceTabs[newSourceTabs.length - 1].id
         : null
       : sourceGroup.activeTabId;
+  const isPreview = sourceGroup.previewTabId === sessionId;
   updateGroup(sourceGroup.id, (g) => ({
     ...g,
     tabs: newSourceTabs,
     activeTabId: newSourceActive,
+    previewTabId: isPreview ? null : g.previewTabId,
   }));
-  // add to target
+  // add to target (drag = pin, so don't set previewTabId)
   updateGroup(targetGroupId, (g) => {
     const tabs = [...g.tabs];
     if (insertIndex !== undefined) {
@@ -267,11 +317,13 @@ function createGroupFromDrop(sessionId: string): void {
         : null
       : sourceGroup.activeTabId;
 
+  const isPreview = sourceGroup.previewTabId === sessionId;
   const halfBasis = sourceGroup.flexBasis / 2;
   updateGroup(sourceGroup.id, (g) => ({
     ...g,
     tabs: newSourceTabs,
     activeTabId: newSourceActive,
+    previewTabId: isPreview ? null : g.previewTabId,
     flexBasis: halfBasis,
   }));
 
@@ -341,6 +393,8 @@ export {
   activeGroup,
   findGroupBySession,
   openSession,
+  openPreview,
+  pinTab,
   closeTab,
   closeAllTabs,
   closeOtherTabs,

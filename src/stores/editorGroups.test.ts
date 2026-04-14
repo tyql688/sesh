@@ -4,6 +4,8 @@ import {
   groups,
   activeGroupId,
   openSession,
+  openPreview,
+  pinTab,
   closeTab,
   closeAllTabs,
   closeOtherTabs,
@@ -220,6 +222,121 @@ describe("editorGroups store", () => {
       splitToRight("s2");
       const matches = groups().filter((g) => g.tabs.some((t) => t.id === "s2"));
       expect(matches).toHaveLength(1);
+    });
+  });
+
+  describe("openPreview", () => {
+    it("opens session as preview tab", () => {
+      openPreview(makeSession("s1"));
+      expect(groups()[0].tabs).toHaveLength(1);
+      expect(groups()[0].activeTabId).toBe("s1");
+      expect(groups()[0].previewTabId).toBe("s1");
+    });
+
+    it("replaces existing preview tab", () => {
+      openPreview(makeSession("s1"));
+      openPreview(makeSession("s2"));
+      expect(groups()[0].tabs).toHaveLength(1);
+      expect(groups()[0].tabs[0].id).toBe("s2");
+      expect(groups()[0].previewTabId).toBe("s2");
+    });
+
+    it("does not replace pinned tabs", () => {
+      openSession(makeSession("s1")); // pinned
+      openPreview(makeSession("s2"));
+      expect(groups()[0].tabs).toHaveLength(2);
+      expect(groups()[0].tabs.map((t) => t.id)).toEqual(["s1", "s2"]);
+      expect(groups()[0].previewTabId).toBe("s2");
+    });
+
+    it("focuses existing tab without creating duplicate", () => {
+      openSession(makeSession("s1"));
+      openSession(makeSession("s2"));
+      openPreview(makeSession("s1")); // already open as pinned
+      expect(groups()[0].tabs).toHaveLength(2);
+      expect(groups()[0].activeTabId).toBe("s1");
+    });
+
+    it("replaces preview but keeps pinned when re-previewing", () => {
+      openSession(makeSession("s1")); // pinned
+      openPreview(makeSession("s2")); // preview
+      openPreview(makeSession("s3")); // replaces s2
+      expect(groups()[0].tabs.map((t) => t.id)).toEqual(["s1", "s3"]);
+      expect(groups()[0].previewTabId).toBe("s3");
+    });
+  });
+
+  describe("pinTab", () => {
+    it("pins a preview tab", () => {
+      openPreview(makeSession("s1"));
+      expect(groups()[0].previewTabId).toBe("s1");
+      pinTab("s1");
+      expect(groups()[0].previewTabId).toBeNull();
+      expect(groups()[0].tabs).toHaveLength(1); // tab still there
+    });
+
+    it("no-op for already pinned tab", () => {
+      openSession(makeSession("s1"));
+      pinTab("s1"); // not a preview, should be no-op
+      expect(groups()[0].previewTabId).toBeNull();
+    });
+
+    it("pinned tab is not replaced by next preview", () => {
+      openPreview(makeSession("s1"));
+      pinTab("s1");
+      openPreview(makeSession("s2"));
+      expect(groups()[0].tabs).toHaveLength(2);
+      expect(groups()[0].tabs.map((t) => t.id)).toEqual(["s1", "s2"]);
+    });
+  });
+
+  describe("preview interactions with other actions", () => {
+    it("closeTab clears previewTabId", () => {
+      openPreview(makeSession("s1"));
+      closeTab("s1");
+      expect(groups()[0].previewTabId).toBeNull();
+    });
+
+    it("openSession on preview tab pins it", () => {
+      openPreview(makeSession("s1"));
+      expect(groups()[0].previewTabId).toBe("s1");
+      openSession(makeSession("s1")); // explicit open = pin
+      expect(groups()[0].previewTabId).toBeNull();
+    });
+
+    it("closeOtherTabs preserves preview if it is the kept tab", () => {
+      openSession(makeSession("s1"));
+      openPreview(makeSession("s2"));
+      closeOtherTabs("s2");
+      expect(groups()[0].tabs).toHaveLength(1);
+      expect(groups()[0].previewTabId).toBe("s2");
+    });
+
+    it("closeOtherTabs clears preview if it is not the kept tab", () => {
+      openSession(makeSession("s1"));
+      openPreview(makeSession("s2"));
+      closeOtherTabs("s1");
+      expect(groups()[0].tabs).toHaveLength(1);
+      expect(groups()[0].previewTabId).toBeNull();
+    });
+
+    it("splitToRight clears preview from source group", () => {
+      openSession(makeSession("s1"));
+      openPreview(makeSession("s2"));
+      splitToRight("s2");
+      expect(groups()[0].previewTabId).toBeNull();
+      // split is an explicit action, so target group should not have preview
+      expect(groups()[1].previewTabId).toBeNull();
+    });
+
+    it("moveTabToGroup clears preview from source", () => {
+      openSession(makeSession("s1"));
+      openPreview(makeSession("s2"));
+      openSession(makeSession("s3"));
+      splitToRight("s3");
+      const g2Id = groups()[1].id;
+      moveTabToGroup("s2", g2Id);
+      expect(groups()[0].previewTabId).toBeNull();
     });
   });
 });
