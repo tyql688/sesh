@@ -9,16 +9,18 @@ export function SplitHandle(props: {
   function onPointerDown(e: PointerEvent) {
     e.preventDefault();
     setActive(true);
-    const startX = e.clientX;
+    let lastX = e.clientX;
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
 
     function onPointerMove(ev: PointerEvent) {
-      props.onResize(ev.clientX - startX);
+      props.onResize(ev.clientX - lastX);
+      lastX = ev.clientX;
     }
 
     function onPointerUp() {
       setActive(false);
+      target.releasePointerCapture(e.pointerId);
       target.removeEventListener("pointermove", onPointerMove);
       target.removeEventListener("pointerup", onPointerUp);
     }

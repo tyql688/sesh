@@ -79,20 +79,26 @@ function closeTab(sessionId: string) {
         ? newTabs[newTabs.length - 1].id
         : null
       : g.activeTabId;
-  updateGroup(g.id, () => ({ ...g, tabs: newTabs, activeTabId: newActive }));
-  removeGroupIfEmpty(g.id);
+  const gId = g.id;
+  updateGroup(gId, (prev) => ({
+    ...prev,
+    tabs: newTabs,
+    activeTabId: newActive,
+  }));
+  removeGroupIfEmpty(gId);
 }
 
 function closeAllTabs() {
-  setGroups([makeGroup()]);
-  setActiveGroupId(groups()[0].id);
+  const g = makeGroup();
+  setGroups([g]);
+  setActiveGroupId(g.id);
 }
 
 function closeOtherTabs(keepId: string) {
   const g = findGroupBySession(keepId);
   if (!g) return;
   const kept = g.tabs.filter((t) => t.id === keepId);
-  updateGroup(g.id, () => ({ ...g, tabs: kept, activeTabId: keepId }));
+  updateGroup(g.id, (prev) => ({ ...prev, tabs: kept, activeTabId: keepId }));
   // remove all other groups
   setGroups((prev) => prev.filter((x) => x.id === g.id));
   setActiveGroupId(g.id);
@@ -108,7 +114,11 @@ function closeTabsToRight(fromId: string) {
     g.activeTabId && kept.some((t) => t.id === g.activeTabId)
       ? g.activeTabId
       : fromId;
-  updateGroup(g.id, () => ({ ...g, tabs: kept, activeTabId: newActive }));
+  updateGroup(g.id, (prev) => ({
+    ...prev,
+    tabs: kept,
+    activeTabId: newActive,
+  }));
 }
 
 function splitToRight(sessionId: string) {
@@ -132,8 +142,8 @@ function splitToRight(sessionId: string) {
 
   if (rightNeighbor) {
     // move to existing right group
-    updateGroup(sourceGroup.id, () => ({
-      ...sourceGroup,
+    updateGroup(sourceGroup.id, (g) => ({
+      ...g,
       tabs: newSourceTabs,
       activeTabId: newSourceActive,
     }));
@@ -143,11 +153,11 @@ function splitToRight(sessionId: string) {
       activeTabId: session.id,
     }));
     setActiveGroupId(rightNeighbor.id);
-  } else if (!rightNeighbor && groups().length < MAX_GROUPS) {
+  } else if (groups().length < MAX_GROUPS) {
     // create new group, split source width 50/50
     const halfBasis = sourceGroup.flexBasis / 2;
-    updateGroup(sourceGroup.id, () => ({
-      ...sourceGroup,
+    updateGroup(sourceGroup.id, (g) => ({
+      ...g,
       tabs: newSourceTabs,
       activeTabId: newSourceActive,
       flexBasis: halfBasis,
@@ -162,8 +172,9 @@ function splitToRight(sessionId: string) {
   } else {
     // at max groups, move to rightmost
     const rightmost = groups()[groups().length - 1];
-    updateGroup(sourceGroup.id, () => ({
-      ...sourceGroup,
+    if (rightmost.id === sourceGroup.id) return; // already rightmost, no split target
+    updateGroup(sourceGroup.id, (g) => ({
+      ...g,
       tabs: newSourceTabs,
       activeTabId: newSourceActive,
     }));
@@ -203,8 +214,8 @@ function moveTabToGroup(
         ? newSourceTabs[newSourceTabs.length - 1].id
         : null
       : sourceGroup.activeTabId;
-  updateGroup(sourceGroup.id, () => ({
-    ...sourceGroup,
+  updateGroup(sourceGroup.id, (g) => ({
+    ...g,
     tabs: newSourceTabs,
     activeTabId: newSourceActive,
   }));
@@ -237,8 +248,8 @@ function createGroupFromDrop(sessionId: string): void {
       : sourceGroup.activeTabId;
 
   const halfBasis = sourceGroup.flexBasis / 2;
-  updateGroup(sourceGroup.id, () => ({
-    ...sourceGroup,
+  updateGroup(sourceGroup.id, (g) => ({
+    ...g,
     tabs: newSourceTabs,
     activeTabId: newSourceActive,
     flexBasis: halfBasis,

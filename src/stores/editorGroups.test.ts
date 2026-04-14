@@ -12,7 +12,6 @@ import {
   moveTabToGroup,
   createGroupFromDrop,
   focusAdjacentGroup,
-  findGroupBySession,
   _reset,
 } from "./editorGroups";
 
