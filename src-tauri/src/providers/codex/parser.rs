@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::models::{Message, MessageRole, Provider, SessionMeta, TokenUsage};
 use crate::provider::ParsedSession;
@@ -80,6 +80,191 @@ fn codex_tool_result_value(raw_output: &str, output: &str) -> Option<Value> {
     } else {
         Some(json!({ "stdout": output }))
     }
+}
+
+fn codex_duration_seconds(value: Option<&Value>) -> Option<f64> {
+    let duration = value?.as_object()?;
+    let secs = duration.get("secs").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let nanos = duration
+        .get("nanos")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    Some(secs + nanos / 1_000_000_000.0)
+}
+
+fn codex_exec_command_event_result(payload: &Value, fallback_output: &str) -> Value {
+    let mut result = Map::new();
+    if let Some(command) = payload.get("command") {
+        result.insert("command".to_string(), command.clone());
+    }
+    if let Some(cwd) = payload.get("cwd") {
+        result.insert("cwd".to_string(), cwd.clone());
+    }
+    if let Some(parsed_cmd) = payload.get("parsed_cmd") {
+        result.insert("parsedCmd".to_string(), parsed_cmd.clone());
+    }
+    if let Some(source) = payload.get("source") {
+        result.insert("source".to_string(), source.clone());
+    }
+    if let Some(status) = payload.get("status") {
+        result.insert("status".to_string(), status.clone());
+    }
+    if let Some(process_id) = payload.get("process_id") {
+        result.insert("processId".to_string(), process_id.clone());
+    }
+    if let Some(interaction_input) = payload.get("interaction_input") {
+        result.insert("interactionInput".to_string(), interaction_input.clone());
+    }
+    if let Some(exit_code) = payload.get("exit_code") {
+        result.insert("exitCode".to_string(), exit_code.clone());
+    }
+    if let Some(duration) = codex_duration_seconds(payload.get("duration")) {
+        result.insert("durationSeconds".to_string(), json!(duration));
+    }
+
+    let stdout = payload
+        .get("stdout")
+        .and_then(|v| v.as_str())
+        .unwrap_or(fallback_output);
+    if !stdout.is_empty() {
+        result.insert("stdout".to_string(), json!(stdout));
+    }
+    if let Some(stderr) = payload.get("stderr").and_then(|v| v.as_str()) {
+        if !stderr.is_empty() {
+            result.insert("stderr".to_string(), json!(stderr));
+        }
+    }
+    if let Some(aggregated_output) = payload.get("aggregated_output").and_then(|v| v.as_str()) {
+        if !aggregated_output.is_empty() {
+            result.insert("aggregatedOutput".to_string(), json!(aggregated_output));
+        }
+    }
+    if let Some(formatted_output) = payload.get("formatted_output").and_then(|v| v.as_str()) {
+        if !formatted_output.is_empty() {
+            result.insert("formattedOutput".to_string(), json!(formatted_output));
+        }
+    }
+
+    Value::Object(result)
+}
+
+fn codex_patch_event_patch(path: &str, change: &Value) -> Option<Value> {
+    let change_type = change.get("type").and_then(|v| v.as_str())?;
+    let mut patch = Map::new();
+    patch.insert("files".to_string(), json!([path]));
+    patch.insert("changeType".to_string(), json!(change_type));
+    if let Some(move_path) = change.get("move_path").and_then(|v| v.as_str()) {
+        patch.insert("movePath".to_string(), json!(move_path));
+    }
+    if let Some(unified_diff) = change.get("unified_diff").and_then(|v| v.as_str()) {
+        patch.insert("diff".to_string(), json!(unified_diff));
+    }
+    Some(Value::Object(patch))
+}
+
+fn codex_patch_event_result(payload: &Value) -> Value {
+    let mut result = Map::new();
+    if let Some(stdout) = payload.get("stdout") {
+        result.insert("stdout".to_string(), stdout.clone());
+    }
+    if let Some(stderr) = payload.get("stderr") {
+        result.insert("stderr".to_string(), stderr.clone());
+    }
+    if let Some(success) = payload.get("success") {
+        result.insert("success".to_string(), success.clone());
+    }
+    if let Some(status) = payload.get("status") {
+        result.insert("status".to_string(), status.clone());
+    }
+
+    let mut combined = Vec::new();
+    let mut patches = Vec::new();
+    if let Some(changes) = payload.get("changes") {
+        result.insert("changes".to_string(), changes.clone());
+        if let Some(change_map) = changes.as_object() {
+            for (path, change) in change_map {
+                if let Some(patch) = codex_patch_event_patch(path, change) {
+                    patches.push(patch);
+                }
+                let header = match change.get("type").and_then(|v| v.as_str()) {
+                    Some("add") => format!("*** Add File: {path}"),
+                    Some("delete") => format!("*** Delete File: {path}"),
+                    _ => format!("*** Update File: {path}"),
+                };
+                combined.push(header);
+                if let Some(move_path) = change.get("move_path").and_then(|v| v.as_str()) {
+                    combined.push(format!("*** Move to: {move_path}"));
+                }
+                if let Some(unified_diff) = change.get("unified_diff").and_then(|v| v.as_str()) {
+                    combined.push(unified_diff.to_string());
+                }
+            }
+        }
+    }
+
+    if !patches.is_empty() {
+        result.insert("patches".to_string(), Value::Array(patches));
+    }
+    if !combined.is_empty() {
+        result.insert("diff".to_string(), json!(combined.join("\n")));
+    }
+
+    Value::Object(result)
+}
+
+fn codex_mcp_tool_call_event_result(payload: &Value) -> Value {
+    let mut result = Map::new();
+    if let Some(invocation) = payload.get("invocation") {
+        result.insert("invocation".to_string(), invocation.clone());
+    }
+    if let Some(raw_result) = payload.get("result") {
+        result.insert("result".to_string(), raw_result.clone());
+        let success = raw_result.get("Err").is_none()
+            && !raw_result
+                .get("Ok")
+                .and_then(|ok| ok.get("is_error"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+        result.insert("success".to_string(), json!(success));
+    }
+    if let Some(duration) = codex_duration_seconds(payload.get("duration")) {
+        result.insert("durationSeconds".to_string(), json!(duration));
+    }
+    Value::Object(result)
+}
+
+fn merge_tool_result(existing: Option<&Value>, update: &Value) -> Value {
+    match (existing.and_then(Value::as_object), update.as_object()) {
+        (Some(existing), Some(update)) => {
+            let mut merged = existing.clone();
+            for (key, value) in update {
+                merged.insert(key.clone(), value.clone());
+            }
+            Value::Object(merged)
+        }
+        _ => update.clone(),
+    }
+}
+
+fn enrich_existing_tool_message(
+    message: &mut Message,
+    raw_result: Value,
+    is_error: Option<bool>,
+    status: Option<&str>,
+) {
+    let Some(metadata) = message.tool_metadata.as_mut() else {
+        return;
+    };
+    let merged = merge_tool_result(metadata.structured.as_ref(), &raw_result);
+    enrich_tool_metadata(
+        metadata,
+        ToolResultFacts {
+            raw_result: Some(&merged),
+            is_error,
+            status,
+            artifact_path: None,
+        },
+    );
 }
 
 impl CodexProvider {
@@ -446,21 +631,18 @@ impl CodexProvider {
                                     let result_value =
                                         codex_tool_result_value(&raw_output, &output);
                                     messages[idx].content = output;
-                                    if let Some(metadata) = messages[idx].tool_metadata.as_mut() {
-                                        let is_error = result_value.as_ref().and_then(|value| {
-                                            value
-                                                .get("exitCode")
-                                                .and_then(|code| code.as_i64())
-                                                .map(|code| code != 0)
-                                        });
-                                        enrich_tool_metadata(
-                                            metadata,
-                                            ToolResultFacts {
-                                                raw_result: result_value.as_ref(),
-                                                is_error,
-                                                status: None,
-                                                artifact_path: None,
-                                            },
+                                    let is_error = result_value.as_ref().and_then(|value| {
+                                        value
+                                            .get("exitCode")
+                                            .and_then(|code| code.as_i64())
+                                            .map(|code| code != 0)
+                                    });
+                                    if let Some(result_value) = result_value {
+                                        enrich_existing_tool_message(
+                                            &mut messages[idx],
+                                            result_value,
+                                            is_error,
+                                            None,
                                         );
                                     }
                                     continue;
@@ -481,6 +663,7 @@ impl CodexProvider {
                         }
                         "web_search_call" => {
                             let action = payload.get("action");
+                            let call_id = payload.get("id").and_then(|v| v.as_str());
                             let query = action
                                 .and_then(|a| a.get("query"))
                                 .and_then(|v| v.as_str())
@@ -489,7 +672,7 @@ impl CodexProvider {
                                 provider: Provider::Codex,
                                 raw_name: "web_search_call",
                                 input: action,
-                                call_id: payload.get("id").and_then(|v| v.as_str()),
+                                call_id,
                                 assistant_id: None,
                             });
                             enrich_tool_metadata(
@@ -506,6 +689,10 @@ impl CodexProvider {
                             );
                             if !query.is_empty() {
                                 content_parts.push(query.to_string());
+                            }
+                            let idx = messages.len();
+                            if let Some(call_id) = call_id {
+                                call_id_map.insert(call_id.to_string(), idx);
                             }
                             messages.push(Message {
                                 role: MessageRole::Tool,
@@ -573,21 +760,18 @@ impl CodexProvider {
                                     let result_value =
                                         codex_tool_result_value(&raw_output, &output);
                                     messages[idx].content = output;
-                                    if let Some(metadata) = messages[idx].tool_metadata.as_mut() {
-                                        let is_error = result_value.as_ref().and_then(|value| {
-                                            value
-                                                .get("exitCode")
-                                                .and_then(|code| code.as_i64())
-                                                .map(|code| code != 0)
-                                        });
-                                        enrich_tool_metadata(
-                                            metadata,
-                                            ToolResultFacts {
-                                                raw_result: result_value.as_ref(),
-                                                is_error,
-                                                status: None,
-                                                artifact_path: None,
-                                            },
+                                    let is_error = result_value.as_ref().and_then(|value| {
+                                        value
+                                            .get("exitCode")
+                                            .and_then(|code| code.as_i64())
+                                            .map(|code| code != 0)
+                                    });
+                                    if let Some(result_value) = result_value {
+                                        enrich_existing_tool_message(
+                                            &mut messages[idx],
+                                            result_value,
+                                            is_error,
+                                            None,
                                         );
                                     }
                                     continue;
@@ -691,6 +875,271 @@ impl CodexProvider {
                                     }
                                 }
                             }
+                        }
+                        "web_search_end" => {
+                            let call_id = payload.get("call_id").and_then(|v| v.as_str());
+                            let action = payload.get("action");
+                            let query = payload.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                            let result = Some(payload.clone());
+
+                            if let Some(idx) = call_id.and_then(|cid| call_id_map.get(cid)).copied()
+                            {
+                                if idx < messages.len() {
+                                    messages[idx].content = query.to_string();
+                                    if messages[idx].tool_input.is_none() {
+                                        messages[idx].tool_input =
+                                            action.map(|value| value.to_string());
+                                    }
+                                    if let Some(metadata) = messages[idx].tool_metadata.as_mut() {
+                                        enrich_tool_metadata(
+                                            metadata,
+                                            ToolResultFacts {
+                                                raw_result: result.as_ref(),
+                                                is_error: None,
+                                                status: None,
+                                                artifact_path: None,
+                                            },
+                                        );
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            let mut metadata = build_tool_metadata(ToolCallFacts {
+                                provider: Provider::Codex,
+                                raw_name: "web_search_call",
+                                input: action,
+                                call_id,
+                                assistant_id: None,
+                            });
+                            enrich_tool_metadata(
+                                &mut metadata,
+                                ToolResultFacts {
+                                    raw_result: result.as_ref(),
+                                    is_error: None,
+                                    status: None,
+                                    artifact_path: None,
+                                },
+                            );
+                            let idx = messages.len();
+                            if let Some(call_id) = call_id {
+                                call_id_map.insert(call_id.to_string(), idx);
+                            }
+                            if !query.is_empty() {
+                                content_parts.push(query.to_string());
+                            }
+                            messages.push(Message {
+                                role: MessageRole::Tool,
+                                content: query.to_string(),
+                                timestamp: entry.timestamp.clone(),
+                                tool_name: Some(metadata.canonical_name.clone()),
+                                tool_input: action.map(|value| value.to_string()),
+                                tool_metadata: Some(metadata),
+                                token_usage: None,
+                                model: None,
+                                usage_hash: None,
+                            });
+                        }
+                        "exec_command_end" => {
+                            let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str())
+                            else {
+                                continue;
+                            };
+                            let Some(idx) = call_id_map.get(call_id).copied() else {
+                                log::warn!(
+                                    "missing Codex exec_command tool message for event call_id {} in '{}'",
+                                    call_id,
+                                    path.display()
+                                );
+                                continue;
+                            };
+                            if idx >= messages.len() {
+                                continue;
+                            }
+
+                            let result_value =
+                                codex_exec_command_event_result(payload, &messages[idx].content);
+                            let status = payload.get("status").and_then(|v| v.as_str());
+                            let is_error =
+                                status.map(|status| matches!(status, "failed" | "declined"));
+                            if messages[idx].content.is_empty()
+                                || messages[idx].content.trim_start().starts_with('{')
+                            {
+                                if let Some(formatted_output) = result_value
+                                    .get("formattedOutput")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|v| !v.is_empty())
+                                    .or_else(|| {
+                                        result_value
+                                            .get("aggregatedOutput")
+                                            .and_then(|v| v.as_str())
+                                            .filter(|v| !v.is_empty())
+                                    })
+                                    .or_else(|| {
+                                        result_value
+                                            .get("stdout")
+                                            .and_then(|v| v.as_str())
+                                            .filter(|v| !v.is_empty())
+                                    })
+                                {
+                                    messages[idx].content = formatted_output.to_string();
+                                }
+                            }
+                            enrich_existing_tool_message(
+                                &mut messages[idx],
+                                result_value,
+                                is_error,
+                                status,
+                            );
+                        }
+                        "mcp_tool_call_end" => {
+                            let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str())
+                            else {
+                                continue;
+                            };
+                            let Some(idx) = call_id_map.get(call_id).copied() else {
+                                log::warn!(
+                                    "missing Codex MCP tool message for event call_id {} in '{}'",
+                                    call_id,
+                                    path.display()
+                                );
+                                continue;
+                            };
+                            if idx >= messages.len() {
+                                continue;
+                            }
+
+                            let result_value = codex_mcp_tool_call_event_result(payload);
+                            let is_error = result_value
+                                .get("success")
+                                .and_then(|v| v.as_bool())
+                                .map(|success| !success);
+                            enrich_existing_tool_message(
+                                &mut messages[idx],
+                                result_value,
+                                is_error,
+                                None,
+                            );
+                        }
+                        "patch_apply_end" => {
+                            let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str())
+                            else {
+                                continue;
+                            };
+                            let Some(idx) = call_id_map.get(call_id).copied() else {
+                                log::warn!(
+                                    "missing Codex apply_patch tool message for event call_id {} in '{}'",
+                                    call_id,
+                                    path.display()
+                                );
+                                continue;
+                            };
+                            if idx >= messages.len() {
+                                continue;
+                            }
+
+                            let result_value = codex_patch_event_result(payload);
+                            let status = payload.get("status").and_then(|v| v.as_str());
+                            let is_error =
+                                payload.get("success").and_then(|v| v.as_bool()).map(|v| !v);
+                            if messages[idx].content.is_empty()
+                                || messages[idx].content.trim_start().starts_with('{')
+                            {
+                                if let Some(stdout) = result_value
+                                    .get("stdout")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|v| !v.is_empty())
+                                {
+                                    messages[idx].content = stdout.to_string();
+                                }
+                            }
+                            enrich_existing_tool_message(
+                                &mut messages[idx],
+                                result_value,
+                                is_error,
+                                status,
+                            );
+                        }
+                        "collab_agent_spawn_end" => {
+                            let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str())
+                            else {
+                                continue;
+                            };
+                            let Some(idx) = call_id_map.get(call_id).copied() else {
+                                log::warn!(
+                                    "missing Codex spawn_agent tool message for event call_id {} in '{}'",
+                                    call_id,
+                                    path.display()
+                                );
+                                continue;
+                            };
+                            if idx >= messages.len() {
+                                continue;
+                            }
+
+                            let status = payload.get("status").and_then(|v| v.as_str());
+                            enrich_existing_tool_message(
+                                &mut messages[idx],
+                                payload.clone(),
+                                None,
+                                status,
+                            );
+                        }
+                        "collab_waiting_end" => {
+                            let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str())
+                            else {
+                                continue;
+                            };
+                            let Some(idx) = call_id_map.get(call_id).copied() else {
+                                log::warn!(
+                                    "missing Codex wait_agent tool message for event call_id {} in '{}'",
+                                    call_id,
+                                    path.display()
+                                );
+                                continue;
+                            };
+                            if idx >= messages.len() {
+                                continue;
+                            }
+
+                            let status = messages[idx]
+                                .tool_metadata
+                                .as_ref()
+                                .and_then(|metadata| metadata.structured.as_ref())
+                                .and_then(|value| value.get("timed_out"))
+                                .and_then(|value| value.as_bool())
+                                .map(|timed_out| if timed_out { "timed_out" } else { "completed" });
+                            let is_error = status.map(|status| status == "timed_out");
+                            enrich_existing_tool_message(
+                                &mut messages[idx],
+                                payload.clone(),
+                                is_error,
+                                status,
+                            );
+                        }
+                        "collab_close_end" => {
+                            let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str())
+                            else {
+                                continue;
+                            };
+                            let Some(idx) = call_id_map.get(call_id).copied() else {
+                                log::warn!(
+                                    "missing Codex close_agent tool message for event call_id {} in '{}'",
+                                    call_id,
+                                    path.display()
+                                );
+                                continue;
+                            };
+                            if idx >= messages.len() {
+                                continue;
+                            }
+
+                            enrich_existing_tool_message(
+                                &mut messages[idx],
+                                payload.clone(),
+                                None,
+                                Some("completed"),
+                            );
                         }
                         _ => {
                             flush_pending_user_message(
@@ -1021,7 +1470,9 @@ fn flush_pending_user_message(
 #[cfg(test)]
 mod tests {
     use super::extract_usage_events_from_file;
+    use super::CodexProvider;
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]
@@ -1043,5 +1494,159 @@ mod tests {
         assert_eq!(events[0].input_tokens, 400);
         assert_eq!(events[0].cache_read_input_tokens, 600);
         assert_eq!(events[0].output_tokens, 50);
+    }
+
+    #[test]
+    fn parse_session_file_emits_tool_metadata_for_web_search_end_event() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("codex.jsonl");
+        fs::write(
+            &file,
+            concat!(
+                "{\"timestamp\":\"2026-04-10T10:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"search docs\"}}\n",
+                "{\"timestamp\":\"2026-04-10T10:00:01Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"web_search_end\",\"call_id\":\"ws_123\",\"query\":\"notify kqueue\",\"action\":{\"type\":\"search\",\"query\":\"notify kqueue\"}}}\n"
+            ),
+        )
+        .unwrap();
+
+        let provider = CodexProvider {
+            home_dir: PathBuf::from("/tmp"),
+        };
+        let parsed = provider.parse_session_file(&file).expect("parsed session");
+        let tool = parsed
+            .messages
+            .iter()
+            .find(|message| message.tool_metadata.is_some())
+            .expect("web search tool message");
+        let metadata = tool.tool_metadata.as_ref().expect("tool metadata");
+
+        assert_eq!(tool.tool_name.as_deref(), Some("WebSearch"));
+        assert_eq!(tool.content, "notify kqueue");
+        assert_eq!(metadata.raw_name, "web_search_call");
+        assert_eq!(metadata.canonical_name, "WebSearch");
+        assert_eq!(metadata.status.as_deref(), Some("success"));
+        assert_eq!(metadata.summary.as_deref(), Some("notify kqueue"));
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("action"))
+                .and_then(|value| value.get("query"))
+                .and_then(|value| value.as_str()),
+            Some("notify kqueue")
+        );
+    }
+
+    #[test]
+    fn parse_session_file_merges_exec_command_end_into_existing_tool_message() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("codex.jsonl");
+        fs::write(
+            &file,
+            concat!(
+                "{\"timestamp\":\"2026-04-10T10:00:00Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"exec_command\",\"arguments\":\"{\\\"cmd\\\":\\\"pwd\\\"}\",\"call_id\":\"exec_123\"}}\n",
+                "{\"timestamp\":\"2026-04-10T10:00:01Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"exec_123\",\"output\":\"{\\\"output\\\":\\\"/tmp/project\\n\\\",\\\"metadata\\\":{\\\"exit_code\\\":0,\\\"duration_seconds\\\":0.2}}\"}}\n",
+                "{\"timestamp\":\"2026-04-10T10:00:02Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"exec_command_end\",\"call_id\":\"exec_123\",\"process_id\":\"42\",\"turn_id\":\"turn_1\",\"command\":[\"pwd\"],\"cwd\":\"/tmp/project\",\"parsed_cmd\":[],\"source\":\"agent\",\"stdout\":\"/tmp/project\\n\",\"stderr\":\"\",\"aggregated_output\":\"/tmp/project\\n\",\"exit_code\":0,\"duration\":{\"secs\":1,\"nanos\":500000000},\"formatted_output\":\"/tmp/project\\n\",\"status\":\"completed\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        let provider = CodexProvider {
+            home_dir: PathBuf::from("/tmp"),
+        };
+        let parsed = provider.parse_session_file(&file).expect("parsed session");
+        let tool = parsed
+            .messages
+            .iter()
+            .find(|message| message.tool_name.as_deref() == Some("Bash"))
+            .expect("bash tool message");
+        let metadata = tool.tool_metadata.as_ref().expect("tool metadata");
+
+        assert_eq!(tool.content, "/tmp/project\n");
+        assert_eq!(metadata.status.as_deref(), Some("completed"));
+        assert_eq!(metadata.result_kind.as_deref(), Some("terminal_output"));
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("cwd"))
+                .and_then(|value| value.as_str()),
+            Some("/tmp/project")
+        );
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("source"))
+                .and_then(|value| value.as_str()),
+            Some("agent")
+        );
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("exitCode"))
+                .and_then(|value| value.as_i64()),
+            Some(0)
+        );
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("durationSeconds"))
+                .and_then(|value| value.as_f64()),
+            Some(1.5)
+        );
+    }
+
+    #[test]
+    fn parse_session_file_merges_patch_apply_end_into_existing_tool_message() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("codex.jsonl");
+        fs::write(
+            &file,
+            concat!(
+                "{\"timestamp\":\"2026-04-10T10:00:00Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call\",\"status\":\"completed\",\"call_id\":\"patch_123\",\"name\":\"apply_patch\",\"input\":\"*** Begin Patch\\n*** Update File: src/file.rs\\n@@\\n-old\\n+new\\n*** End Patch\\n\"}}\n",
+                "{\"timestamp\":\"2026-04-10T10:00:01Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"call_id\":\"patch_123\",\"output\":\"{\\\"output\\\":\\\"Success. Updated the following files:\\\\nM src/file.rs\\\\n\\\",\\\"metadata\\\":{\\\"exit_code\\\":0,\\\"duration_seconds\\\":0.0}}\"}}\n",
+                "{\"timestamp\":\"2026-04-10T10:00:02Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"patch_apply_end\",\"call_id\":\"patch_123\",\"turn_id\":\"turn_1\",\"stdout\":\"Success. Updated the following files:\\nM src/file.rs\\n\",\"stderr\":\"\",\"success\":true,\"changes\":{\"src/file.rs\":{\"type\":\"update\",\"unified_diff\":\"@@ -1 +1 @@\\n-old\\n+new\\n\",\"move_path\":null}},\"status\":\"completed\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        let provider = CodexProvider {
+            home_dir: PathBuf::from("/tmp"),
+        };
+        let parsed = provider.parse_session_file(&file).expect("parsed session");
+        let tool = parsed
+            .messages
+            .iter()
+            .find(|message| message.tool_name.as_deref() == Some("Edit"))
+            .expect("apply patch tool message");
+        let metadata = tool.tool_metadata.as_ref().expect("tool metadata");
+
+        assert_eq!(metadata.status.as_deref(), Some("completed"));
+        assert_eq!(metadata.result_kind.as_deref(), Some("file_patch"));
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("diff"))
+                .and_then(|value| value.as_str())
+                .map(|value| value.contains("*** Update File: src/file.rs")),
+            Some(true)
+        );
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("patches"))
+                .and_then(|value| value.as_array())
+                .and_then(|patches| patches.first())
+                .and_then(|patch| patch.get("files"))
+                .and_then(|value| value.as_array())
+                .and_then(|files| files.first())
+                .and_then(|value| value.as_str()),
+            Some("src/file.rs")
+        );
     }
 }

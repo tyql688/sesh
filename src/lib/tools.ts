@@ -76,6 +76,9 @@ const TOOL_ICONS: Record<string, string> = {
   EnterPlanMode: "🧭",
   ExitPlanMode: "🧭",
   SendMessage: "✉️",
+  FollowupTask: "📋",
+  ListAgents: "🤖",
+  RequestPermissions: "🔐",
   ListMcpResourcesTool: "🔌",
   mcp: "🔌",
 };
@@ -327,6 +330,35 @@ function structuredRecord(
     : null;
 }
 
+function nestedRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function patchFiles(structured: Record<string, unknown>): string[] {
+  const files = new Set<string>();
+  const pushFiles = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const file of value) {
+      if (typeof file === "string" && file.length > 0) {
+        files.add(shortenHomePath(file));
+      }
+    }
+  };
+
+  const patch = nestedRecord(structured.patch);
+  pushFiles(patch?.files);
+
+  if (Array.isArray(structured.patches)) {
+    for (const item of structured.patches) {
+      pushFiles(nestedRecord(item)?.files);
+    }
+  }
+
+  return [...files];
+}
+
 export function formatToolResultMetadata(
   metadata?: ToolMetadata,
 ): ToolDetail | null {
@@ -343,6 +375,23 @@ export function formatToolResultMetadata(
 
   switch (metadata.canonical_name) {
     case "Bash":
+      {
+        const cwd = firstString(structured, ["cwd"]);
+        if (cwd) lines.push(toolLine("cwd", cwd));
+
+        const source = firstString(structured, ["source"]);
+        if (source) lines.push({ label: "source", value: source });
+
+        const exitCode = maybeNumber(
+          structured.exitCode ?? structured.exit_code,
+        );
+        if (exitCode) lines.push({ label: "exit", value: exitCode });
+
+        const duration = maybeNumber(
+          structured.durationSeconds ?? structured.duration_seconds,
+        );
+        if (duration) lines.push({ label: "duration", value: `${duration}s` });
+      }
       if (
         typeof structured.stdout === "string" &&
         structured.stdout.length > 0
@@ -360,6 +409,26 @@ export function formatToolResultMetadata(
     case "Write": {
       const file = firstString(structured, ["filePath", "file_path"]);
       if (file) lines.push(toolLine("file", file));
+
+      const metadataRecord = nestedRecord(structured.metadata);
+      const fileDiffRecord = nestedRecord(metadataRecord?.filediff);
+
+      const patchFilesList = patchFiles(structured);
+      if (patchFilesList.length > 0) {
+        lines.push({ label: "files", value: patchFilesList.join("\n") });
+      }
+
+      const patchText =
+        firstString(structured, ["diff"]) ||
+        firstString(metadataRecord ?? {}, ["diff"]) ||
+        firstString(fileDiffRecord ?? {}, ["patch"]);
+      if (patchText) {
+        return {
+          lines,
+          patchDiff: buildPatchLineDiff(patchText),
+          persistedOutputPath,
+        };
+      }
 
       const structuredPatch = buildStructuredPatchLineDiff(
         structured.structuredPatch,
@@ -413,6 +482,24 @@ export function formatToolResultMetadata(
             ? structured[key]
             : maybeNumber(structured[key]);
         if (value) lines.push({ label, value });
+      }
+      {
+        const nickname = firstString(structured, [
+          "nickname",
+          "new_agent_nickname",
+          "receiver_agent_nickname",
+        ]);
+        if (nickname) lines.push({ label: "nickname", value: nickname });
+
+        const role = firstString(structured, [
+          "new_agent_role",
+          "receiver_agent_role",
+        ]);
+        if (role) lines.push({ label: "role", value: role });
+
+        if (structured.timed_out === true) {
+          lines.push({ label: "timedOut", value: "true" });
+        }
       }
       break;
     case "ToolSearch":

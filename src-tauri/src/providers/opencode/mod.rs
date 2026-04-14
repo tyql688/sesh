@@ -70,6 +70,13 @@ fn opencode_tool_result_value(
     Some(result)
 }
 
+fn opencode_patch_part_value(part: &serde_json::Value) -> Option<serde_json::Value> {
+    Some(serde_json::json!({
+        "hash": part.get("hash")?.as_str()?,
+        "files": part.get("files")?.clone(),
+    }))
+}
+
 pub struct OpenCodeProvider {
     db_path: PathBuf,
 }
@@ -538,6 +545,7 @@ impl SessionProvider for OpenCodeProvider {
                     let mut text_parts: Vec<String> = Vec::new();
                     // Collect tool parts to emit after the text message
                     let mut tool_messages: Vec<Message> = Vec::new();
+                    let mut patch_parts: Vec<serde_json::Value> = Vec::new();
 
                     for part in &parts {
                         let part_type = part.get("type").and_then(|t| t.as_str()).unwrap_or("");
@@ -649,8 +657,44 @@ impl SessionProvider for OpenCodeProvider {
                                     tool_metadata: Some(metadata),
                                 });
                             }
+                            "patch" => {
+                                if let Some(patch) = opencode_patch_part_value(part) {
+                                    patch_parts.push(patch);
+                                }
+                            }
                             // Skip step-start, step-finish, reasoning, snapshot, patch, etc.
                             _ => {}
+                        }
+                    }
+
+                    if !patch_parts.is_empty() {
+                        for tool_message in tool_messages.iter_mut().rev() {
+                            let Some(metadata) = tool_message.tool_metadata.as_mut() else {
+                                continue;
+                            };
+                            if metadata.raw_name != "apply_patch" {
+                                continue;
+                            }
+
+                            let mut structured = metadata
+                                .structured
+                                .take()
+                                .unwrap_or_else(|| serde_json::json!({}));
+                            if !structured.is_object() {
+                                structured = serde_json::json!({});
+                            }
+                            if let Some(obj) = structured.as_object_mut() {
+                                if patch_parts.len() == 1 {
+                                    obj.insert("patch".to_string(), patch_parts[0].clone());
+                                } else {
+                                    obj.insert(
+                                        "patches".to_string(),
+                                        serde_json::Value::Array(patch_parts.clone()),
+                                    );
+                                }
+                            }
+                            metadata.structured = Some(structured);
+                            break;
                         }
                     }
 

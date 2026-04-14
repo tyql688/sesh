@@ -47,6 +47,7 @@ pub fn canonical_tool_name(provider: Provider, name: &str) -> String {
         "Shell" | "shell" | "bash" | "exec_command" | "shell_command" | "run_shell_command"
         | "run_in_terminal" | "write_stdin" => "Bash",
         "Read" | "read" | "ReadFile" | "read_file" | "view" => "Read",
+        "read_mcp_resource" => "ListMcpResourcesTool",
         "Write" | "write" | "WriteFile" | "write_file" | "create" => "Write",
         "Edit" | "edit" | "edit_file" | "replace" | "StrReplace" | "str_replace"
         | "StrReplaceFile" | "ApplyPatch" | "Apply_patch" | "MultiEdit" | "str_replace_editor"
@@ -59,15 +60,22 @@ pub fn canonical_tool_name(provider: Provider, name: &str) -> String {
         | "SemanticSearch"
         | "grep_search"
         | "search_file_content" => "Grep",
-        "Glob" | "glob" | "file_search" | "ReadFolder" | "list_directory" => "Glob",
+        "Glob" | "glob" | "file_search" | "ReadFolder" | "list_directory" | "list" => "Glob",
         "Task" | "task" | "Subagent" | "agent" | "read_agent" | "spawn_agent" | "wait_agent"
         | "send_input" | "close_agent" => "Agent",
-        "update_plan" | "TodoWrite" | "todo" | "Enter Plan Mode" | "enter_plan_mode"
-        | "exit_plan_mode" => "Plan",
-        "request_user_input" | "ask_user" => "AskUserQuestion",
+        "send_message" => "SendMessage",
+        "followup_task" => "FollowupTask",
+        "list_agents" => "ListAgents",
+        "update_plan" | "TodoWrite" | "todo" | "todowrite" | "Enter Plan Mode"
+        | "enter_plan_mode" | "exit_plan_mode" => "Plan",
+        "request_user_input" | "ask_user" | "question" => "AskUserQuestion",
+        "request_permissions" => "RequestPermissions",
         "ReadLints" => "Lint",
-        "web_fetch" => "WebFetch",
-        "web_search" | "web_search_call" => "WebSearch",
+        "web_fetch" | "webfetch" => "WebFetch",
+        "web_search" | "web_search_call" | "websearch" => "WebSearch",
+        "codesearch" => "ToolSearch",
+        "list_mcp_resources" | "list_mcp_resource_templates" => "ListMcpResourcesTool",
+        "skill" => "Skill",
         "sql" | "SQL" => "SQL",
         other => other,
     }
@@ -83,13 +91,14 @@ fn tool_category(canonical_name: &str, raw_name: &str) -> String {
         "Bash" => "shell",
         "Read" | "Write" | "Edit" | "Delete" => "file",
         "Grep" | "Glob" | "Search" | "ToolSearch" | "ListMcpResourcesTool" => "search",
-        "Agent" | "SendMessage" => "agent",
+        "Agent" | "SendMessage" | "ListAgents" => "agent",
         "TaskCreate" | "TaskUpdate" | "TaskList" | "TaskStop" => "task",
+        "FollowupTask" => "task",
         "WebSearch" | "WebFetch" => "web",
         "Skill" => "skill",
         "CronCreate" | "CronDelete" => "cron",
         "EnterPlanMode" | "ExitPlanMode" | "Plan" => "plan",
-        "AskUserQuestion" => "interaction",
+        "AskUserQuestion" | "RequestPermissions" => "interaction",
         "SQL" => "database",
         _ => "unknown",
     }
@@ -104,11 +113,25 @@ fn display_tool_name(raw_name: &str, canonical_name: &str) -> String {
         "write_stdin" => "write stdin".to_string(),
         "update_plan" => "update plan".to_string(),
         "request_user_input" => "request user input".to_string(),
+        "request_permissions" => "request permissions".to_string(),
         "apply_patch" => "apply patch".to_string(),
         "spawn_agent" => "spawn agent".to_string(),
         "wait_agent" => "wait agent".to_string(),
         "send_input" => "send input".to_string(),
         "close_agent" => "close agent".to_string(),
+        "send_message" => "send message".to_string(),
+        "followup_task" => "followup task".to_string(),
+        "list_agents" => "list agents".to_string(),
+        "list_mcp_resources" => "list mcp resources".to_string(),
+        "list_mcp_resource_templates" => "list mcp resource templates".to_string(),
+        "read_mcp_resource" => "read mcp resource".to_string(),
+        "todowrite" => "todo write".to_string(),
+        "question" => "question".to_string(),
+        "webfetch" => "web fetch".to_string(),
+        "websearch" => "web search".to_string(),
+        "codesearch" => "code search".to_string(),
+        "skill" => "skill".to_string(),
+        "list" => "list".to_string(),
         _ => canonical_name.to_string(),
     }
 }
@@ -152,6 +175,11 @@ fn input_summary(canonical_name: &str, raw_name: &str, input: Option<&Value>) ->
         "Agent" => string_field(input, &["description", "prompt"])
             .map(|s| compact_string(s, 80))
             .unwrap_or_default(),
+        "SendMessage" | "FollowupTask" => {
+            string_field(input, &["description", "prompt", "message"])
+                .map(|s| compact_string(s, 80))
+                .unwrap_or_default()
+        }
         "TaskCreate" => string_field(input, &["subject", "description"])
             .map(|s| compact_string(s, 80))
             .unwrap_or_default(),
@@ -179,6 +207,15 @@ fn input_summary(canonical_name: &str, raw_name: &str, input: Option<&Value>) ->
         "WebFetch" => string_field(input, &["url"])
             .unwrap_or_default()
             .to_string(),
+        "ListMcpResourcesTool" => {
+            let server = string_field(input, &["server"]).unwrap_or_default();
+            let uri = string_field(input, &["uri"]).unwrap_or_default();
+            [server, uri]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
         "AskUserQuestion" => input
             .get("questions")
             .and_then(|v| v.as_array())
@@ -187,6 +224,8 @@ fn input_summary(canonical_name: &str, raw_name: &str, input: Option<&Value>) ->
         "Plan" => {
             if let Some(explanation) = string_field(input, &["explanation"]) {
                 compact_string(explanation, 80)
+            } else if let Some(todos) = input.get("todos").and_then(|v| v.as_array()) {
+                format!("{} todo(s)", todos.len())
             } else {
                 input
                     .get("plan")
@@ -228,7 +267,11 @@ fn input_summary(canonical_name: &str, raw_name: &str, input: Option<&Value>) ->
 
 fn compact_json_value(value: &Value, depth: usize) -> Value {
     if depth > 3 {
-        return json!("<nested>");
+        return match value {
+            Value::String(s) => Value::String(compact_string(s, 4_000)),
+            Value::Number(_) | Value::Bool(_) | Value::Null => value.clone(),
+            _ => json!("<nested>"),
+        };
     }
     match value {
         Value::String(s) => Value::String(compact_string(s, 4_000)),
@@ -309,18 +352,11 @@ fn result_kind_for_tool(raw_name: &str, result: Option<&Value>) -> Option<String
         return Some("mcp".to_string());
     }
     let result = result?;
-    if result.get("persistedOutputPath").is_some() {
+    if result_output_path(result).is_some() {
         return Some("persisted_output".to_string());
     }
 
     let canonical_name = canonical_tool_name(Provider::Claude, raw_name);
-    if result.get("stdout").is_some()
-        || result.get("stderr").is_some()
-        || result.get("exitCode").is_some()
-        || (canonical_name == "Bash" && result.get("output").is_some())
-    {
-        return Some("terminal_output".to_string());
-    }
     if has_patch_result(result)
         || (result.get("oldString").is_some() && result.get("newString").is_some())
         || (result.get("old_string").is_some() && result.get("new_string").is_some())
@@ -329,17 +365,43 @@ fn result_kind_for_tool(raw_name: &str, result: Option<&Value>) -> Option<String
     {
         return Some("file_patch".to_string());
     }
-    if result.get("agentId").is_some() {
+    if result.get("stdout").is_some()
+        || result.get("stderr").is_some()
+        || result.get("exitCode").is_some()
+        || (canonical_name == "Bash" && result.get("output").is_some())
+    {
+        return Some("terminal_output".to_string());
+    }
+    if result.get("agentId").is_some() || result.get("agent_id").is_some() {
         return Some("agent_summary".to_string());
     }
-    if result.get("task").is_some() || result.get("taskId").is_some() {
+    if result.get("task").is_some()
+        || result.get("taskId").is_some()
+        || result.get("task_id").is_some()
+    {
         return Some("task_status".to_string());
     }
     None
 }
 
+fn result_output_path(result: &Value) -> Option<&str> {
+    result
+        .get("persistedOutputPath")
+        .and_then(|v| v.as_str())
+        .or_else(|| result.get("outputPath").and_then(|v| v.as_str()))
+        .or_else(|| {
+            result
+                .get("metadata")
+                .and_then(|v| v.as_object())
+                .and_then(|obj| obj.get("outputPath"))
+                .and_then(|v| v.as_str())
+        })
+}
+
 fn has_patch_result(result: &Value) -> bool {
     result.get("structuredPatch").is_some()
+        || result.get("patch").is_some()
+        || result.get("patches").is_some()
         || result.get("fileDiff").is_some()
         || result.get("diff").is_some()
         || result.get("filediff").is_some()
@@ -422,7 +484,11 @@ pub fn enrich_tool_metadata(metadata: &mut ToolMetadata, result: ToolResultFacts
         .or_else(|| metadata.result_kind.clone());
     metadata.structured = result
         .raw_result
-        .map(|value| compact_json_value(value, 0))
+        .map(|value| {
+            let mut compact = compact_json_value(value, 0);
+            normalize_structured_result(&mut compact);
+            compact
+        })
         .or_else(|| metadata.structured.clone());
     if let Some(path) = result.artifact_path {
         let mut structured = metadata
@@ -440,6 +506,43 @@ pub fn enrich_tool_metadata(metadata: &mut ToolMetadata, result: ToolResultFacts
         }
         metadata.structured = Some(structured);
     }
+}
+
+fn normalize_structured_result(value: &mut Value) {
+    let Value::Object(obj) = value else {
+        return;
+    };
+
+    promote_string_alias(obj, "agent_id", "agentId");
+    promote_string_alias(obj, "task_id", "taskId");
+
+    if obj.contains_key("persistedOutputPath") {
+        return;
+    }
+    let path = obj
+        .get("outputPath")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            obj.get("metadata")
+                .and_then(|v| v.as_object())
+                .and_then(|metadata| metadata.get("outputPath"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        });
+    if let Some(path) = path {
+        obj.insert("persistedOutputPath".to_string(), Value::String(path));
+    }
+}
+
+fn promote_string_alias(obj: &mut Map<String, Value>, from: &str, to: &str) {
+    if obj.contains_key(to) {
+        return;
+    }
+    let Some(value) = obj.get(from).cloned() else {
+        return;
+    };
+    obj.insert(to.to_string(), value);
 }
 
 #[cfg(test)]
@@ -464,9 +567,23 @@ mod tests {
             ("update_plan", "Plan"),
             ("write_stdin", "Bash"),
             ("request_user_input", "AskUserQuestion"),
+            ("question", "AskUserQuestion"),
             ("SemanticSearch", "Grep"),
+            ("read_mcp_resource", "ListMcpResourcesTool"),
+            ("list_mcp_resources", "ListMcpResourcesTool"),
+            ("list_mcp_resource_templates", "ListMcpResourcesTool"),
             ("Subagent", "Agent"),
             ("spawn_agent", "Agent"),
+            ("send_message", "SendMessage"),
+            ("followup_task", "FollowupTask"),
+            ("list_agents", "ListAgents"),
+            ("request_permissions", "RequestPermissions"),
+            ("todowrite", "Plan"),
+            ("webfetch", "WebFetch"),
+            ("websearch", "WebSearch"),
+            ("codesearch", "ToolSearch"),
+            ("skill", "Skill"),
+            ("list", "Glob"),
             ("sql", "SQL"),
         ] {
             let metadata = build_tool_metadata(ToolCallFacts {
@@ -498,6 +615,58 @@ mod tests {
             assert_eq!(metadata.canonical_name, canonical);
             assert_eq!(metadata.category, category);
         }
+    }
+
+    #[test]
+    fn promotes_snake_case_ids_and_nested_output_path() {
+        let mut metadata = build_tool_metadata(ToolCallFacts {
+            provider: Provider::Codex,
+            raw_name: "spawn_agent",
+            input: None,
+            call_id: Some("call_1"),
+            assistant_id: None,
+        });
+        enrich_tool_metadata(
+            &mut metadata,
+            ToolResultFacts {
+                raw_result: Some(&json!({
+                    "agent_id": "agent-123",
+                    "task_id": "task-456",
+                    "metadata": {
+                        "outputPath": "/tmp/tool-output.txt"
+                    }
+                })),
+                is_error: Some(false),
+                status: None,
+                artifact_path: None,
+            },
+        );
+
+        assert_eq!(metadata.result_kind.as_deref(), Some("persisted_output"));
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("agentId"))
+                .and_then(|value| value.as_str()),
+            Some("agent-123")
+        );
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("taskId"))
+                .and_then(|value| value.as_str()),
+            Some("task-456")
+        );
+        assert_eq!(
+            metadata
+                .structured
+                .as_ref()
+                .and_then(|value| value.get("persistedOutputPath"))
+                .and_then(|value| value.as_str()),
+            Some("/tmp/tool-output.txt")
+        );
     }
 
     #[test]
