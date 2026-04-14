@@ -64,8 +64,10 @@ function parseSearchQuery(raw: string): SearchFilters {
 function search(q: string) {
   setQuery(q);
   clearTimeout(debounceTimer);
+  // Clear stale results immediately so the UI can't commit to a hit from
+  // the previous query while the debounced request is in flight.
+  setResults([]);
   if (!q.trim()) {
-    setResults([]);
     setIsSearching(false);
     return;
   }

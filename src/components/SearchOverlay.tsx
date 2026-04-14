@@ -91,6 +91,9 @@ export function SearchOverlay(props: {
     }
     if (e.key === "Enter") {
       e.preventDefault();
+      // Block Enter while a search is still in flight, so a lingering result
+      // list from the previous keystroke can't be navigated to.
+      if (isSearching() || r.length === 0) return;
       openAt(selectedIndex());
       return;
     }

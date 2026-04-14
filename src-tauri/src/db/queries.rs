@@ -702,6 +702,17 @@ fn search_with_like(
     conn: &Connection,
     filters: &SearchFilters,
 ) -> Result<Vec<SearchResult>, rusqlite::Error> {
+    let raw = filters.query.trim().to_string();
+    // Split on whitespace so mixed queries like "auth ui" require both terms
+    // to appear somewhere in the row. Without this we would only match rows
+    // where the whole raw string appears as one contiguous substring, which
+    // silently misses common mixed-token queries.
+    let tokens: Vec<String> = raw
+        .split_whitespace()
+        .map(str::to_string)
+        .filter(|token| !token.is_empty())
+        .collect();
+
     let mut sql = String::from(
         "SELECT s.id, s.provider, s.title, s.project_path, s.project_name,
                 s.created_at, s.updated_at, s.message_count, s.file_size_bytes, s.source_path, s.is_sidechain,
@@ -713,18 +724,18 @@ fn search_with_like(
          FROM sessions s
          WHERE 1=1",
     );
-    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
-        vec![Box::new(filters.query.trim().to_string())];
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(raw.clone())];
 
-    if !filters.query.trim().is_empty() {
-        sql.push_str(
+    for token in &tokens {
+        let idx = param_values.len() + 1;
+        sql.push_str(&format!(
             " AND (
-                s.title LIKE '%' || ?2 || '%'
-                OR s.content_text LIKE '%' || ?2 || '%'
-                OR s.project_name LIKE '%' || ?2 || '%'
-            )",
-        );
-        param_values.push(Box::new(filters.query.trim().to_string()));
+                s.title LIKE '%' || ?{idx} || '%'
+                OR s.content_text LIKE '%' || ?{idx} || '%'
+                OR s.project_name LIKE '%' || ?{idx} || '%'
+            )"
+        ));
+        param_values.push(Box::new(token.clone()));
     }
 
     let next_index = param_values.len() + 1;

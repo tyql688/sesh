@@ -88,12 +88,20 @@ export function SessionView(props: {
     return counts;
   });
 
-  // Reversed for column-reverse layout: newest first in DOM = visually at bottom
-  // When search is active, show all entries so DOM mark count matches actual matches
+  // Reversed for column-reverse layout: newest first in DOM = visually at bottom.
+  // When a search is active we render all entries on small/medium sessions so
+  // the DOM mark count matches actual matches. On very large sessions we keep
+  // the rolling window to avoid freezing the UI — the user can scroll up to
+  // load older entries, and the pending-search consumer below expands
+  // visibleCount as needed to include the first match.
+  const SEARCH_RENDER_CAP = 2000;
   const visibleEntries = createMemo(() => {
     const all = filteredEntries();
     const isSearching = sessionSearch().trim().length > 0;
-    const count = isSearching ? all.length : visibleCount();
+    const count =
+      isSearching && all.length <= SEARCH_RENDER_CAP
+        ? all.length
+        : visibleCount();
     const start = count >= all.length ? 0 : all.length - count;
     return all.slice(start).reverse();
   });
@@ -144,11 +152,46 @@ export function SessionView(props: {
     if (!pending || loading()) return;
     if (pending.sessionId !== props.session.id) return;
     setPendingSessionSearch(null);
+
+    // On large sessions visibleEntries is windowed even when searching, so
+    // first locate the nearest (newest) matching entry and expand the window
+    // just enough to cover it. Keeps the initial render cheap while ensuring
+    // the match is actually in the DOM for scrollIntoView.
+    const entries = filteredEntries();
+    const needle = pending.query.toLowerCase();
+    const matchText = (idx: number): string => {
+      const entry = entries[idx];
+      if (entry.type === "message") return entry.msg.content ?? "";
+      if (entry.type === "merged-tools") {
+        return entry.messages.map((m) => m.content ?? "").join("\n");
+      }
+      return "";
+    };
+    let matchIdx = -1;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (matchText(i).toLowerCase().includes(needle)) {
+        matchIdx = i;
+        break;
+      }
+    }
+    if (matchIdx >= 0) {
+      const needed = entries.length - matchIdx + 20;
+      if (needed > visibleCount()) {
+        setVisibleCount(needed);
+      }
+    } else if (entries.length > visibleCount()) {
+      // No dialogue match found — the hit likely came from title or project
+      // (both FTS columns but invisible in the transcript). Expand the full
+      // window so in-session highlighting has a chance to show any incidental
+      // matches; accept the one-time render cost since this path is rare.
+      setVisibleCount(entries.length);
+    }
+
     setSessionSearch(pending.query);
     setSearchMatchIdx(0);
     setSearchBarOpen(true);
-    // Two RAFs: first for visibleEntries to re-render all entries (triggered
-    // by sessionSearch becoming non-empty), second for <mark> nodes to paint.
+    // Two RAFs: first for visibleEntries to expand (triggered by the
+    // visibleCount update above), second for <mark> nodes to paint.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (!messagesRef) return;
