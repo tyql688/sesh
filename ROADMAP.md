@@ -200,13 +200,13 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Fix: propagate explicitly; `log::warn!` + skip on missing data; surface to toast at Tauri boundary
 - 两侧系统性使用默认值掩盖数据缺失，违反 "No Silent Fallbacks" 铁律
 
-### Production unwrap/expect — 生产代码 panic 风险 `🔴 critical` `🔧 partial`
-- `providers/claude/parser.rs:314` unconditional `.unwrap()` on `parent_id`
-- `pricing.rs:384-399` repeated `.expect("catalog")` without anyhow context
+### Production unwrap/expect — 生产代码 panic 风险 `🔴 critical` `✅ done`
 - ~~`provider.rs:418`~~ `.find().expect()` on enum replaced with exhaustive match (compile-time enforcement)
-- ~~`db/sync.rs:453,497`~~ dismissed on review — both sites are inside `#[cfg(test)]`, where `unwrap` is permitted
-- Fix: propagate with `?` + anyhow context; reserve unwrap/expect for `#[cfg(test)]`
-- 生产代码 unwrap/expect 应完全消除
+- ~~`providers/claude/parser.rs:314`~~ unconditional `.unwrap()` replaced with `if let Some(parent_id) = parent_id.as_ref()` pattern
+- ~~`pricing.rs:384-399`~~ dismissed on audit — all sites inside `#[cfg(test)]`
+- ~~`db/sync.rs:453,497`~~ dismissed on audit — both sites inside `#[cfg(test)]`
+- `db/queries.rs:156` `if let Ok(conn) = self.lock_read()` silent error also cleaned up in the same pass (logs each failure mode)
+- 生产代码 unwrap/expect 完全消除
 
 ### Non-deterministic Lookups — 非确定性迭代查找 `🔴 critical` `✅ done`
 - `providers/cc_mirror.rs:266-268` `.iter().find()` for variant lookup — audited and cleaned up
