@@ -28,6 +28,7 @@ import {
   getIndexStats,
   getTodayCost,
   getTodayTokens,
+  invokeWithFallback,
 } from "../lib/tauri";
 import { isMac, isWindows } from "../lib/platform";
 import { disabledProviders } from "../stores/settings";
@@ -73,38 +74,22 @@ export default function App() {
   >();
 
   async function refreshStatusBarStats() {
-    const [statsResult, costResult, tokensResult] = await Promise.allSettled([
-      getIndexStats(),
-      getTodayCost(),
-      getTodayTokens(),
+    const [stats, cost, tokens] = await Promise.all([
+      invokeWithFallback(
+        getIndexStats(),
+        undefined,
+        "refresh status bar index stats",
+      ),
+      invokeWithFallback(getTodayCost(), undefined, "refresh today cost"),
+      invokeWithFallback(getTodayTokens(), undefined, "refresh today tokens"),
     ]);
 
-    if (statsResult.status === "fulfilled") {
-      const ts = statsResult.value.last_index_time
-        ? Number(statsResult.value.last_index_time)
-        : undefined;
-      setLastScanTime(ts);
-    } else {
-      console.error(
-        "Failed to refresh status bar index stats:",
-        statsResult.reason,
-      );
-      setLastScanTime(undefined);
-    }
-
-    if (costResult.status === "fulfilled") {
-      setTodayCost(costResult.value);
-    } else {
-      console.error("Failed to refresh today cost:", costResult.reason);
-      setTodayCost(undefined);
-    }
-
-    if (tokensResult.status === "fulfilled") {
-      setTodayTokens(tokensResult.value);
-    } else {
-      console.error("Failed to refresh today tokens:", tokensResult.reason);
-      setTodayTokens(undefined);
-    }
+    const ts = stats?.last_index_time
+      ? Number(stats.last_index_time)
+      : undefined;
+    setLastScanTime(ts);
+    setTodayCost(cost);
+    setTodayTokens(tokens);
   }
 
   const handleUsageChanged = () => void refreshStatusBarStats();
