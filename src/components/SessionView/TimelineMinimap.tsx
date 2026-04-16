@@ -2,19 +2,21 @@ import { createEffect, onMount, onCleanup } from "solid-js";
 import type { ProcessedEntry } from "./hooks";
 
 const ROLE_COLORS: Record<string, string> = {
-  user: "#007aff",
-  assistant: "#9ca3af",
-  tool: "#10b981",
-  system: "#f59e0b",
+  user: "rgba(0, 122, 255, 0.7)",
+  assistant: "rgba(156, 163, 175, 0.5)",
+  tool: "rgba(16, 185, 129, 0.35)",
+  system: "rgba(245, 158, 11, 0.6)",
 };
 
-const MERGED_TOOL_WEIGHT = 20;
+const MERGED_TOOL_WEIGHT = 8;
 const MIN_BLOCK_HEIGHT = 2;
+const BLOCK_GAP = 1;
 const MIN_ENTRIES_TO_SHOW = 10;
 
 interface MinimapProps {
   entries: ProcessedEntry[];
   messagesRef: HTMLDivElement | undefined;
+  onScrollToFraction?: (fraction: number) => void;
 }
 
 export function TimelineMinimap(props: MinimapProps) {
@@ -51,13 +53,16 @@ export function TimelineMinimap(props: MinimapProps) {
     if (items.length === 0) return [];
 
     const totalWeight = items.reduce((sum, it) => sum + it.weight, 0);
+    const totalGaps = (items.length - 1) * BLOCK_GAP;
+    const availableH = Math.max(0, canvasHeight - totalGaps);
     const blocks: Block[] = [];
     let y = 0;
-    for (const item of items) {
-      const rawH = (item.weight / totalWeight) * canvasHeight;
+    for (let idx = 0; idx < items.length; idx++) {
+      const item = items[idx];
+      const rawH = (item.weight / totalWeight) * availableH;
       const h = Math.max(MIN_BLOCK_HEIGHT, rawH);
       blocks.push({ y, h, color: item.color, entryIndex: item.entryIndex });
-      y += h;
+      y += h + BLOCK_GAP;
     }
     if (y > canvasHeight && blocks.length > 0) {
       const scale = canvasHeight / y;
@@ -65,7 +70,7 @@ export function TimelineMinimap(props: MinimapProps) {
       for (const b of blocks) {
         b.y = accY;
         b.h = Math.max(1, b.h * scale);
-        accY += b.h;
+        accY += b.h + BLOCK_GAP * scale;
       }
     }
     return blocks;
@@ -76,10 +81,16 @@ export function TimelineMinimap(props: MinimapProps) {
     blocks: Block[],
     width: number,
   ) {
-    ctx.clearRect(0, 0, width, ctx.canvas.height);
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, width, ctx.canvas.height / dpr);
+    const pad = 6;
+    const barW = width - pad * 2;
+    const radius = 2;
     for (const b of blocks) {
       ctx.fillStyle = b.color;
-      ctx.fillRect(0, b.y, width, b.h);
+      ctx.beginPath();
+      ctx.roundRect(pad, b.y, barW, Math.max(radius * 2, b.h), radius);
+      ctx.fill();
     }
   }
 
@@ -102,11 +113,15 @@ export function TimelineMinimap(props: MinimapProps) {
       canvasHeight - bottomFraction * (canvasHeight - indicatorH);
     const indicatorY = indicatorBottom - indicatorH;
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
-    ctx.fillRect(0, indicatorY, width, indicatorH);
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+    ctx.beginPath();
+    ctx.roundRect(2, indicatorY, width - 4, indicatorH, 3);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
     ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, indicatorY + 0.5, width - 1, indicatorH - 1);
+    ctx.beginPath();
+    ctx.roundRect(2.5, indicatorY + 0.5, width - 5, indicatorH - 1, 3);
+    ctx.stroke();
   }
 
   let currentBlocks: Block[] = [];
@@ -146,38 +161,29 @@ export function TimelineMinimap(props: MinimapProps) {
     repaintViewportOnly();
   }
 
-  function handleCanvasClick(e: MouseEvent) {
+  function fractionFromEvent(e: MouseEvent): number {
     const canvas = canvasRef;
-    const el = props.messagesRef;
-    if (!canvas || !el) return;
-
+    if (!canvas) return 0;
     const rect = canvas.getBoundingClientRect();
-    const clickY = e.clientY - rect.top;
-    const canvasH = rect.height;
+    return Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+  }
 
-    const fraction = clickY / canvasH;
-    const maxScroll = el.scrollHeight - el.clientHeight;
-    el.scrollTop = -(1 - fraction) * maxScroll;
+  function handleCanvasClick(e: MouseEvent) {
+    props.onScrollToFraction?.(fractionFromEvent(e));
   }
 
   function handleCanvasMouseDown(e: MouseEvent) {
     e.preventDefault();
-    const canvas = canvasRef;
-    const el = props.messagesRef;
-    if (!canvas || !el) return;
 
+    let dragged = false;
     const onMove = (me: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const fraction = Math.max(
-        0,
-        Math.min(1, (me.clientY - rect.top) / rect.height),
-      );
-      const maxScroll = el.scrollHeight - el.clientHeight;
-      el.scrollTop = -(1 - fraction) * maxScroll;
+      dragged = true;
+      props.onScrollToFraction?.(fractionFromEvent(me));
     };
-    const onUp = () => {
+    const onUp = (ue: MouseEvent) => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      if (!dragged) props.onScrollToFraction?.(fractionFromEvent(ue));
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);

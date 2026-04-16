@@ -25,7 +25,7 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Works alongside message bookmarks for knowledge retention
 - 在任意消息旁添加笔记，配合书签沉淀个人知识
 
-### Raycast-style Global Search — 全局命令面板
+### Raycast-style Global Search — 全局命令面板 `✅ done`
 - `Cmd+K` command palette overlay
 - Unified entry: search content, jump to sessions, execute actions (export, delete, theme toggle, etc.)
 - Fuzzy matching with live preview
@@ -41,7 +41,7 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Highlight differences in approach, tool usage, and outcomes
 - 并排对比两个 session，看不同工具/方案解决同一问题的差异
 
-### Timeline Minimap — 时间线缩略图
+### Timeline Minimap — 时间线缩略图 `✅ done`
 - Visual navigation bar on the right side of long conversations
 - Color-coded message density (user / assistant / tool)
 - Click to jump, similar to VS Code minimap

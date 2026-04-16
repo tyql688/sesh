@@ -584,6 +584,23 @@ export function SessionView(props: {
           <TimelineMinimap
             entries={filteredEntries()}
             messagesRef={messagesRef}
+            onScrollToFraction={(fraction) => {
+              // Load all entries so scrollHeight reflects the full conversation
+              const total = filteredEntries().length;
+              if (visibleCount() < total) {
+                setVisibleCount(total);
+              }
+              // fraction: 0=top(oldest), 1=bottom(newest)
+              // column-reverse: scrollTop=0 is bottom, negative is up
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  if (!messagesRef) return;
+                  const maxScroll =
+                    messagesRef.scrollHeight - messagesRef.clientHeight;
+                  messagesRef.scrollTop = -(1 - fraction) * maxScroll;
+                });
+              });
+            }}
           />
         </div>
       </Show>

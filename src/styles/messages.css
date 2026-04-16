@@ -245,11 +245,10 @@
 
 /* Timeline minimap */
 .timeline-minimap {
-  width: 60px;
+  width: 36px;
   flex-shrink: 0;
   position: relative;
-  background: var(--bg-secondary, #1e1e1e);
-  border-left: 1px solid var(--border-color, #333);
+  background: transparent;
   cursor: pointer;
 }
 
