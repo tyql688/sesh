@@ -245,11 +245,12 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Fix: extract `useLiveWatch`, `useFavoriteSync`, `useAutoLoad` hooks
 - 多级联 effect 互相触发，存在循环 / 泄露隐患
 
-### Tauri Error Wrapper — Tauri 错误统一包装 `🟡 medium`
-- Every `invoke` caller does ad-hoc try/catch; many forget (`lib/tauri.ts` is raw invoke, no boundary)
-- Backend returns `String` errors, losing anyhow chain
-- Fix: `invokeWithToast()` wrapper on frontend; consistent `anyhow::Context` at backend command boundaries
-- Tauri 边界错误处理不一致，anyhow 栈信息在序列化时丢失
+### Tauri Error Wrapper — Tauri 错误统一包装 `🟡 medium` `🔧 partial`
+- Frontend side: `invokeWithToast()` (user actions, toast + rethrow) and `invokeWithFallback()` (background refresh, log + fallback) landed in `lib/tauri.ts` with unit test coverage
+- `App.refreshStatusBarStats` migrated as the first demo caller (3 `Promise.allSettled` branches → 3 `invokeWithFallback` calls)
+- Remaining frontend: migrate the other ad-hoc `try/catch` sites (UsagePanel, AboutSettings, etc.) — not blocking, do opportunistically as files are touched
+- Backend side: `anyhow::Context` at command boundaries still outstanding (String errors lose stack info on serialize)
+- 前端 wrapper 已落地并覆盖单测，老调用点逐步迁移；后端 anyhow context 仍待处理
 
 ### Core Module Test Coverage — 核心模块单测 `🟡 medium`
 - `watcher.rs` (640), `indexer.rs` (639), `services/*`, `commands/*` have no `#[cfg(test)]` modules
