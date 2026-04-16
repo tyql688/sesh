@@ -7,6 +7,16 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-04-16
+
+### Added
+
+- Timeline minimap with click and drag navigation for quick session browsing (096ca6b)
+
+### Fixed
+
+- Cache images during incremental source sync to prevent missing images (0381275)
+
 ## [0.3.15] - 2026-04-14
 
 ### Added
