@@ -59,6 +59,10 @@ struct Variant {
     command_name: String,
     dir_name: String,
     projects_dir: PathBuf,
+    /// Forward-slash normalized `projects_dir` used for path-prefix lookup.
+    /// Invariant: disjoint across variants (each lives under a unique `dir_name`
+    /// inside `~/.cc-mirror/`), so `starts_with` matches at most one entry.
+    normalized_prefix: String,
 }
 
 pub struct CcMirrorProvider {
@@ -88,10 +92,12 @@ fn variant_from_parts(dir_name: &str, meta: Option<VariantMeta>, dir: &Path) -> 
     };
 
     let projects_dir = dir.join("config").join("projects");
+    let normalized_prefix = projects_dir.to_string_lossy().replace('\\', "/");
     Some(Variant {
         command_name,
         dir_name,
         projects_dir,
+        normalized_prefix,
     })
 }
 
@@ -263,10 +269,9 @@ impl CcMirrorProvider {
 
     fn variant_by_path(&self, source_path: &str) -> Option<&Variant> {
         let normalized = source_path.replace('\\', "/");
-        self.variants.iter().find(|variant| {
-            let prefix = variant.projects_dir.to_string_lossy().replace('\\', "/");
-            normalized.starts_with(&prefix)
-        })
+        self.variants
+            .iter()
+            .find(|variant| normalized.starts_with(&variant.normalized_prefix))
     }
 
     fn variant_by_command_name(&self, command_name: &str) -> Option<&Variant> {

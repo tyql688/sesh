@@ -413,10 +413,21 @@ fn provider_catalog() -> &'static [ProviderCatalogEntry] {
 }
 
 fn provider_entry(provider: &Provider) -> &'static ProviderCatalogEntry {
-    provider_catalog()
-        .iter()
-        .find(|entry| &entry.kind == provider)
-        .expect("provider catalog missing enum variant")
+    // Exhaustive match — adding a new Provider variant forces this to be updated
+    // at compile time, replacing the previous runtime .expect() panic risk.
+    // Indices must stay in lock-step with PROVIDER_CATALOG; enforced by
+    // `provider_entry_indices_match_catalog` below.
+    match provider {
+        Provider::Claude => &PROVIDER_CATALOG[0],
+        Provider::Codex => &PROVIDER_CATALOG[1],
+        Provider::Gemini => &PROVIDER_CATALOG[2],
+        Provider::Cursor => &PROVIDER_CATALOG[3],
+        Provider::OpenCode => &PROVIDER_CATALOG[4],
+        Provider::Kimi => &PROVIDER_CATALOG[5],
+        Provider::CcMirror => &PROVIDER_CATALOG[6],
+        Provider::Qwen => &PROVIDER_CATALOG[7],
+        Provider::Copilot => &PROVIDER_CATALOG[8],
+    }
 }
 
 fn provider_entry_for_key(key: &str) -> Option<&'static ProviderCatalogEntry> {
@@ -903,5 +914,19 @@ mod tests {
             parent_id: None,
         };
         assert_eq!(infer_restore_action(&entry), RestoreAction::MoveBack);
+    }
+
+    #[test]
+    fn provider_entry_indices_match_catalog() {
+        // Guards against reordering `PROVIDER_CATALOG` without updating the
+        // exhaustive match in `provider_entry` (and vice versa).
+        for kind in Provider::all() {
+            let entry = provider_entry(kind);
+            assert_eq!(
+                &entry.kind, kind,
+                "provider_entry({kind:?}) returned entry with kind {:?}",
+                entry.kind
+            );
+        }
     }
 }
