@@ -189,6 +189,81 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 
 ---
 
+## Technical Debt / 技术债
+
+> Surfaced by a full TS + Rust audit. Priorities tied to CLAUDE.md's "No Silent Fallbacks" rule and the 800-line file limit.
+> 由 TS + Rust 全量审查梳理，优先级对齐 CLAUDE.md 的 "No Silent Fallbacks" 和 800 行文件上限约定。
+
+### Silent Fallback Cleanup — 静默兜底清理 `🔴 critical`
+- Rust: `tool_metadata.rs:155-258` ~40+ `.unwrap_or_default()` chains; `indexer.rs:69,199-200` `.unwrap_or(0)` sort fallbacks; `pricing.rs:264-265` cost defaults to 0.0 masking missing pricing data
+- TS: `UsagePanel.tsx:341,407,418` `?? 0`; `App/index.tsx:88-105` Tauri failure only logs to console, UI keeps stale data; 20+ `catch → console.warn` sites in `lib/tools.ts:166`, `CodeBlock.tsx:103,125`, `ImagePreview.tsx:35,257`
+- Fix: propagate explicitly; `log::warn!` + skip on missing data; surface to toast at Tauri boundary
+- 两侧系统性使用默认值掩盖数据缺失，违反 "No Silent Fallbacks" 铁律
+
+### Production unwrap/expect — 生产代码 panic 风险 `🔴 critical` `🔧 partial`
+- `providers/claude/parser.rs:314` unconditional `.unwrap()` on `parent_id`
+- `pricing.rs:384-399` repeated `.expect("catalog")` without anyhow context
+- ~~`provider.rs:418`~~ `.find().expect()` on enum replaced with exhaustive match (compile-time enforcement)
+- ~~`db/sync.rs:453,497`~~ dismissed on review — both sites are inside `#[cfg(test)]`, where `unwrap` is permitted
+- Fix: propagate with `?` + anyhow context; reserve unwrap/expect for `#[cfg(test)]`
+- 生产代码 unwrap/expect 应完全消除
+
+### Non-deterministic Lookups — 非确定性迭代查找 `🔴 critical` `✅ done`
+- `providers/cc_mirror.rs:266-268` `.iter().find()` for variant lookup — audited and cleaned up
+- Resolution: prefixes are disjoint by construction (unique FS dir under `~/.cc-mirror/`); precomputed `Variant.normalized_prefix` + invariant doc comment makes this explicit and eliminates per-call allocation
+- Reviewer confirmed: `iter().find()` here is semantically deterministic (prefix-match on disjoint paths), not the CLAUDE.md-forbidden `HashMap::iter()` pattern
+- 审计后确认为假阳性，但仍做了预计算清理和不变量注释
+
+### Store Immutability Violations — Store 不可变性违规 `🔴 critical` `✅ done`
+- `stores/editorGroups.ts:233,270,294,296` direct `.splice()` / `.push()` inside `setGroups` callbacks — all 4 sites converted to `slice + spread`
+- Vitest coverage (34 tests in `editorGroups.test.ts`) verifies edge cases: negative indices, indices past length, undefined insertIndex
+- 4 处数组突变全部改成不可变展开，测试覆盖确认无回归
+
+### usage_hash Placeholder — usage_hash 占位 `🔴 critical`
+- `models.rs:110` `Option<String>` with `#[serde(skip, default)]` — `None` silently disables cross-file usage dedup
+- CLAUDE.md explicitly calls out `usage_hash: None` as an anti-pattern
+- Fix: compute unconditionally, or `log::warn!` + skip dedup when source lacks required fields
+- CLAUDE.md 点名的 antipattern
+
+### Provider Parser Abstraction — Provider Parser 抽象 `🟡 high impact`
+- 8 providers independently implement message aggregation, token stats, tool metadata, usage dedup
+- ~5000+ lines of parallel code across codex/claude/kimi/cursor/qwen/copilot/gemini/cc_mirror parsers
+- Adding a 9th provider means re-copying the whole pipeline
+- Fix: extract a `ProviderParser` trait + shared helpers, start with tool metadata (most duplicated)
+- 杠杆最大的一笔重构，8 个 provider 的 parser 平行演进，约 5000+ 行重复
+
+### Large File Splits — 大文件拆分
+- Rust: `providers/codex/parser.rs` 1652, `providers/claude/parser.rs` 1385, `providers/kimi/parser.rs` 944, `provider.rs` 907, `db/queries.rs` 848
+- TS: `MarkdownRenderer.tsx` 833 (UsagePanel 1337 already tracked above under Code Quality)
+- All exceed the 800-line limit set in CLAUDE.md
+- Fix: most of the Rust parsers collapse naturally once Provider Parser Abstraction lands
+- 超出 800 行上限的文件清单
+
+### SessionView Effect Decoupling — SessionView Effect 解耦 `🟡 medium`
+- `SessionView/index.tsx:151-397` has 6+ chained `createEffect` (favoriteVersion ↔ isFavorite ↔ setStarred ↔ bumpFavoriteVersion)
+- Live-watch effect at 342-397 manages unwatch fn + debounce + listeners inline, leak risk
+- Fix: extract `useLiveWatch`, `useFavoriteSync`, `useAutoLoad` hooks
+- 多级联 effect 互相触发，存在循环 / 泄露隐患
+
+### Tauri Error Wrapper — Tauri 错误统一包装 `🟡 medium`
+- Every `invoke` caller does ad-hoc try/catch; many forget (`lib/tauri.ts` is raw invoke, no boundary)
+- Backend returns `String` errors, losing anyhow chain
+- Fix: `invokeWithToast()` wrapper on frontend; consistent `anyhow::Context` at backend command boundaries
+- Tauri 边界错误处理不一致，anyhow 栈信息在序列化时丢失
+
+### Core Module Test Coverage — 核心模块单测 `🟡 medium`
+- `watcher.rs` (640), `indexer.rs` (639), `services/*`, `commands/*` have no `#[cfg(test)]` modules
+- Only covered indirectly via integration tests in `tests/`
+- Fix: add unit tests for watcher file-state transitions, indexer diff, lifecycle/resolution services
+- 核心服务仅靠集成测试，边界场景易漏
+
+### Clone Hot Path — Clone 热路径 `⚫ low priority`
+- `providers/codex/parser.rs:49`, `tool_metadata.rs:11`, `providers/opencode/mod.rs:25` frequent `Message`/`Value` clones
+- Fix: `Rc`/`Arc` only after profiling confirms a bottleneck
+- 暂无性能数据支撑，profile 后再动
+
+---
+
 ## Detail Improvements / 细节改进
 
 ### Batch Operation Failure Feedback — 批量操作失败反馈 `✅ done`
