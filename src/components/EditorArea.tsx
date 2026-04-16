@@ -12,7 +12,11 @@ import {
 } from "solid-js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { SessionRef, TreeNode } from "../lib/types";
-import { listRecentSessions, getChildSessions } from "../lib/tauri";
+import {
+  listRecentSessions,
+  getChildSessions,
+  invokeWithFallback,
+} from "../lib/tauri";
 import { useI18n } from "../i18n/index";
 import { isPathBlocked } from "../stores/settings";
 import { groups } from "../stores/editorGroups";
@@ -66,15 +70,12 @@ export function EditorArea(props: {
         const counts: Record<string, number> = {};
         await Promise.all(
           sessions.map(async (s) => {
-            try {
-              const children = await getChildSessions(s.id);
-              if (children.length > 0) counts[s.id] = children.length;
-            } catch (error) {
-              console.error(
-                `Failed to load child sessions for recent session ${s.id}:`,
-                error,
-              );
-            }
+            const children = await invokeWithFallback(
+              getChildSessions(s.id),
+              [],
+              `load child sessions for recent session ${s.id}`,
+            );
+            if (children.length > 0) counts[s.id] = children.length;
           }),
         );
         setChildCounts(counts);

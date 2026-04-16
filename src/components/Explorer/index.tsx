@@ -7,6 +7,7 @@ import {
   exportSessionsBatch,
   toggleFavorite,
   renameSession,
+  invokeWithFallback,
 } from "../../lib/tauri";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../../i18n/index";
@@ -228,15 +229,11 @@ export function Explorer(props: {
     }
     let resumeCommand = resumeCommandCache.get(node.id) ?? null;
     if (!resumeCommandCache.has(node.id)) {
-      try {
-        resumeCommand = await getResumeCommand(node.id);
-      } catch (error) {
-        console.error(
-          `Failed to load resume command for session ${node.id}:`,
-          error,
-        );
-        resumeCommand = null;
-      }
+      resumeCommand = await invokeWithFallback(
+        getResumeCommand(node.id),
+        null,
+        `load resume command for session ${node.id}`,
+      );
       resumeCommandCache.set(node.id, resumeCommand);
     }
     setSessionMenu({

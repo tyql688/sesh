@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createSignal } from "solid-js";
 import { useI18n } from "../../i18n/index";
 import { errorMessage } from "../../lib/errors";
+import { invokeWithToast } from "../../lib/tauri";
 import {
   phase,
   availableVersion,
@@ -88,9 +89,12 @@ export function AboutSettings() {
           href="https://github.com/tyql688/cc-session"
           onClick={(e) => {
             e.preventDefault();
-            invoke("open_external", {
-              url: "https://github.com/tyql688/cc-session",
-            }).catch((e) => console.error("Failed to open GitHub:", e));
+            void invokeWithToast(
+              invoke<void>("open_external", {
+                url: "https://github.com/tyql688/cc-session",
+              }),
+              "open GitHub link",
+            );
           }}
         >
           cc-session

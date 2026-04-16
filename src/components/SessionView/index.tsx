@@ -26,6 +26,7 @@ import {
   resumeSession,
   isFavorite,
   toggleFavorite,
+  invokeWithFallback,
 } from "../../lib/tauri";
 import { useI18n } from "../../i18n/index";
 import { MessageBubble } from "../MessageBubble";
@@ -397,20 +398,18 @@ export function SessionView(props: {
     unwatchFn?.();
   });
 
-  // Re-check favorite when favorite version bumps
+  // Re-check favorite when favorite version bumps. On failure keep the
+  // current `starred()` value so the UI doesn't flip to a wrong state.
   createEffect(
     on(
       () => favoriteVersion(),
       async () => {
-        try {
-          const fav = await isFavorite(props.session.id);
-          setStarred(fav);
-        } catch (error) {
-          console.error(
-            `Failed to refresh favorite state for session ${props.session.id}:`,
-            error,
-          );
-        }
+        const fav = await invokeWithFallback(
+          isFavorite(props.session.id),
+          starred(),
+          `refresh favorite state for session ${props.session.id}`,
+        );
+        setStarred(fav);
       },
     ),
   );
