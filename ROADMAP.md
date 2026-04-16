@@ -232,12 +232,13 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Fix: extract a `ProviderParser` trait + shared helpers, start with tool metadata (most duplicated)
 - 杠杆最大的一笔重构，8 个 provider 的 parser 平行演进，约 5000+ 行重复
 
-### Large File Splits — 大文件拆分
-- Rust: `providers/codex/parser.rs` 1652, `providers/claude/parser.rs` 1385, `providers/kimi/parser.rs` 944, `provider.rs` 907, `db/queries.rs` 848
-- TS: `MarkdownRenderer.tsx` 833 (UsagePanel 1337 already tracked above under Code Quality)
-- All exceed the 800-line limit set in CLAUDE.md
+### Large File Splits — 大文件拆分 `🔧 partial`
+- Rust: `providers/codex/parser.rs` 1652, `providers/claude/parser.rs` 1385, `providers/kimi/parser.rs` 944, `provider.rs` 907, `db/queries.rs` 848 — outstanding
+- TS: ~~`MarkdownRenderer.tsx` 833~~ split into `markdown/{types,parser,katex,utils,renderers}` (renderers.tsx 552, all others <200); thin 47-line entry re-exports the prior public API
+- TS: `UsagePanel.tsx` 1337 still tracked under Code Quality — outstanding
+- All files must stay under the 800-line limit set in CLAUDE.md
 - Fix: most of the Rust parsers collapse naturally once Provider Parser Abstraction lands
-- 超出 800 行上限的文件清单
+- MarkdownRenderer 已拆；Rust parsers 待 Provider 抽象后自然瘦身；UsagePanel 单独跟踪
 
 ### SessionView Effect Decoupling — SessionView Effect 解耦 `🟡 medium`
 - `SessionView/index.tsx:151-397` has 6+ chained `createEffect` (favoriteVersion ↔ isFavorite ↔ setStarred ↔ bumpFavoriteVersion)
