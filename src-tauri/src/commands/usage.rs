@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
+use anyhow::Context;
 use tauri::State;
 
 use super::AppState;
 use crate::db::queries::{UsageProjectModelDetailRow, UsageSessionModelDetailRow};
+use crate::error::CommandResult;
 use crate::models::*;
 
 #[tauri::command]
@@ -11,25 +13,29 @@ pub async fn get_usage_stats(
     providers: Vec<String>,
     range_days: Option<u32>,
     state: State<'_, AppState>,
-) -> Result<UsageStats, String> {
+) -> CommandResult<UsageStats> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || build_usage_stats(&state, &providers, range_days))
-        .await
-        .map_err(|e| format!("task join error: {e}"))?
+    let stats =
+        tokio::task::spawn_blocking(move || build_usage_stats(&state, &providers, range_days))
+            .await
+            .context("task join error")??;
+    Ok(stats)
 }
 
 #[tauri::command]
-pub async fn get_today_cost(state: State<'_, AppState>) -> Result<f64, String> {
+pub async fn get_today_cost(state: State<'_, AppState>) -> CommandResult<f64> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || {
+    let cost = tokio::task::spawn_blocking(move || -> anyhow::Result<f64> {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        state
+        let cost = state
             .db
             .cost_for_date(&today)
-            .map_err(|e| format!("failed to query today cost: {e}"))
+            .context("failed to query today cost")?;
+        Ok(cost)
     })
     .await
-    .map_err(|e| format!("task join error: {e}"))?
+    .context("task join error")??;
+    Ok(cost)
 }
 
 #[derive(serde::Serialize)]
@@ -41,14 +47,14 @@ pub struct TodayTokens {
 }
 
 #[tauri::command]
-pub async fn get_today_tokens(state: State<'_, AppState>) -> Result<TodayTokens, String> {
+pub async fn get_today_tokens(state: State<'_, AppState>) -> CommandResult<TodayTokens> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || {
+    let tokens = tokio::task::spawn_blocking(move || -> anyhow::Result<TodayTokens> {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let (input, output, cache_read, cache_write) = state
             .db
             .tokens_for_date(&today)
-            .map_err(|e| format!("failed to query today tokens: {e}"))?;
+            .context("failed to query today tokens")?;
         Ok(TodayTokens {
             input,
             output,
@@ -57,31 +63,32 @@ pub async fn get_today_tokens(state: State<'_, AppState>) -> Result<TodayTokens,
         })
     })
     .await
-    .map_err(|e| format!("task join error: {e}"))?
+    .context("task join error")??;
+    Ok(tokens)
 }
 
 fn build_usage_stats(
     state: &AppState,
     providers: &[String],
     range_days: Option<u32>,
-) -> Result<UsageStats, String> {
+) -> anyhow::Result<UsageStats> {
     let cutoff_date = range_days.and_then(cutoff_date_for_range_days);
     let cutoff_ref = cutoff_date.as_deref();
 
     let total_sessions = state
         .db
         .usage_session_count(providers, cutoff_ref)
-        .map_err(|e| format!("failed to count usage sessions: {e}"))?;
+        .context("failed to count usage sessions")?;
 
     let (total_turns, total_in, total_out, total_cr, total_cw) = state
         .db
         .usage_totals(providers, cutoff_ref)
-        .map_err(|e| format!("failed to query usage totals: {e}"))?;
+        .context("failed to query usage totals")?;
 
     let daily_rows = state
         .db
         .usage_daily(providers, cutoff_ref)
-        .map_err(|e| format!("failed to query daily usage: {e}"))?;
+        .context("failed to query daily usage")?;
     let daily_usage: Vec<DailyUsage> = daily_rows
         .into_iter()
         .map(|(date, provider, tokens, cost)| DailyUsage {
@@ -95,7 +102,7 @@ fn build_usage_stats(
     let model_rows = state
         .db
         .usage_by_model(providers, cutoff_ref)
-        .map_err(|e| format!("failed to query usage by model: {e}"))?;
+        .context("failed to query usage by model")?;
     let model_costs: Vec<ModelCost> = model_rows
         .into_iter()
         .map(|row| ModelCost {
@@ -115,7 +122,7 @@ fn build_usage_stats(
     let project_model_rows = state
         .db
         .usage_project_model_detail(providers, cutoff_ref)
-        .map_err(|e| format!("failed to query project model detail: {e}"))?;
+        .context("failed to query project model detail")?;
 
     let project_costs = build_project_costs(project_model_rows);
 
@@ -124,7 +131,7 @@ fn build_usage_stats(
     let session_model_rows = state
         .db
         .usage_session_model_detail(providers, cutoff_ref, 100)
-        .map_err(|e| format!("failed to query session model detail: {e}"))?;
+        .context("failed to query session model detail")?;
 
     let recent_sessions = build_recent_sessions(session_model_rows);
 
@@ -150,7 +157,7 @@ fn build_usage_stats(
             let (sessions, turns, inp, out, cr, cw, cost) = state
                 .db
                 .usage_totals_range(providers, &prev_start_str, &prev_end_str)
-                .map_err(|e| format!("failed to query previous-period usage totals: {e}"))?;
+                .context("failed to query previous-period usage totals")?;
 
             // Only return if prev period has data
             let total_tokens = inp + out + cr + cw;
@@ -172,7 +179,7 @@ fn build_usage_stats(
     let provider_session_counts = state
         .db
         .usage_session_count_by_provider(providers, cutoff_ref)
-        .map_err(|e| format!("failed to count sessions by provider: {e}"))?
+        .context("failed to count sessions by provider")?
         .into_iter()
         .map(|(provider, count)| ProviderSessionCount { provider, count })
         .collect();

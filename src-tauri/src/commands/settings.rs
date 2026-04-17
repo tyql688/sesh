@@ -1,6 +1,8 @@
+use anyhow::{anyhow, Context};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_opener::OpenerExt;
 
+use crate::error::{CommandError, CommandResult};
 use crate::exporter;
 use crate::models::{IndexStats, PricingCatalogStatus, ProviderSnapshot};
 use crate::pricing::{
@@ -37,31 +39,31 @@ fn emit_maintenance(
 
 /// Open external URL in browser
 #[tauri::command]
-pub async fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+pub async fn open_external(app: AppHandle, url: String) -> CommandResult<()> {
     app.opener()
         .open_url(&url, None::<String>)
-        .map_err(|e| format!("failed to open URL: {e}"))?;
+        .context("failed to open URL")?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_index_stats(state: State<AppState>) -> Result<IndexStats, String> {
+pub fn get_index_stats(state: State<AppState>) -> CommandResult<IndexStats> {
     let session_count = state
         .db
         .session_count()
-        .map_err(|e| format!("failed to get session count: {e}"))?;
+        .context("failed to get session count")?;
 
     let db_size_bytes = state.db.db_size_bytes();
 
     let last_index_time = state
         .db
         .get_meta("last_index_time")
-        .map_err(|e| format!("failed to read last_index_time: {e}"))?
+        .context("failed to read last_index_time")?
         .unwrap_or_default();
     let usage_last_refreshed_at = state
         .db
         .get_meta("usage_last_refreshed_at")
-        .map_err(|e| format!("failed to read usage_last_refreshed_at: {e}"))?
+        .context("failed to read usage_last_refreshed_at")?
         .unwrap_or_default();
 
     Ok(IndexStats {
@@ -73,26 +75,26 @@ pub fn get_index_stats(state: State<AppState>) -> Result<IndexStats, String> {
 }
 
 #[tauri::command]
-pub fn get_pricing_catalog_status(state: State<AppState>) -> Result<PricingCatalogStatus, String> {
+pub fn get_pricing_catalog_status(state: State<AppState>) -> CommandResult<PricingCatalogStatus> {
     let updated_at = state
         .db
         .get_meta(PRICING_CATALOG_UPDATED_AT_KEY)
-        .map_err(|e| format!("failed to read pricing updated_at: {e}"))?;
+        .context("failed to read pricing updated_at")?;
     let model_count = if let Some(raw_count) = state
         .db
         .get_meta(PRICING_CATALOG_MODEL_COUNT_KEY)
-        .map_err(|e| format!("failed to read pricing model count: {e}"))?
+        .context("failed to read pricing model count")?
     {
         raw_count
             .parse::<u64>()
-            .map_err(|e| format!("invalid stored pricing model count '{raw_count}': {e}"))?
+            .with_context(|| format!("invalid stored pricing model count '{raw_count}'"))?
     } else if let Some(json) = state
         .db
         .get_meta(PRICING_CATALOG_JSON_KEY)
-        .map_err(|e| format!("failed to read pricing catalog JSON: {e}"))?
+        .context("failed to read pricing catalog JSON")?
     {
         parse_catalog(&json)
-            .map_err(|e| format!("invalid stored pricing catalog JSON: {e}"))?
+            .context("invalid stored pricing catalog JSON")?
             .len() as u64
     } else {
         0
@@ -107,36 +109,34 @@ pub fn get_pricing_catalog_status(state: State<AppState>) -> Result<PricingCatal
 #[tauri::command]
 pub async fn refresh_pricing_catalog(
     state: State<'_, AppState>,
-) -> Result<PricingCatalogStatus, String> {
+) -> CommandResult<PricingCatalogStatus> {
     let response = reqwest::get(PRICING_CATALOG_URL)
         .await
-        .map_err(|e| format!("failed to fetch pricing catalog: {e}"))?;
+        .context("failed to fetch pricing catalog")?;
     let response = response
         .error_for_status()
-        .map_err(|e| format!("pricing catalog request failed: {e}"))?;
+        .context("pricing catalog request failed")?;
     let body = response
         .text()
         .await
-        .map_err(|e| format!("failed to read pricing catalog body: {e}"))?;
-    let model_count =
-        count_models_dev_models(&body).map_err(|e| format!("invalid models.dev JSON: {e}"))?;
-    let catalog = parse_models_dev(&body).map_err(|e| format!("invalid models.dev JSON: {e}"))?;
-    let body = serde_json::to_string(&catalog)
-        .map_err(|e| format!("failed to serialize pricing catalog: {e}"))?;
+        .context("failed to read pricing catalog body")?;
+    let model_count = count_models_dev_models(&body).context("invalid models.dev JSON")?;
+    let catalog = parse_models_dev(&body).context("invalid models.dev JSON")?;
+    let body = serde_json::to_string(&catalog).context("failed to serialize pricing catalog")?;
     let updated_at = chrono::Utc::now().to_rfc3339();
 
     state
         .db
         .set_meta(PRICING_CATALOG_JSON_KEY, &body)
-        .map_err(|e| format!("failed to store pricing catalog: {e}"))?;
+        .context("failed to store pricing catalog")?;
     state
         .db
         .set_meta(PRICING_CATALOG_UPDATED_AT_KEY, &updated_at)
-        .map_err(|e| format!("failed to store pricing timestamp: {e}"))?;
+        .context("failed to store pricing timestamp")?;
     state
         .db
         .set_meta(PRICING_CATALOG_MODEL_COUNT_KEY, &model_count.to_string())
-        .map_err(|e| format!("failed to store pricing model count: {e}"))?;
+        .context("failed to store pricing model count")?;
 
     Ok(PricingCatalogStatus {
         updated_at: Some(updated_at),
@@ -145,15 +145,15 @@ pub async fn refresh_pricing_catalog(
 }
 
 #[tauri::command]
-pub fn rebuild_index(state: State<AppState>) -> Result<usize, String> {
-    state.indexer.reindex()
+pub fn rebuild_index(state: State<AppState>) -> CommandResult<usize> {
+    state.indexer.reindex().map_err(CommandError::from)
 }
 
 #[tauri::command]
 pub async fn start_rebuild_index(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<bool, String> {
+) -> CommandResult<bool> {
     use std::sync::atomic::Ordering;
 
     let state = state.inner().clone();
@@ -168,7 +168,7 @@ pub async fn start_rebuild_index(
             move || state.indexer.reindex()
         })
         .await
-        .map_err(|e| format!("task join error: {e}"))
+        .map_err(|e| format!("task join error: {e:#}"))
         .and_then(|result| result);
 
         match result {
@@ -182,18 +182,16 @@ pub async fn start_rebuild_index(
 }
 
 #[tauri::command]
-pub fn clear_index(state: State<AppState>) -> Result<(), String> {
-    state
-        .db
-        .clear_all()
-        .map_err(|e| format!("failed to clear index: {e}"))
+pub fn clear_index(state: State<AppState>) -> CommandResult<()> {
+    state.db.clear_all().context("failed to clear index")?;
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn start_refresh_usage(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<bool, String> {
+) -> CommandResult<bool> {
     use std::sync::atomic::Ordering;
 
     let state = state.inner().clone();
@@ -209,12 +207,12 @@ pub async fn start_refresh_usage(
                 state
                     .db
                     .clear_usage_stats()
-                    .map_err(|e| format!("failed to clear usage stats: {e}"))?;
+                    .map_err(|e| format!("failed to clear usage stats: {e:#}"))?;
                 state.indexer.reindex().map(|_| ())
             }
         })
         .await
-        .map_err(|e| format!("task join error: {e}"))
+        .map_err(|e| format!("task join error: {e:#}"))
         .and_then(|result| result);
 
         match result {
@@ -228,8 +226,10 @@ pub async fn start_refresh_usage(
 }
 
 #[tauri::command]
-pub fn get_provider_snapshots(state: State<AppState>) -> Result<Vec<ProviderSnapshot>, String> {
-    ProviderSnapshotService::new(&state.db).list()
+pub fn get_provider_snapshots(state: State<AppState>) -> CommandResult<Vec<ProviderSnapshot>> {
+    ProviderSnapshotService::new(&state.db)
+        .list()
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -238,9 +238,9 @@ pub fn export_session(
     format: String,
     output_path: String,
     state: State<AppState>,
-) -> Result<(), String> {
+) -> CommandResult<()> {
     let detail = load_detail(&session_id, &state.db)?;
-    exporter::export(&detail, &format, &output_path)
+    exporter::export(&detail, &format, &output_path).map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -250,13 +250,12 @@ pub async fn export_sessions_batch(
     output_path: String,
     state: State<'_, AppState>,
     app: tauri::AppHandle,
-) -> Result<(), String> {
+) -> CommandResult<()> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         use std::io::{BufWriter, Write};
         use tauri::Emitter;
-        let file = std::fs::File::create(&output_path)
-            .map_err(|e| format!("failed to create zip file: {e}"))?;
+        let file = std::fs::File::create(&output_path).context("failed to create zip file")?;
         let mut zip = zip::ZipWriter::new(BufWriter::new(file));
         let options = zip::write::SimpleFileOptions::default();
         let total = items.len();
@@ -286,23 +285,24 @@ pub async fn export_sessions_batch(
                 ext
             );
             let content = match format.as_str() {
-                "json" => serde_json::to_string_pretty(&detail)
-                    .map_err(|e| format!("failed to serialize session: {e}"))?,
+                "json" => {
+                    serde_json::to_string_pretty(&detail).context("failed to serialize session")?
+                }
                 "markdown" => crate::exporter::markdown::render(&detail),
                 "html" => crate::exporter::html::render(&detail),
                 _ => String::new(),
             };
             zip.start_file(&filename, options)
-                .map_err(|e| format!("failed to write zip entry: {e}"))?;
+                .context("failed to write zip entry")?;
             zip.write_all(content.as_bytes())
-                .map_err(|e| format!("failed to write zip content: {e}"))?;
+                .context("failed to write zip content")?;
         }
-        zip.finish()
-            .map_err(|e| format!("failed to finish zip: {e}"))?;
+        zip.finish().context("failed to finish zip")?;
         Ok(())
     })
     .await
-    .map_err(|e| format!("task join error: {e}"))?
+    .map_err(|e| anyhow!("task join error: {e}"))??;
+    Ok(())
 }
 
 fn sanitize_filename(name: &str) -> String {

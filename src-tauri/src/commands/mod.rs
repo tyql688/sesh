@@ -29,12 +29,12 @@ pub(crate) fn load_session_detail_for_tests(
     db: &crate::db::Database,
     session_id: &str,
 ) -> Result<crate::models::SessionDetail, String> {
-    sessions::load_detail(session_id, db)
+    sessions::load_detail(session_id, db).map_err(|e| format!("{e:#}"))
 }
 
 pub(crate) fn get_resume_command_for_tests(
     db: &crate::db::Database,
     session_id: &str,
 ) -> Result<String, String> {
-    terminal::get_resume_command_for_db(db, session_id)
+    terminal::get_resume_command_for_db(db, session_id).map_err(|e| format!("{e:#}"))
 }

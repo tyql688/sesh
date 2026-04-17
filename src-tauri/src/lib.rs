@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod error;
 mod exporter;
 pub mod indexer;
 pub mod models;

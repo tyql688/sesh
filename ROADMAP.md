@@ -31,7 +31,6 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Fuzzy matching with live preview
 - Prefix routing: `>` commands, `#` tags, `@` provider, `:` jump to message
 - Context-aware: default candidates change based on active panel (Explorer / Session / Usage)
-- Search result pagination (current hard limit: 100)
 - Reference: VS Code Command Palette, Arc Command Bar
 - 全局 `Cmd+K` 唤起，模糊搜索 + 实时预览 + 前缀路由 + 上下文感知（不同面板下默认候选不同）
 
@@ -161,11 +160,6 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Fix: configure `unicode61` tokenizer for better code/path search
 - 默认分词器对代码和路径搜索效果差，应配置 unicode61
 
-### Search Pagination — 搜索分页
-- Current: hard limit 100 results, no pagination UI
-- Fix: add pagination or "load more" for search results
-- 当前硬限 100 条无分页，应支持翻页或加载更多
-
 ---
 
 ## Code Quality / 代码质量
@@ -256,12 +250,16 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - `SessionView/index.tsx` 624 → 522 lines; original 6+ chained effects collapsed to 3 named hooks + 2 intentional inline effects (session load, title sync)
 - 3 个命名 hook 替代原内联级联 effect，泄露源头收敛到 hook 内部
 
-### Tauri Error Wrapper — Tauri 错误统一包装 `🟡 medium` `🔧 partial`
+### Tauri Error Wrapper — Tauri 错误统一包装 `🟡 medium` `✅ done`
 - Frontend side: `invokeWithToast()` (user actions, toast + rethrow) and `invokeWithFallback()` (background refresh, log + fallback) landed in `lib/tauri.ts` with unit test coverage
 - `App.refreshStatusBarStats` migrated as the first demo caller (3 `Promise.allSettled` branches → 3 `invokeWithFallback` calls)
-- Remaining frontend: migrate the other ad-hoc `try/catch` sites (UsagePanel, AboutSettings, etc.) — not blocking, do opportunistically as files are touched
-- Backend side: `anyhow::Context` at command boundaries still outstanding (String errors lose stack info on serialize)
-- 前端 wrapper 已落地并覆盖单测，老调用点逐步迁移；后端 anyhow context 仍待处理
+- Backend side: added `anyhow = "1"` dep and `src-tauri/src/error.rs::CommandError` — a `#[from] anyhow::Error` newtype whose `Serialize` impl emits `format!("{:#}", err)` so the full context-chain reaches the frontend toast instead of only the outermost wrapper
+- All 8 command files migrated: `Result<T, String>` → `CommandResult<T>`, ~60 `.map_err(|e| format!("ctx: {e}"))` sites replaced with `.context(..)` / `.with_context(..)`
+- Shared helpers `sessions::load_detail` and `terminal::get_resume_command_for_db` now return `anyhow::Result<T>`; test helpers in `commands/mod.rs` format the chain to `String` at the boundary so integration tests are unchanged
+- Wire format unchanged: frontend still receives `error: string`, just with the full `"outer: middle: root"` chain instead of a single layer
+- 3 remaining `map_err(|e| format!("..: {e:#}"))` inside maintenance event emitters stay as `String` intentionally — those build the `emit_maintenance("failed", Some(message))` payload, which is an event field, not a command return
+- Opportunistic frontend migration of the remaining `try/catch` sites (UsagePanel, AboutSettings) tracked separately — not blocking, touch as files are edited
+- 前后端 error wrapper 全部落地；后端 60+ 处 map_err 全量迁到 anyhow Context，toast 现可看到完整 chain
 
 ### Core Module Test Coverage — 核心模块单测 `🟡 medium`
 - `watcher.rs` (640), `indexer.rs` (639), `services/*`, `commands/*` have no `#[cfg(test)]` modules

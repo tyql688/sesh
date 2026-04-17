@@ -1,28 +1,32 @@
 use std::path::Path;
 
+use anyhow::{anyhow, Context};
 use tauri::State;
 
 use crate::db::Database;
+use crate::error::{CommandError, CommandResult};
 use crate::models::{BatchResult, Message, Provider, SessionDetail, SessionMeta};
 use crate::services::{load_session_meta, SessionLifecycleService, SourceSyncService};
 
 use super::AppState;
 
 #[tauri::command]
-pub async fn reindex(state: State<'_, AppState>) -> Result<usize, String> {
+pub async fn reindex(state: State<'_, AppState>) -> CommandResult<usize> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || state.indexer.reindex())
+    let count = tokio::task::spawn_blocking(move || state.indexer.reindex())
         .await
-        .map_err(|e| format!("task join error: {e}"))?
+        .context("task join error")?
+        .map_err(CommandError::from)?;
+    Ok(count)
 }
 
 #[tauri::command]
 pub async fn reindex_providers(
     providers: Vec<String>,
     state: State<'_, AppState>,
-) -> Result<usize, String> {
+) -> CommandResult<usize> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || {
+    let count = tokio::task::spawn_blocking(move || {
         let filter: Vec<crate::models::Provider> = providers
             .iter()
             .filter_map(|s| crate::models::Provider::parse(s))
@@ -33,13 +37,15 @@ pub async fn reindex_providers(
         state.indexer.reindex_providers(Some(&filter))
     })
     .await
-    .map_err(|e| format!("task join error: {e}"))?
+    .context("task join error")?
+    .map_err(CommandError::from)?;
+    Ok(count)
 }
 
 #[tauri::command]
-pub async fn sync_sources(paths: Vec<String>, state: State<'_, AppState>) -> Result<usize, String> {
+pub async fn sync_sources(paths: Vec<String>, state: State<'_, AppState>) -> CommandResult<usize> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || {
+    let count = tokio::task::spawn_blocking(move || {
         let source_sync = SourceSyncService::new(&state.db);
         let mut unique_paths = std::collections::HashSet::new();
         let mut synced = 0;
@@ -53,54 +59,59 @@ pub async fn sync_sources(paths: Vec<String>, state: State<'_, AppState>) -> Res
             }
         }
 
-        Ok(synced)
+        Ok::<usize, String>(synced)
     })
     .await
-    .map_err(|e| format!("task join error: {e}"))?
+    .context("task join error")?
+    .map_err(CommandError::from)?;
+    Ok(count)
 }
 
 #[tauri::command]
-pub fn get_tree(state: State<AppState>) -> Result<Vec<crate::models::TreeNode>, String> {
-    state.indexer.build_tree()
+pub fn get_tree(state: State<AppState>) -> CommandResult<Vec<crate::models::TreeNode>> {
+    state.indexer.build_tree().map_err(CommandError::from)
 }
 
 #[tauri::command]
 pub fn get_session_detail(
     session_id: String,
     state: State<AppState>,
-) -> Result<SessionDetail, String> {
-    load_detail(&session_id, &state.db)
+) -> CommandResult<SessionDetail> {
+    Ok(load_detail(&session_id, &state.db)?)
 }
 
 #[tauri::command]
 pub fn get_child_sessions(
     parent_id: String,
     state: State<AppState>,
-) -> Result<Vec<SessionMeta>, String> {
+) -> CommandResult<Vec<SessionMeta>> {
     let mut sessions = state
         .db
         .get_child_sessions(&parent_id)
-        .map_err(|e| format!("db error: {e}"))?;
+        .context("failed to load child sessions")?;
     hydrate_variant_names(&mut sessions);
     Ok(sessions)
 }
 
 #[tauri::command]
-pub fn delete_session(session_id: String, state: State<AppState>) -> Result<(), String> {
-    SessionLifecycleService::new(&state.db).purge_session(&session_id)
+pub fn delete_session(session_id: String, state: State<AppState>) -> CommandResult<()> {
+    SessionLifecycleService::new(&state.db)
+        .purge_session(&session_id)
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
 pub async fn delete_sessions_batch(
     items: Vec<String>,
     state: State<'_, AppState>,
-) -> Result<BatchResult, String> {
+) -> CommandResult<BatchResult> {
     let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        Ok(SessionLifecycleService::new(&state.db).purge_sessions(&items))
+    let result = tokio::task::spawn_blocking(move || {
+        SessionLifecycleService::new(&state.db).purge_sessions(&items)
     })
     .await
-    .map_err(|e| format!("task join error: {e}"))?
+    .context("task join error")?;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -108,40 +119,41 @@ pub fn rename_session(
     session_id: String,
     new_title: String,
     state: State<AppState>,
-) -> Result<(), String> {
+) -> CommandResult<()> {
     state
         .db
         .rename_session(&session_id, &new_title)
-        .map_err(|e| format!("failed to rename session: {e}"))?;
+        .context("failed to rename session")?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_session_count(state: State<AppState>) -> Result<u64, String> {
-    state
+pub fn get_session_count(state: State<AppState>) -> CommandResult<u64> {
+    let count = state
         .db
         .session_count()
-        .map_err(|e| format!("failed to get session count: {e}"))
+        .context("failed to get session count")?;
+    Ok(count)
 }
 
 #[tauri::command]
-pub fn toggle_favorite(session_id: String, state: State<AppState>) -> Result<bool, String> {
+pub fn toggle_favorite(session_id: String, state: State<AppState>) -> CommandResult<bool> {
     let is_fav = state
         .db
         .is_favorite(&session_id)
-        .map_err(|e| format!("failed to check favorite: {e}"))?;
+        .context("failed to check favorite")?;
 
     if is_fav {
         state
             .db
             .remove_favorite(&session_id)
-            .map_err(|e| format!("failed to remove favorite: {e}"))?;
+            .context("failed to remove favorite")?;
         Ok(false)
     } else {
         state
             .db
             .add_favorite(&session_id)
-            .map_err(|e| format!("failed to add favorite: {e}"))?;
+            .context("failed to add favorite")?;
         Ok(true)
     }
 }
@@ -150,35 +162,36 @@ pub fn toggle_favorite(session_id: String, state: State<AppState>) -> Result<boo
 pub fn list_recent_sessions(
     limit: usize,
     state: State<AppState>,
-) -> Result<Vec<SessionMeta>, String> {
+) -> CommandResult<Vec<SessionMeta>> {
     let mut sessions = state
         .db
         .list_recent_sessions(limit)
-        .map_err(|e| format!("failed to list recent sessions: {e}"))?;
+        .context("failed to list recent sessions")?;
     hydrate_variant_names(&mut sessions);
     Ok(sessions)
 }
 
 #[tauri::command]
-pub fn list_favorites(state: State<AppState>) -> Result<Vec<SessionMeta>, String> {
+pub fn list_favorites(state: State<AppState>) -> CommandResult<Vec<SessionMeta>> {
     let mut sessions = state
         .db
         .list_favorites()
-        .map_err(|e| format!("failed to list favorites: {e}"))?;
+        .context("failed to list favorites")?;
     hydrate_variant_names(&mut sessions);
     Ok(sessions)
 }
 
 #[tauri::command]
-pub fn is_favorite(session_id: String, state: State<AppState>) -> Result<bool, String> {
-    state
+pub fn is_favorite(session_id: String, state: State<AppState>) -> CommandResult<bool> {
+    let ok = state
         .db
         .is_favorite(&session_id)
-        .map_err(|e| format!("failed to check favorite: {e}"))
+        .context("failed to check favorite")?;
+    Ok(ok)
 }
 
-pub(crate) fn load_detail(session_id: &str, db: &Database) -> Result<SessionDetail, String> {
-    let meta = load_session_meta(db, session_id)?;
+pub(crate) fn load_detail(session_id: &str, db: &Database) -> anyhow::Result<SessionDetail> {
+    let meta = load_session_meta(db, session_id).map_err(anyhow::Error::msg)?;
     let messages = load_messages_from_provider(&meta.provider, session_id, &meta.source_path)?;
     Ok(SessionDetail { meta, messages })
 }
@@ -191,11 +204,13 @@ fn load_messages_from_provider(
     provider: &Provider,
     session_id: &str,
     source_path: &str,
-) -> Result<Vec<Message>, String> {
+) -> anyhow::Result<Vec<Message>> {
     provider
-        .require_runtime()?
+        .require_runtime()
+        .map_err(anyhow::Error::msg)?
         .load_messages(session_id, source_path)
-        .map_err(|e| format!("failed to load messages: {e}"))
+        .map_err(anyhow::Error::msg)
+        .context("failed to load messages")
 }
 
 /// Session images must live under the user home or system temp (same policy as HTML export).
@@ -260,7 +275,7 @@ fn tmp_dir_allows_image(canonical: &Path) -> bool {
 }
 
 #[tauri::command]
-pub fn read_image_base64(path: String) -> Result<String, String> {
+pub fn read_image_base64(path: String) -> CommandResult<String> {
     use crate::services::image_cache::{image_cache_data_dir, ImageCacheService};
     use base64::{engine::general_purpose::STANDARD, Engine};
 
@@ -272,11 +287,11 @@ pub fn read_image_base64(path: String) -> Result<String, String> {
         p.to_path_buf()
     } else {
         // Try cache fallback
-        let data_dir = image_cache_data_dir().ok_or_else(|| format!("image not found: {path}"))?;
+        let data_dir = image_cache_data_dir().ok_or_else(|| anyhow!("image not found: {path}"))?;
         let service = ImageCacheService::new(&data_dir);
         service
             .resolve_cached_path(&path)
-            .ok_or_else(|| format!("image not found: {path}"))?
+            .ok_or_else(|| anyhow!("image not found: {path}"))?
     };
 
     if let Ok(canonical) = resolved.canonicalize() {
@@ -285,7 +300,7 @@ pub fn read_image_base64(path: String) -> Result<String, String> {
                 "read_image_base64 denied (not under home/temp): {}",
                 canonical.display()
             );
-            return Err(format!("image path not allowed: {path}"));
+            return Err(anyhow!("image path not allowed: {path}").into());
         }
     }
 
@@ -304,7 +319,7 @@ pub fn read_image_base64(path: String) -> Result<String, String> {
     };
 
     let data = std::fs::read(&resolved)
-        .map_err(|e| format!("failed to read image {}: {e}", resolved.display()))?;
+        .with_context(|| format!("failed to read image {}", resolved.display()))?;
     let b64 = STANDARD.encode(&data);
     Ok(format!("data:{mime};base64,{b64}"))
 }
@@ -329,73 +344,75 @@ fn read_tool_result_canonical_allowed(canonical: &Path) -> bool {
 }
 
 #[tauri::command]
-pub fn read_tool_result_text(path: String) -> Result<String, String> {
+pub fn read_tool_result_text(path: String) -> CommandResult<String> {
     const MAX_TOOL_RESULT_BYTES: u64 = 1_000_000;
 
     let path = path.trim().trim_start_matches('\u{feff}').to_string();
     let p = Path::new(&path);
     if !p.exists() {
-        return Err(format!("tool result not found: {path}"));
+        return Err(anyhow!("tool result not found: {path}").into());
     }
 
     let canonical = p
         .canonicalize()
-        .map_err(|e| format!("failed to resolve tool result '{path}': {e}"))?;
+        .with_context(|| format!("failed to resolve tool result '{path}'"))?;
     if !read_tool_result_canonical_allowed(&canonical) {
         log::warn!(
             "read_tool_result_text denied (outside tool-results): {}",
             canonical.display()
         );
-        return Err(format!("tool result path not allowed: {path}"));
+        return Err(anyhow!("tool result path not allowed: {path}").into());
     }
 
     let metadata = std::fs::metadata(&canonical)
-        .map_err(|e| format!("failed to inspect tool result {path}: {e}"))?;
+        .with_context(|| format!("failed to inspect tool result {path}"))?;
     if metadata.len() > MAX_TOOL_RESULT_BYTES {
-        return Err(format!(
+        return Err(anyhow!(
             "tool result is too large to preview ({} bytes)",
             metadata.len()
-        ));
+        )
+        .into());
     }
 
-    std::fs::read_to_string(&canonical)
-        .map_err(|e| format!("failed to read tool result {path}: {e}"))
+    let text = std::fs::read_to_string(&canonical)
+        .with_context(|| format!("failed to read tool result {path}"))?;
+    Ok(text)
 }
 
 #[tauri::command]
-pub fn open_in_folder(path: String) -> Result<(), String> {
+pub fn open_in_folder(path: String) -> CommandResult<()> {
     let p = Path::new(&path);
     if !p.exists() {
-        return Err(format!("path not found: {path}"));
+        return Err(anyhow!("path not found: {path}").into());
     }
     // Validate path is under HOME to prevent opening arbitrary system directories
     let canonical = p
         .canonicalize()
-        .map_err(|e| format!("failed to resolve path '{path}': {e}"))?;
+        .with_context(|| format!("failed to resolve path '{path}'"))?;
     let home_ok = dirs::home_dir().is_some_and(|h| canonical.starts_with(&h));
     if !home_ok {
-        return Err(format!("path not allowed: {path}"));
+        return Err(anyhow!("path not allowed: {path}").into());
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg(&path)
             .spawn()
-            .map_err(|e| format!("failed to open: {e}"))?;
+            .context("failed to open")?;
     }
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
             .arg(&path)
             .spawn()
-            .map_err(|e| format!("failed to open: {e}"))?;
+            .context("failed to open")?;
     }
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
             .arg(&path)
             .spawn()
-            .map_err(|e| format!("failed to open: {e}"))?;
+            .context("failed to open")?;
     }
     Ok(())
 }
