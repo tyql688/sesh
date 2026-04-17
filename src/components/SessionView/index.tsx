@@ -8,26 +8,13 @@ import {
   onMount,
   onCleanup,
 } from "solid-js";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   SessionRef,
   SessionMeta,
   Message,
   MessageRole,
 } from "../../lib/types";
-import {
-  getProviderWatchConfig,
-  getProviderWatchVersion,
-  loadProviderWatchSnapshots,
-} from "../../lib/provider-watch";
-import {
-  getSessionDetail,
-  trashSession,
-  resumeSession,
-  isFavorite,
-  toggleFavorite,
-  invokeWithFallback,
-} from "../../lib/tauri";
+import { getSessionDetail, trashSession, resumeSession } from "../../lib/tauri";
 import { useI18n } from "../../i18n/index";
 import { MessageBubble } from "../MessageBubble";
 import { MergedToolRow } from "../MergedToolRow";
@@ -36,7 +23,6 @@ import { ExportDialog } from "../ExportDialog";
 import { terminalApp } from "../../stores/settings";
 import { toast, toastError } from "../../stores/toast";
 import { errorMessage } from "../../lib/errors";
-import { favoriteVersion, bumpFavoriteVersion } from "../../stores/favorites";
 import {
   pendingSessionSearch,
   setPendingSessionSearch,
@@ -45,6 +31,9 @@ import { processMessages } from "./hooks";
 import { SessionToolbar } from "./SessionToolbar";
 import { SessionSearch } from "./SessionSearch";
 import { TimelineMinimap } from "./TimelineMinimap";
+import { useLiveWatch } from "./useLiveWatch";
+import { useFavoriteSync } from "./useFavoriteSync";
+import { useAutoLoad } from "./useAutoLoad";
 
 export function SessionView(props: {
   session: SessionRef;
@@ -276,8 +265,6 @@ export function SessionView(props: {
 
   onCleanup(() => {
     clearTimeout(loadOlderDebounce);
-    clearTimeout(watchDebounce);
-    unwatchFn?.();
     document.removeEventListener("cc-session:resume", onResume);
     document.removeEventListener("cc-session:export", onExport);
     document.removeEventListener("cc-session:favorite", onFavorite);
@@ -288,38 +275,25 @@ export function SessionView(props: {
 
   // column-reverse: scrollTop=0 naturally shows newest messages. No scroll-to-bottom needed.
 
-  // Auto-load more if content doesn't fill the viewport
-  createEffect(() => {
-    visibleEntries();
-    if (loading() || !hasMore() || !messagesRef) {
-      return;
-    }
-
-    if (
-      messagesRef.scrollHeight <=
-      messagesRef.clientHeight + LOAD_MORE_THRESHOLD
-    ) {
-      requestAnimationFrame(() => {
-        loadOlderEntries();
-      });
-    }
+  useAutoLoad({
+    visibleEntries,
+    loading,
+    hasMore,
+    getMessagesRef: () => messagesRef,
+    loadMore: loadOlderEntries,
+    threshold: LOAD_MORE_THRESHOLD,
   });
 
   const [showDeleteConfirm, setShowDeleteConfirm] = createSignal(false);
   const [showExportDialog, setShowExportDialog] = createSignal(false);
-  const [starred, setStarred] = createSignal<boolean | null>(null);
   const [watching, setWatching] = createSignal(false);
 
   // Stable memos so the live-watch effect only re-runs when these values
   // actually change, not on every reloadSession() → setMeta() cycle.
   const watchProvider = createMemo(() => meta().provider);
   const watchSourcePath = createMemo(
-    () => meta().source_path || props.session.source_path,
+    () => meta().source_path || props.session.source_path || "",
   );
-
-  // Live watch: re-fetch session when file changes
-  let unwatchFn: UnlistenFn | undefined;
-  let watchDebounce: ReturnType<typeof setTimeout> | undefined;
 
   async function reloadSession() {
     try {
@@ -338,80 +312,15 @@ export function SessionView(props: {
     }
   }
 
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
-
-  createEffect(
-    on(
-      () =>
-        [
-          watching(),
-          watchProvider(),
-          watchSourcePath(),
-          getProviderWatchVersion(),
-        ] as const,
-      async ([isWatching]) => {
-        // Cleanup previous listener & polling
-        clearTimeout(watchDebounce);
-        clearInterval(pollTimer);
-        pollTimer = undefined;
-        unwatchFn?.();
-        unwatchFn = undefined;
-
-        if (isWatching) {
-          void loadProviderWatchSnapshots();
-
-          const activeSourcePath = watchSourcePath();
-          const watchConfig = getProviderWatchConfig(watchProvider());
-
-          if (watchConfig.strategy === "poll") {
-            pollTimer = setInterval(reloadSession, watchConfig.debounceMs);
-          } else {
-            // File-based providers: use FS events
-            unwatchFn = await listen<string[]>("sessions-changed", (event) => {
-              const changedPaths = event.payload ?? [];
-              if (!activeSourcePath) return;
-
-              let matched: boolean;
-              if (watchConfig.matchPrefix) {
-                // Gemini: match by project directory prefix
-                // (strip last 2 path segments: /chats/session-id.json → project dir)
-                const dir = activeSourcePath.replace(/\/[^/]+\/[^/]+$/, "");
-                matched = changedPaths.some((p) => p.startsWith(dir));
-              } else {
-                matched = changedPaths.includes(activeSourcePath);
-              }
-              if (!matched) return;
-
-              clearTimeout(watchDebounce);
-              watchDebounce = setTimeout(reloadSession, watchConfig.debounceMs);
-            });
-          }
-        }
-      },
-    ),
-  );
-
-  onCleanup(() => {
-    clearTimeout(watchDebounce);
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-    unwatchFn?.();
+  useLiveWatch({
+    watching,
+    provider: watchProvider,
+    sourcePath: watchSourcePath,
+    reload: reloadSession,
   });
 
-  // Re-check favorite when favorite version bumps. On failure keep the
-  // current `starred()` value so the UI doesn't flip to a wrong state.
-  createEffect(
-    on(
-      () => favoriteVersion(),
-      async () => {
-        const fav = await invokeWithFallback(
-          isFavorite(props.session.id),
-          starred(),
-          `refresh favorite state for session ${props.session.id}`,
-        );
-        setStarred(fav);
-      },
-    ),
+  const { starred, toggleFavorite: handleToggleFavorite } = useFavoriteSync(
+    () => props.session.id,
   );
 
   // Sync title from props when it changes (e.g. after rename via syncTabsWithTree)
@@ -423,17 +332,6 @@ export function SessionView(props: {
       },
     ),
   );
-
-  const handleToggleFavorite = async () => {
-    try {
-      const newState = await toggleFavorite(props.session.id);
-      setStarred(newState);
-      bumpFavoriteVersion();
-      toast(t(newState ? "toast.favoriteAdded" : "toast.favoriteRemoved"));
-    } catch (_e) {
-      toastError(t("toast.favoriteFailed"));
-    }
-  };
 
   const handleCopy = async () => {
     const text = messages()

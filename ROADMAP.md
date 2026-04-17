@@ -248,11 +248,13 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - Fix: most of the Rust parsers collapse naturally once Provider Parser Abstraction lands
 - MarkdownRenderer 和 UsagePanel 已拆；Rust parsers 待 Provider 抽象后自然瘦身
 
-### SessionView Effect Decoupling — SessionView Effect 解耦 `🟡 medium`
-- `SessionView/index.tsx:151-397` has 6+ chained `createEffect` (favoriteVersion ↔ isFavorite ↔ setStarred ↔ bumpFavoriteVersion)
-- Live-watch effect at 342-397 manages unwatch fn + debounce + listeners inline, leak risk
-- Fix: extract `useLiveWatch`, `useFavoriteSync`, `useAutoLoad` hooks
-- 多级联 effect 互相触发，存在循环 / 泄露隐患
+### SessionView Effect Decoupling — SessionView Effect 解耦 `🟡 medium` `✅ done`
+- Extracted `useLiveWatch` (91), `useFavoriteSync` (56), `useAutoLoad` (32) alongside existing `hooks.ts` in `src/components/SessionView/`
+- `useLiveWatch` owns `unwatchFn` / `pollTimer` / `watchDebounce` internally; `index.tsx` no longer touches those mutable refs
+- `useFavoriteSync` consolidates `starred` signal + `favoriteVersion` subscription + toggle-with-toast into one returning `{ starred, toggleFavorite }`
+- `useAutoLoad` reduces the auto-load-on-unfilled-viewport effect to a single hook call
+- `SessionView/index.tsx` 624 → 522 lines; original 6+ chained effects collapsed to 3 named hooks + 2 intentional inline effects (session load, title sync)
+- 3 个命名 hook 替代原内联级联 effect，泄露源头收敛到 hook 内部
 
 ### Tauri Error Wrapper — Tauri 错误统一包装 `🟡 medium` `🔧 partial`
 - Frontend side: `invokeWithToast()` (user actions, toast + rethrow) and `invokeWithFallback()` (background refresh, log + fallback) landed in `lib/tauri.ts` with unit test coverage
