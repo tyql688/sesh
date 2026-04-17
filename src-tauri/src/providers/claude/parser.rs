@@ -29,6 +29,11 @@ struct ParseState {
     tool_use_id_map: HashMap<String, usize>,
     assistant_tool_indices_by_uuid: HashMap<String, Vec<usize>>,
     pending_tool_results_by_use_id: HashMap<String, PendingToolResult>,
+    /// Count of per-line parse warnings: malformed JSONL lines or JSON fields
+    /// the parser had to skip to keep the rest of the session usable. File-
+    /// level failures are surfaced through `load_messages` as `ProviderError::Parse`
+    /// instead; this only tracks recoverable, line-scoped issues.
+    parse_warning_count: u32,
 }
 
 struct PendingToolResult {
@@ -97,6 +102,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         tool_use_id_map: HashMap::new(),
         assistant_tool_indices_by_uuid: HashMap::new(),
         pending_tool_results_by_use_id: HashMap::new(),
+        parse_warning_count: 0,
     };
     let mut summary_text: Option<String> = None;
     let mut custom_title: Option<String> = None;
@@ -163,6 +169,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
             Ok(e) => e,
             Err(e) => {
                 log::warn!("skipping malformed JSONL in '{}': {}", path.display(), e);
+                state.parse_warning_count = state.parse_warning_count.saturating_add(1);
                 continue;
             }
         };
@@ -404,6 +411,7 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         meta,
         messages: state.messages,
         content_text,
+        parse_warning_count: state.parse_warning_count,
     })
 }
 
@@ -1263,6 +1271,29 @@ mod tests {
     use super::parse_session_file;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn parse_session_file_counts_malformed_lines_without_aborting() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("session.jsonl");
+        let good =
+            r#"{"type":"user","timestamp":"2026-04-10T10:00:00Z","message":{"content":"hello"}}"#;
+        let broken = r#"{ this is not valid json "#;
+        let good2 =
+            r#"{"type":"user","timestamp":"2026-04-10T10:00:05Z","message":{"content":"world"}}"#;
+        fs::write(&file, format!("{good}\n{broken}\n{good2}\n")).unwrap();
+
+        let parsed = parse_session_file(&file).expect("file-level parse must succeed");
+        assert_eq!(
+            parsed.messages.len(),
+            2,
+            "both well-formed lines should produce messages"
+        );
+        assert_eq!(
+            parsed.parse_warning_count, 1,
+            "the single broken line should be counted as one parse warning"
+        );
+    }
 
     #[test]
     fn parse_session_file_deduplicates_same_message_request_pair() {

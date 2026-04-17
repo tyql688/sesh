@@ -326,6 +326,7 @@ impl CursorProvider {
             },
             messages: Vec::new(),
             content_text: truncate_to_bytes(&content_parts.join("\n"), FTS_CONTENT_LIMIT),
+            parse_warning_count: 0,
         })
     }
 

@@ -8,7 +8,8 @@ use rusqlite::{params, Connection};
 
 use crate::models::{Message, MessageRole, Provider, SessionMeta};
 use crate::provider::{
-    ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
+    ChildPlan, DeletionPlan, FileAction, LoadedSession, ParsedSession, ProviderError,
+    SessionProvider,
 };
 use crate::provider_utils::{session_title, truncate_to_bytes, FTS_CONTENT_LIMIT};
 use crate::tool_metadata::{
@@ -408,6 +409,7 @@ impl SessionProvider for OpenCodeProvider {
                             })
                             .collect(),
                         content_text: truncate_to_bytes(&content_text, FTS_CONTENT_LIMIT),
+                        parse_warning_count: 0,
                     }
                 },
             )
@@ -420,7 +422,7 @@ impl SessionProvider for OpenCodeProvider {
         &self,
         session_id: &str,
         _source_path: &str,
-    ) -> Result<Vec<Message>, ProviderError> {
+    ) -> Result<LoadedSession, ProviderError> {
         let conn = self.open_db()?;
 
         // Load all messages for this session
@@ -767,7 +769,7 @@ impl SessionProvider for OpenCodeProvider {
             }
         }
 
-        Ok(messages)
+        Ok(LoadedSession::new(messages))
     }
 
     fn deletion_plan(&self, _meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {

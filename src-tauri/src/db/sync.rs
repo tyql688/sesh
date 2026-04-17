@@ -428,6 +428,7 @@ mod tests {
                 meta: meta.clone(),
                 messages: Vec::new(),
                 content_text: String::new(),
+                parse_warning_count: 0,
             }],
             true,
         )
@@ -472,6 +473,7 @@ mod tests {
                 meta: meta.clone(),
                 messages: Vec::new(),
                 content_text: String::new(),
+                parse_warning_count: 0,
             }],
             true,
         )

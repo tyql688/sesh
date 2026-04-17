@@ -70,6 +70,7 @@ fn test_session(messages: Vec<Message>) -> SessionDetail {
             parent_id: None,
         },
         messages,
+        parse_warning_count: 0,
     }
 }
 

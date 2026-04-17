@@ -594,5 +594,6 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         },
         messages,
         content_text,
+        parse_warning_count: 0,
     })
 }

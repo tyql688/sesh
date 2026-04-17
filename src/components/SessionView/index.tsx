@@ -99,6 +99,7 @@ export function SessionView(props: {
   const hasMore = createMemo(() => visibleCount() < filteredEntries().length);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [parseWarningCount, setParseWarningCount] = createSignal(0);
   const [meta, setMeta] = createSignal<SessionMeta>({
     ...props.session,
     source_path: props.session.source_path ?? "",
@@ -118,6 +119,7 @@ export function SessionView(props: {
         setLoading(true);
         setError(null);
         setMessages([]);
+        setParseWarningCount(0);
         setVisibleCount(BATCH_SIZE);
         try {
           const detail = await getSessionDetail(sessionId);
@@ -125,6 +127,7 @@ export function SessionView(props: {
           if (version !== loadVersion) return;
           setMeta(detail.meta);
           setMessages(detail.messages);
+          setParseWarningCount(detail.parse_warning_count ?? 0);
         } catch (e) {
           if (version !== loadVersion) return;
           setError(errorMessage(e));
@@ -301,6 +304,7 @@ export function SessionView(props: {
       const oldCount = messages().length;
       setMeta(detail.meta);
       setMessages(detail.messages);
+      setParseWarningCount(detail.parse_warning_count ?? 0);
       // Auto-scroll to newest if new messages arrived (column-reverse: bottom = scrollTop 0)
       if (detail.messages.length > oldCount) {
         requestAnimationFrame(() => {
@@ -376,6 +380,7 @@ export function SessionView(props: {
         processedEntries={processedEntries}
         watching={watching}
         starred={starred}
+        parseWarningCount={parseWarningCount}
         onToggleWatch={() => setWatching((v) => !v)}
         onToggleFavorite={handleToggleFavorite}
         onResume={handleResume}

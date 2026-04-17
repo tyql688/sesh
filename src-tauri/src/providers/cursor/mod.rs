@@ -11,7 +11,8 @@ use std::path::{Path, PathBuf};
 
 use crate::models::{Message, Provider, SessionMeta};
 use crate::provider::{
-    ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
+    ChildPlan, DeletionPlan, FileAction, LoadedSession, ParsedSession, ProviderError,
+    SessionProvider,
 };
 use crate::provider_utils::project_name_from_path;
 use rayon::prelude::*;
@@ -358,8 +359,10 @@ impl SessionProvider for CursorProvider {
         &self,
         _session_id: &str,
         source_path: &str,
-    ) -> Result<Vec<Message>, ProviderError> {
-        self.load_transcript_messages(source_path)
+    ) -> Result<LoadedSession, ProviderError> {
+        Ok(LoadedSession::new(
+            self.load_transcript_messages(source_path)?,
+        ))
     }
 
     fn cleanup_on_permanent_delete(&self, session_id: &str) {

@@ -171,6 +171,12 @@
   font-size: 11px;
 }
 
+.session-info-parse-warn {
+  color: #f59e0b;
+  font-size: 11px;
+  cursor: help;
+}
+
 /* Session Loading / Error */
 .session-loading {
   display: flex;

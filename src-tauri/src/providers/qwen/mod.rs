@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use rayon::prelude::*;
 
-use crate::models::{Message, Provider, SessionMeta};
-use crate::provider::{DeletionPlan, ParsedSession, ProviderError, SessionProvider};
+use crate::models::{Provider, SessionMeta};
+use crate::provider::{DeletionPlan, LoadedSession, ParsedSession, ProviderError, SessionProvider};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -133,10 +133,17 @@ impl SessionProvider for QwenProvider {
         &self,
         _session_id: &str,
         source_path: &str,
-    ) -> Result<Vec<Message>, ProviderError> {
+    ) -> Result<LoadedSession, ProviderError> {
         let path = PathBuf::from(source_path);
-        let parsed = parser::parse_session_file(&path)
-            .ok_or_else(|| ProviderError::Parse("failed to parse session file".to_string()))?;
-        Ok(parsed.messages)
+        let parsed = parser::parse_session_file(&path).ok_or_else(|| {
+            ProviderError::Parse(format!(
+                "failed to parse Qwen session file '{}'",
+                path.display()
+            ))
+        })?;
+        Ok(LoadedSession {
+            messages: parsed.messages,
+            parse_warning_count: parsed.parse_warning_count,
+        })
     }
 }

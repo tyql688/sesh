@@ -1213,6 +1213,7 @@ impl CodexProvider {
             meta,
             messages,
             content_text,
+            parse_warning_count: 0,
         })
     }
 }

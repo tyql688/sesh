@@ -6,9 +6,10 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::models::{Message, Provider, SessionMeta};
+use crate::models::{Provider, SessionMeta};
 use crate::provider::{
-    jsonl_subagents_deletion_plan, DeletionPlan, ParsedSession, ProviderError, SessionProvider,
+    jsonl_subagents_deletion_plan, DeletionPlan, LoadedSession, ParsedSession, ProviderError,
+    SessionProvider,
 };
 
 pub struct Descriptor;
@@ -110,14 +111,20 @@ impl SessionProvider for CodexProvider {
         &self,
         _session_id: &str,
         source_path: &str,
-    ) -> Result<Vec<Message>, ProviderError> {
+    ) -> Result<LoadedSession, ProviderError> {
         let path = PathBuf::from(source_path);
 
         let parsed = self.parse_session_file(&path).ok_or_else(|| {
-            ProviderError::Parse("failed to parse codex session file".to_string())
+            ProviderError::Parse(format!(
+                "failed to parse Codex session file '{}'",
+                path.display()
+            ))
         })?;
 
-        Ok(parsed.messages)
+        Ok(LoadedSession {
+            messages: parsed.messages,
+            parse_warning_count: parsed.parse_warning_count,
+        })
     }
 }
 

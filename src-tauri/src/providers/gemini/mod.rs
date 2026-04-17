@@ -9,8 +9,10 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use walkdir::WalkDir;
 
-use crate::models::{Message, Provider, SessionMeta};
-use crate::provider::{DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider};
+use crate::models::{Provider, SessionMeta};
+use crate::provider::{
+    DeletionPlan, FileAction, LoadedSession, ParsedSession, ProviderError, SessionProvider,
+};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -241,7 +243,7 @@ impl SessionProvider for GeminiProvider {
         &self,
         session_id: &str,
         source_path: &str,
-    ) -> Result<Vec<Message>, ProviderError> {
+    ) -> Result<LoadedSession, ProviderError> {
         let path = PathBuf::from(source_path);
         let project_map = self.build_project_map();
 
@@ -262,7 +264,10 @@ impl SessionProvider for GeminiProvider {
                 ProviderError::Parse(format!("session {session_id} not found in {source_path}"))
             })?;
 
-        Ok(session.messages)
+        Ok(LoadedSession {
+            messages: session.messages,
+            parse_warning_count: session.parse_warning_count,
+        })
     }
 
     fn deletion_plan(&self, _meta: &SessionMeta, _children: &[SessionMeta]) -> DeletionPlan {

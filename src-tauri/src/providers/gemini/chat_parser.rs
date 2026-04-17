@@ -418,6 +418,7 @@ impl GeminiProvider {
             meta,
             messages,
             content_text,
+            parse_warning_count: 0,
         };
 
         vec![main_session]

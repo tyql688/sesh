@@ -5,7 +5,7 @@ use tauri::State;
 
 use crate::db::Database;
 use crate::error::{CommandError, CommandResult};
-use crate::models::{BatchResult, Message, Provider, SessionDetail, SessionMeta};
+use crate::models::{BatchResult, Provider, SessionDetail, SessionMeta};
 use crate::services::{load_session_meta, SessionLifecycleService, SourceSyncService};
 
 use super::AppState;
@@ -192,8 +192,12 @@ pub fn is_favorite(session_id: String, state: State<AppState>) -> CommandResult<
 
 pub(crate) fn load_detail(session_id: &str, db: &Database) -> anyhow::Result<SessionDetail> {
     let meta = load_session_meta(db, session_id).map_err(anyhow::Error::msg)?;
-    let messages = load_messages_from_provider(&meta.provider, session_id, &meta.source_path)?;
-    Ok(SessionDetail { meta, messages })
+    let loaded = load_messages_from_provider(&meta.provider, session_id, &meta.source_path)?;
+    Ok(SessionDetail {
+        meta,
+        messages: loaded.messages,
+        parse_warning_count: loaded.parse_warning_count,
+    })
 }
 
 fn hydrate_variant_names(sessions: &mut [SessionMeta]) {
@@ -204,7 +208,7 @@ fn load_messages_from_provider(
     provider: &Provider,
     session_id: &str,
     source_path: &str,
-) -> anyhow::Result<Vec<Message>> {
+) -> anyhow::Result<crate::provider::LoadedSession> {
     provider
         .require_runtime()
         .map_err(anyhow::Error::msg)?

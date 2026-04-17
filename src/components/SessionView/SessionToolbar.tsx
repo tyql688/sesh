@@ -18,6 +18,7 @@ export function SessionToolbar(props: {
   processedEntries: Accessor<ProcessedEntry[]>;
   watching: Accessor<boolean>;
   starred: Accessor<boolean | null>;
+  parseWarningCount: Accessor<number>;
   onToggleWatch: () => void;
   onToggleFavorite: () => void;
   onResume: () => void;
@@ -208,6 +209,22 @@ export function SessionToolbar(props: {
             title={shortenHomePath(props.meta().project_path)}
           >
             {shortenHomePath(props.meta().project_path)}
+          </span>
+        </Show>
+        <Show when={props.parseWarningCount() > 0}>
+          <span class="info-sep">&middot;</span>
+          <span
+            class="session-info-parse-warn"
+            title={t("session.parseWarningTooltip").replace(
+              "{count}",
+              String(props.parseWarningCount()),
+            )}
+          >
+            {"\u26A0"}{" "}
+            {t("session.parseWarningBadge").replace(
+              "{count}",
+              String(props.parseWarningCount()),
+            )}
           </span>
         </Show>
       </div>

@@ -121,6 +121,19 @@ pub struct Message {
 pub struct SessionDetail {
     pub meta: SessionMeta,
     pub messages: Vec<Message>,
+    /// Number of per-line parse warnings surfaced while loading this session
+    /// (malformed JSONL lines or JSON fields the provider parser had to skip).
+    /// Populated by `commands::sessions::load_detail` from
+    /// `LoadedSession.parse_warning_count`; not persisted.
+    ///
+    /// Zero means either the session parsed cleanly or the provider parser
+    /// has not yet wired per-record counting.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub parse_warning_count: u32,
+}
+
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

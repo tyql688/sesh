@@ -170,12 +170,11 @@ Your personal knowledge base for AI coding sessions — unified access, searchab
 - All child props are `Accessor<T>` functions, preserving Solid reactivity across the component boundary
 - 1337 行拆成 orchestrator + 7 子组件 + 纯 formatters（含 20 个单测），编排层 595 行，子组件各 ≤185 行
 
-### Parser Error Surfacing — 解析错误用户可见 `🔧 partial`
-- Current: malformed JSONL silently skipped with `log::warn` (`claude/parser.rs:112-118`)
-- File read failures return `None` silently (`claude/parser.rs:66-70`)
-- Fix: return `Result<ParsedSession, ParseError>`, surface errors as toast notifications
-- Status: errors logged with log::warn but not surfaced to UI
-- 解析失败和文件读取失败静默跳过，用户不知道 session 缺消息
+### Parser Error Surfacing — 解析错误用户可见 `✅ done`
+- File-level: each provider's `load_messages` now wraps parse-failure `None` returns with a `ProviderError::Parse` that names the source path. Combined with the `CommandError` `{:#}` chain, the frontend toast now shows `"failed to load messages: failed to parse Claude session file '/path/x.jsonl'"` instead of the previous generic `"failed to parse session file"`.
+- Per-line: added `ParsedSession.parse_warning_count` + a new `LoadedSession { messages, parse_warning_count }` wrapper returned from `SessionProvider::load_messages`. Claude parser bumps the counter when it skips a malformed JSONL line; other parsers plumb the field through with 0 (infrastructure in place, per-line counting can be wired per-provider later).
+- `SessionDetail` gains optional `parse_warning_count: u32` propagated by `commands::sessions::load_detail`; `SessionToolbar` renders a `⚠ N 行解析失败` badge with tooltip when > 0. Covered by a new Claude parser unit test (`parse_session_file_counts_malformed_lines_without_aborting`).
+- 文件级错误携带路径上浮到 toast；每行级错误计入 `parse_warning_count`，Claude 已接入，其余 provider 预留入口。工具栏出现 `⚠` 徽章提示跳过行数。
 
 ### Explorer O(n^2) Lookup — Explorer 查找优化 `✅ done`
 - Current: `findSessionProjectPath()` traverses full tree per selected session (`Explorer/index.tsx:242-270`)

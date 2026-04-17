@@ -5,8 +5,10 @@ use std::path::PathBuf;
 
 use rayon::prelude::*;
 
-use crate::models::{Message, Provider, SessionMeta};
-use crate::provider::{DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider};
+use crate::models::{Provider, SessionMeta};
+use crate::provider::{
+    DeletionPlan, FileAction, LoadedSession, ParsedSession, ProviderError, SessionProvider,
+};
 
 pub struct Descriptor;
 impl crate::provider::ProviderDescriptor for Descriptor {
@@ -120,11 +122,17 @@ impl SessionProvider for CopilotProvider {
         &self,
         _session_id: &str,
         source_path: &str,
-    ) -> Result<Vec<Message>, ProviderError> {
+    ) -> Result<LoadedSession, ProviderError> {
         let path = PathBuf::from(source_path);
         let parsed = parser::parse_session_file(&path).ok_or_else(|| {
-            ProviderError::Parse("failed to parse Copilot events file".to_string())
+            ProviderError::Parse(format!(
+                "failed to parse Copilot events file '{}'",
+                path.display()
+            ))
         })?;
-        Ok(parsed.messages)
+        Ok(LoadedSession {
+            messages: parsed.messages,
+            parse_warning_count: parsed.parse_warning_count,
+        })
     }
 }

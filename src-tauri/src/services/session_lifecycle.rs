@@ -78,13 +78,13 @@ impl<'a> SessionLifecycleService<'a> {
 
         // Clean cached images before deleting session data
         if let Some(cache_provider) = image_cache_provider_for(&deletion.meta.provider) {
-            if let Ok(messages) = deletion
+            if let Ok(loaded) = deletion
                 .provider
                 .load_messages(session_id, &deletion.meta.source_path)
             {
                 if let Some(data_dir) = image_cache_data_dir() {
                     ImageCacheService::new(&data_dir)
-                        .cleanup_images(cache_provider.as_ref(), &messages);
+                        .cleanup_images(cache_provider.as_ref(), &loaded.messages);
                 }
             }
         }
@@ -433,15 +433,16 @@ fn cleanup_cached_images_for_trash(entry: &TrashMeta, trash_dir: &std::path::Pat
     let Some(runtime) = runtime_for_trash_entry(entry) else {
         return;
     };
-    let messages = runtime
+    let loaded = runtime
         .load_messages(&entry.id, &entry.original_path)
         .or_else(|_| {
             let trash_path = trash_dir.join(&entry.trash_file);
             runtime.load_messages(&entry.id, trash_path.to_str().unwrap_or_default())
         });
-    if let Ok(messages) = messages {
+    if let Ok(loaded) = loaded {
         if let Some(data_dir) = image_cache_data_dir() {
-            ImageCacheService::new(&data_dir).cleanup_images(cache_provider.as_ref(), &messages);
+            ImageCacheService::new(&data_dir)
+                .cleanup_images(cache_provider.as_ref(), &loaded.messages);
         }
     }
 }

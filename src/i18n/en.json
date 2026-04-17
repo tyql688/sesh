@@ -68,7 +68,9 @@
     "searchPlaceholder": "Find in session...",
     "searchNoMatch": "No matches",
     "subagent": "Subagent",
-    "duration": "Duration"
+    "duration": "Duration",
+    "parseWarningBadge": "{count} parse warning(s)",
+    "parseWarningTooltip": "{count} line(s) could not be parsed and were skipped — the rest of the session is intact"
   },
   "toast": {
     "copied": "Copied to clipboard",

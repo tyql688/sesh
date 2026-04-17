@@ -82,6 +82,10 @@ export interface Message {
 export interface SessionDetail {
   meta: SessionMeta;
   messages: Message[];
+  /** Count of per-line parse warnings surfaced while loading this session
+   *  (malformed JSONL lines the provider parser had to skip). Omitted when
+   *  zero; triggers the ⚠ badge in SessionToolbar when > 0. */
+  parse_warning_count?: number;
 }
 
 export type TreeNodeType = "provider" | "project" | "session";

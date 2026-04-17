@@ -495,6 +495,7 @@ mod tests {
             },
             messages,
             content_text: String::new(),
+            parse_warning_count: 0,
         }
     }
 

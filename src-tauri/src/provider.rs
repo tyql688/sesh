@@ -319,6 +319,44 @@ pub struct ParsedSession {
     pub meta: SessionMeta,
     pub messages: Vec<Message>,
     pub content_text: String,
+    /// Number of per-line / per-record parse warnings (malformed JSONL lines,
+    /// JSON fields that couldn't be decoded, etc.) encountered while parsing
+    /// this session. File-level failures (can't open, file-wide JSON damage)
+    /// are surfaced as `Err` instead. Zero when the parser hasn't been wired
+    /// for per-record counting yet.
+    pub parse_warning_count: u32,
+}
+
+/// Materialized session payload returned by `SessionProvider::load_messages`
+/// at display time. Carries the parser's per-record warning count so the UI
+/// can show a ⚠ badge when the session contains malformed lines the parser
+/// had to skip.
+///
+/// `Deref<Target = Vec<Message>>` is implemented so tests and callers that
+/// only care about the messages (e.g. `.iter()`, `.len()`, indexing) can treat
+/// a `LoadedSession` as if it were a `Vec<Message>`. Call sites that need the
+/// warning count access the field directly.
+#[derive(Debug, Clone)]
+pub struct LoadedSession {
+    pub messages: Vec<Message>,
+    pub parse_warning_count: u32,
+}
+
+impl LoadedSession {
+    pub fn new(messages: Vec<Message>) -> Self {
+        Self {
+            messages,
+            parse_warning_count: 0,
+        }
+    }
+}
+
+impl std::ops::Deref for LoadedSession {
+    type Target = Vec<Message>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.messages
+    }
 }
 
 /// Static metadata for a provider. Implemented by zero-sized descriptor structs
@@ -636,7 +674,7 @@ pub trait SessionProvider: Send + Sync {
         &self,
         session_id: &str,
         source_path: &str,
-    ) -> Result<Vec<Message>, ProviderError>;
+    ) -> Result<LoadedSession, ProviderError>;
 
     /// Return a deletion plan for this session.
     /// Provider decides all file actions; command layer executes mechanically.
@@ -702,8 +740,8 @@ mod tests {
             &self,
             _session_id: &str,
             _source_path: &str,
-        ) -> Result<Vec<Message>, ProviderError> {
-            Ok(Vec::new())
+        ) -> Result<LoadedSession, ProviderError> {
+            Ok(LoadedSession::new(Vec::new()))
         }
         fn deletion_plan(&self, _meta: &SessionMeta, _children: &[SessionMeta]) -> DeletionPlan {
             DeletionPlan {

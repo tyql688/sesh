@@ -7,9 +7,10 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::models::{Message, Provider, SessionMeta};
+use crate::models::{Provider, SessionMeta};
 use crate::provider::{
-    ChildPlan, DeletionPlan, FileAction, ParsedSession, ProviderError, SessionProvider,
+    ChildPlan, DeletionPlan, FileAction, LoadedSession, ParsedSession, ProviderError,
+    SessionProvider,
 };
 
 pub struct Descriptor;
@@ -175,7 +176,7 @@ impl SessionProvider for KimiProvider {
         &self,
         session_id: &str,
         source_path: &str,
-    ) -> Result<Vec<Message>, ProviderError> {
+    ) -> Result<LoadedSession, ProviderError> {
         let path = PathBuf::from(source_path);
         let project_map = self.build_project_map();
 
@@ -188,6 +189,9 @@ impl SessionProvider for KimiProvider {
                 ProviderError::Parse(format!("session {session_id} not found in {}", source_path))
             })?;
 
-        Ok(parsed.messages)
+        Ok(LoadedSession {
+            messages: parsed.messages,
+            parse_warning_count: parsed.parse_warning_count,
+        })
     }
 }
