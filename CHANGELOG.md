@@ -7,6 +7,12 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.19] - 2026-04-21
+
+### Fixed
+
+- Claude token usage was severely undercounted when attached to tool_use or thinking-only turns, and synthetic placeholder entries were incorrectly included; totals now match ccusage exactly (2aa0800)
+
 ## [0.3.18] - 2026-04-21
 
 ### Fixed
