@@ -7,6 +7,14 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.25] - 2026-04-28
+
+### Fixed
+
+- Parse newer Claude and Codex transcript events including agent names, PR links, away summaries, and scheduled task wakeups (3780c43)
+- Stabilize in-session search match counter and prevent flicker while typing (3780c43)
+- Speed up session refresh with selective per-provider sync and incremental Cursor transcript scanning (3e61e6f)
+
 ## [0.3.19] - 2026-04-21
 
 ### Fixed
