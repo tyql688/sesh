@@ -40,6 +40,7 @@ const SUBAGENT_FILE_PROVIDERS = new Set([
   "kimi",
   "cursor",
   "cc-mirror",
+  "gemini",
 ]);
 
 function DiffRows(props: { lines: ToolDiffLine[] }) {

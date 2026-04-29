@@ -11,7 +11,8 @@ use walkdir::WalkDir;
 
 use crate::models::{Provider, SessionMeta};
 use crate::provider::{
-    DeletionPlan, FileAction, LoadedSession, ParsedSession, ProviderError, SessionProvider,
+    ChildPlan, DeletionPlan, FileAction, LoadedSession, ParsedSession, ProviderError,
+    SessionProvider,
 };
 
 pub struct Descriptor;
@@ -60,6 +61,8 @@ pub(crate) struct ChatSession {
     #[serde(rename = "lastUpdated")]
     pub last_updated: Option<String>,
     pub kind: Option<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
     pub messages: Vec<ChatMessage>,
 }
 
@@ -143,7 +146,7 @@ impl GeminiProvider {
                 continue;
             }
             let ext = path.extension().and_then(|e| e.to_str());
-            if ext != Some("json") {
+            if !matches!(ext, Some("json") | Some("jsonl")) {
                 continue;
             }
 
@@ -223,7 +226,8 @@ impl SessionProvider for GeminiProvider {
         let path = PathBuf::from(source_path);
         let project_map = self.build_project_map();
 
-        if path.extension().is_none_or(|e| e != "json") {
+        let ext = path.extension().and_then(|e| e.to_str());
+        if !matches!(ext, Some("json") | Some("jsonl")) {
             return Ok(Vec::new());
         }
 
@@ -270,12 +274,40 @@ impl SessionProvider for GeminiProvider {
         })
     }
 
-    fn deletion_plan(&self, _meta: &SessionMeta, _children: &[SessionMeta]) -> DeletionPlan {
-        // Each chat file is one session, no children for now
+    fn deletion_plan(&self, meta: &SessionMeta, children: &[SessionMeta]) -> DeletionPlan {
+        if meta.parent_id.is_some() {
+            return DeletionPlan {
+                file_action: FileAction::Remove,
+                child_plans: Vec::new(),
+                cleanup_dirs: Vec::new(),
+            };
+        }
+
+        let child_plans = children
+            .iter()
+            .map(|child| ChildPlan {
+                id: child.id.clone(),
+                source_path: child.source_path.clone(),
+                title: child.title.clone(),
+                file_action: FileAction::Remove,
+            })
+            .collect();
+
+        let mut cleanup_dirs = Vec::new();
+        for child in children {
+            let child_path = PathBuf::from(&child.source_path);
+            if let Some(parent) = child_path.parent() {
+                let parent_path = parent.to_path_buf();
+                if !cleanup_dirs.contains(&parent_path) {
+                    cleanup_dirs.push(parent_path);
+                }
+            }
+        }
+
         DeletionPlan {
             file_action: FileAction::Remove,
-            child_plans: Vec::new(),
-            cleanup_dirs: Vec::new(),
+            child_plans,
+            cleanup_dirs,
         }
     }
 }

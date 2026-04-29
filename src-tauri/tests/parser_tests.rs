@@ -880,6 +880,26 @@ fn gemini_fixture_path() -> PathBuf {
     fixtures_dir().join("gemini").join("session-test.json")
 }
 
+fn gemini_jsonl_fixture_path() -> PathBuf {
+    fixtures_dir()
+        .join("gemini")
+        .join("session-jsonl-test.jsonl")
+}
+
+fn gemini_jsonl_rich_fixture_path() -> PathBuf {
+    fixtures_dir()
+        .join("gemini")
+        .join("session-jsonl-rich-test.jsonl")
+}
+
+fn gemini_jsonl_subagent_fixture_path() -> PathBuf {
+    fixtures_dir()
+        .join("gemini")
+        .join("chats")
+        .join("gemini-parent-001")
+        .join("gemini-child-001.jsonl")
+}
+
 fn gemini_parsed_session() -> cc_session_lib::provider::ParsedSession {
     let provider = GeminiProvider::new().expect("home dir must be available");
     let path = gemini_fixture_path();
@@ -1003,6 +1023,154 @@ fn gemini_token_usage() {
     assert_eq!(usage.input_tokens, 150);
     assert_eq!(usage.output_tokens, 45);
     assert_eq!(usage.cache_read_input_tokens, 20);
+}
+
+#[test]
+fn gemini_jsonl_chat_parser_uses_latest_message_record() {
+    let provider = GeminiProvider::new().expect("home dir must be available");
+    let path = gemini_jsonl_fixture_path();
+    let sessions = provider.parse_chat_file_for_test(&path, &HashMap::new());
+    let session = sessions
+        .first()
+        .expect("Gemini JSONL fixture must parse one session");
+
+    assert_eq!(session.meta.id, "gemini-jsonl-test-001");
+    assert_eq!(
+        session.meta.model.as_deref(),
+        Some("gemini-3-flash-preview")
+    );
+    assert_eq!(session.meta.updated_at, 1777461344);
+    assert_eq!(
+        session.messages.len(),
+        4,
+        "expected user, thinking, tool, assistant messages, got: {:#?}",
+        session.messages
+    );
+
+    let thinking_count = session
+        .messages
+        .iter()
+        .filter(|message| message.content.starts_with("[thinking]"))
+        .count();
+    assert_eq!(
+        thinking_count, 1,
+        "duplicate JSONL records with the same id must be replaced"
+    );
+
+    let tool_msg = session
+        .messages
+        .iter()
+        .find(|message| message.role == MessageRole::Tool)
+        .expect("expected Gemini JSONL tool message");
+    assert_eq!(tool_msg.tool_name.as_deref(), Some("Read"));
+    assert_eq!(
+        tool_msg
+            .tool_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.status.as_deref()),
+        Some("success")
+    );
+    assert!(
+        tool_msg.content.contains("ccsession"),
+        "tool result must be preserved"
+    );
+    assert!(
+        tool_msg.token_usage.is_some(),
+        "last tool call from the Gemini turn must carry token usage"
+    );
+}
+
+#[test]
+fn gemini_jsonl_chat_parser_preserves_new_content_parts_and_warning() {
+    let provider = GeminiProvider::new().expect("home dir must be available");
+    let path = gemini_jsonl_rich_fixture_path();
+    let sessions = provider.parse_chat_file_for_test(&path, &HashMap::new());
+    let session = sessions
+        .first()
+        .expect("Gemini rich JSONL fixture must parse one session");
+
+    let user = session
+        .messages
+        .iter()
+        .find(|message| message.role == MessageRole::User)
+        .expect("expected user message");
+    assert!(
+        user.content
+            .contains("[Image: source: /tmp/ccsession-gemini-probe/red32.png]"),
+        "fileData image must be preserved, got: {}",
+        user.content
+    );
+    assert!(
+        user.content
+            .contains("[Image: source: data:image/png;base64,"),
+        "inlineData image must be preserved, got: {}",
+        user.content
+    );
+
+    let warning = session
+        .messages
+        .iter()
+        .find(|message| message.content.starts_with("[warning]"))
+        .expect("expected warning message");
+    assert!(
+        warning.content.contains("Tool output was truncated"),
+        "warning content must be preserved"
+    );
+}
+
+#[test]
+fn gemini_jsonl_agent_tool_keeps_child_agent_id() {
+    let provider = GeminiProvider::new().expect("home dir must be available");
+    let path = gemini_jsonl_rich_fixture_path();
+    let sessions = provider.parse_chat_file_for_test(&path, &HashMap::new());
+    let session = sessions
+        .first()
+        .expect("Gemini rich JSONL fixture must parse one session");
+
+    let tool = session
+        .messages
+        .iter()
+        .find(|message| message.tool_name.as_deref() == Some("Agent"))
+        .expect("expected Gemini invoke_agent tool");
+    let metadata = tool
+        .tool_metadata
+        .as_ref()
+        .expect("Agent tool metadata must exist");
+    assert_eq!(metadata.result_kind.as_deref(), Some("agent_summary"));
+    assert_eq!(
+        metadata
+            .structured
+            .as_ref()
+            .and_then(|value| value.get("agentId"))
+            .and_then(|value| value.as_str()),
+        Some("gemini-child-001")
+    );
+}
+
+#[test]
+fn gemini_jsonl_subagent_file_parses_as_sidechain() {
+    let provider = GeminiProvider::new().expect("home dir must be available");
+    let path = gemini_jsonl_subagent_fixture_path();
+    let sessions = provider.parse_chat_file_for_test(&path, &HashMap::new());
+    let session = sessions
+        .first()
+        .expect("Gemini subagent JSONL fixture must parse one session");
+
+    assert_eq!(session.meta.id, "gemini-child-001");
+    assert!(session.meta.is_sidechain);
+    assert_eq!(session.meta.parent_id.as_deref(), Some("gemini-parent-001"));
+    assert!(
+        session.meta.title.contains("Child summary"),
+        "subagent title should use summary when no user prompt exists, got: {}",
+        session.meta.title
+    );
+    assert!(
+        session
+            .messages
+            .iter()
+            .any(|message| message.tool_name.as_deref() == Some("Read")),
+        "subagent tool messages must be parsed"
+    );
 }
 
 // ---------------------------------------------------------------------------
