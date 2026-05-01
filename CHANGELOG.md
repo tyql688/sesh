@@ -7,6 +7,22 @@ versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.27] - 2026-05-01
+
+### Fixed
+
+- Kimi Bash tool output now displays stdout correctly instead of being hidden
+- Kimi tool call arguments are now fully captured from streamed ToolCallPart events
+- Kimi Edit tool diffs now render inline with before/after highlighting
+
+### Added
+
+- Per-message timestamps shown in message bubble footer
+
+### Removed
+
+- Session toolbar copy button due to performance issues
+
 ## [0.3.25] - 2026-04-28
 
 ### Fixed
