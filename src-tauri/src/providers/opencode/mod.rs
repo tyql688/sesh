@@ -393,7 +393,11 @@ impl SessionProvider for OpenCodeProvider {
                             cc_version: version.filter(|v| !v.is_empty()),
                             git_branch: session_branch,
                             parent_id: parent_id.clone(),
-                        },
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+        },
                         messages: usage_entries
                             .into_iter()
                             .map(|entry| Message {

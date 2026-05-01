@@ -1688,6 +1688,10 @@ impl CodexProvider {
             cc_version,
             git_branch,
             parent_id,
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
         };
 
         Some(ParsedSession {

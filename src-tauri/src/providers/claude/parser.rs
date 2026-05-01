@@ -438,7 +438,11 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
         cc_version,
         git_branch,
         parent_id,
-    };
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+        };
 
     Some(ParsedSession {
         meta,

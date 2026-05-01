@@ -15,6 +15,10 @@ function makeSession(overrides: Partial<SessionMeta> = {}): SessionMeta {
     file_size_bytes: 1024,
     source_path: "/home/user/.claude/projects/project/session.jsonl",
     is_sidechain: false,
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
     ...overrides,
   };
 }

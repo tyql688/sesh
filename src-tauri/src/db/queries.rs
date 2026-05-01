@@ -8,6 +8,8 @@ use super::row_mapper::row_to_session_meta;
 use super::Database;
 
 const LIKE_SNIPPET_CONTEXT_CHARS: usize = 80;
+
+
 const LIKE_SNIPPET_MAX_CHARS: usize = 200;
 
 #[derive(Debug, Clone)]
@@ -59,7 +61,11 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, provider, title, project_path, project_name,
                     created_at, updated_at, message_count, file_size_bytes, source_path, is_sidechain,
-                    variant_name, model, cc_version, git_branch, parent_id
+                    variant_name, model, cc_version, git_branch, parent_id,
+                    (SELECT COALESCE(SUM(input_tokens), 0) FROM session_token_stats WHERE session_id = id) AS input_tokens,
+                    (SELECT COALESCE(SUM(output_tokens), 0) FROM session_token_stats WHERE session_id = id) AS output_tokens,
+                    (SELECT COALESCE(SUM(cache_read_tokens), 0) FROM session_token_stats WHERE session_id = id) AS cache_read_tokens,
+                    (SELECT COALESCE(SUM(cache_write_tokens), 0) FROM session_token_stats WHERE session_id = id) AS cache_write_tokens
              FROM sessions WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], row_to_session_meta)?;
@@ -76,7 +82,11 @@ impl Database {
             &conn,
             "SELECT id, provider, title, project_path, project_name,
                     created_at, updated_at, message_count, file_size_bytes, source_path, is_sidechain,
-                    variant_name, model, cc_version, git_branch, parent_id
+                    variant_name, model, cc_version, git_branch, parent_id,
+                    (SELECT COALESCE(SUM(input_tokens), 0) FROM session_token_stats WHERE session_id = id) AS input_tokens,
+                    (SELECT COALESCE(SUM(output_tokens), 0) FROM session_token_stats WHERE session_id = id) AS output_tokens,
+                    (SELECT COALESCE(SUM(cache_read_tokens), 0) FROM session_token_stats WHERE session_id = id) AS cache_read_tokens,
+                    (SELECT COALESCE(SUM(cache_write_tokens), 0) FROM session_token_stats WHERE session_id = id) AS cache_write_tokens
              FROM sessions ORDER BY updated_at DESC",
             [],
         )
@@ -208,7 +218,11 @@ impl Database {
             &conn,
             "SELECT id, provider, title, project_path, project_name,
                     created_at, updated_at, message_count, file_size_bytes, source_path, is_sidechain,
-                    variant_name, model, cc_version, git_branch, parent_id
+                    variant_name, model, cc_version, git_branch, parent_id,
+                    (SELECT COALESCE(SUM(input_tokens), 0) FROM session_token_stats WHERE session_id = id) AS input_tokens,
+                    (SELECT COALESCE(SUM(output_tokens), 0) FROM session_token_stats WHERE session_id = id) AS output_tokens,
+                    (SELECT COALESCE(SUM(cache_read_tokens), 0) FROM session_token_stats WHERE session_id = id) AS cache_read_tokens,
+                    (SELECT COALESCE(SUM(cache_write_tokens), 0) FROM session_token_stats WHERE session_id = id) AS cache_write_tokens
              FROM sessions
              WHERE parent_id IS NULL
              ORDER BY updated_at DESC
@@ -223,7 +237,11 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, provider, title, project_path, project_name,
                     created_at, updated_at, message_count, file_size_bytes, source_path, is_sidechain,
-                    variant_name, model, cc_version, git_branch, parent_id
+                    variant_name, model, cc_version, git_branch, parent_id,
+                    (SELECT COALESCE(SUM(input_tokens), 0) FROM session_token_stats WHERE session_id = id) AS input_tokens,
+                    (SELECT COALESCE(SUM(output_tokens), 0) FROM session_token_stats WHERE session_id = id) AS output_tokens,
+                    (SELECT COALESCE(SUM(cache_read_tokens), 0) FROM session_token_stats WHERE session_id = id) AS cache_read_tokens,
+                    (SELECT COALESCE(SUM(cache_write_tokens), 0) FROM session_token_stats WHERE session_id = id) AS cache_write_tokens
              FROM sessions WHERE parent_id = ?1
              ORDER BY created_at",
         )?;
@@ -312,7 +330,11 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT s.id, s.provider, s.title, s.project_path, s.project_name,
                     s.created_at, s.updated_at, s.message_count, s.file_size_bytes, s.source_path, s.is_sidechain,
-                    s.variant_name, s.model, s.cc_version, s.git_branch, s.parent_id
+                    s.variant_name, s.model, s.cc_version, s.git_branch, s.parent_id,
+                    (SELECT COALESCE(SUM(input_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS input_tokens,
+                    (SELECT COALESCE(SUM(output_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS output_tokens,
+                    (SELECT COALESCE(SUM(cache_read_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS cache_read_tokens,
+                    (SELECT COALESCE(SUM(cache_write_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS cache_write_tokens
              FROM favorites f
              JOIN sessions s ON s.id = f.session_id
              ORDER BY f.added_at DESC",
@@ -735,6 +757,10 @@ fn search_with_fts(
         "SELECT s.id, s.provider, s.title, s.project_path, s.project_name,
                 s.created_at, s.updated_at, s.message_count, s.file_size_bytes, s.source_path, s.is_sidechain,
                 s.variant_name, s.model, s.cc_version, s.git_branch, s.parent_id,
+                (SELECT COALESCE(SUM(input_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS input_tokens,
+                (SELECT COALESCE(SUM(output_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS output_tokens,
+                (SELECT COALESCE(SUM(cache_read_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS cache_read_tokens,
+                (SELECT COALESCE(SUM(cache_write_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS cache_write_tokens,
                 snippet(sessions_fts, -1, '<mark>', '</mark>', '...', 64) AS snip
          FROM sessions_fts
          JOIN sessions s ON s.rowid = sessions_fts.rowid
@@ -765,6 +791,10 @@ fn search_with_like(
         "SELECT s.id, s.provider, s.title, s.project_path, s.project_name,
                 s.created_at, s.updated_at, s.message_count, s.file_size_bytes, s.source_path, s.is_sidechain,
                 s.variant_name, s.model, s.cc_version, s.git_branch, s.parent_id,
+                (SELECT COALESCE(SUM(input_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS input_tokens,
+                (SELECT COALESCE(SUM(output_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS output_tokens,
+                (SELECT COALESCE(SUM(cache_read_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS cache_read_tokens,
+                (SELECT COALESCE(SUM(cache_write_tokens), 0) FROM session_token_stats WHERE session_id = s.id) AS cache_write_tokens,
                 CASE
                     WHEN ?1 <> '' THEN substr(s.content_text, 1, 200)
                     ELSE ''
@@ -860,7 +890,7 @@ fn query_search_results(
     let rows = stmt.query_map(params_refs.as_slice(), |row| {
         Ok(SearchResult {
             session: row_to_session_meta(row)?,
-            snippet: row.get(16)?,
+            snippet: row.get(20)?,
         })
     })?;
 
@@ -883,10 +913,10 @@ fn query_like_search_results(
         .map(std::convert::AsRef::as_ref)
         .collect();
     let rows = stmt.query_map(params_refs.as_slice(), |row| {
-        let fallback_snippet: String = row.get(16)?;
-        let title: String = row.get(17)?;
-        let content_text: String = row.get(18)?;
-        let project_name: String = row.get(19)?;
+        let fallback_snippet: String = row.get(20)?;
+        let title: String = row.get(21)?;
+        let content_text: String = row.get(22)?;
+        let project_name: String = row.get(23)?;
         let snippet = build_like_snippet(&title, &content_text, &project_name, tokens)
             .unwrap_or(fallback_snippet);
 
@@ -1101,6 +1131,10 @@ mod tests {
             cc_version: None,
             git_branch: None,
             parent_id: None,
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
         }
     }
 

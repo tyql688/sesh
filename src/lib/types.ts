@@ -26,6 +26,10 @@ export interface SessionMeta {
   cc_version?: string;
   git_branch?: string;
   parent_id?: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
 }
 
 /** Lightweight reference for opening sessions from the tree.

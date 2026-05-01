@@ -142,6 +142,10 @@ export function SessionView(props: {
     updated_at: 0,
     message_count: 0,
     file_size_bytes: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
   });
   let loadVersion = 0;
   let messagesRef: HTMLDivElement | undefined;

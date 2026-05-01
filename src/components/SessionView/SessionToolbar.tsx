@@ -32,28 +32,13 @@ export function SessionToolbar(props: {
     return getProviderLabel(meta.provider, meta.variant_name);
   };
 
-  // Total token usage across all messages
+  // Total token usage from session meta (aggregated in DB, unaffected by paging)
   const totalTokens = () => {
-    let input = 0,
-      output = 0,
-      cacheRead = 0,
-      cacheWrite = 0;
-    for (const e of props.processedEntries()) {
-      const msgs =
-        e.type === "message"
-          ? [e.msg]
-          : e.type === "merged-tools"
-            ? e.messages
-            : [];
-      for (const m of msgs) {
-        if (m.token_usage) {
-          input += m.token_usage.input_tokens;
-          output += m.token_usage.output_tokens;
-          cacheRead += m.token_usage.cache_read_input_tokens;
-          cacheWrite += m.token_usage.cache_creation_input_tokens;
-        }
-      }
-    }
+    const meta = props.meta();
+    const input = meta.input_tokens ?? 0;
+    const output = meta.output_tokens ?? 0;
+    const cacheRead = meta.cache_read_tokens ?? 0;
+    const cacheWrite = meta.cache_write_tokens ?? 0;
     return input + output > 0 ? { input, output, cacheRead, cacheWrite } : null;
   };
 
