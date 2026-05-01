@@ -72,9 +72,8 @@ fn enrich_kimi_tool_metadata(message: &mut Message, payload: &Value) {
         let (old_text, new_text) = {
             let display_diff = metadata.structured.as_ref().and_then(|s| {
                 s.get("display").and_then(|d| d.as_array()).and_then(|arr| {
-                    arr.iter().find(|item| {
-                        item.get("type").and_then(|v| v.as_str()) == Some("diff")
-                    })
+                    arr.iter()
+                        .find(|item| item.get("type").and_then(|v| v.as_str()) == Some("diff"))
                 })
             });
             let old_text = display_diff

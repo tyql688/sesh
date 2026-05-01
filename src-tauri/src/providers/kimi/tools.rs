@@ -30,7 +30,10 @@ pub fn extract_tool_output(payload: &Value, tool_name: Option<&str>) -> String {
                         if old_text.is_empty() && new_text.is_empty() {
                             return None;
                         }
-                        Some(format!("--- {}\n{}\n+++ {}\n{}", path, old_text, path, new_text))
+                        Some(format!(
+                            "--- {}\n{}\n+++ {}\n{}",
+                            path, old_text, path, new_text
+                        ))
                     })
                     .collect();
                 if !diffs.is_empty() {
