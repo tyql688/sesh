@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use tauri::State;
 
 use crate::db::Database;
@@ -15,8 +15,15 @@ struct ResumeTarget {
 }
 
 #[tauri::command]
-pub fn get_resume_command(session_id: String, state: State<AppState>) -> CommandResult<String> {
-    Ok(get_resume_command_for_db(&state.db, &session_id)?)
+pub async fn get_resume_command(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> CommandResult<String> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || get_resume_command_for_db(&state.db, &session_id))
+        .await
+        .context("task join error")?
+        .map_err(CommandError::from)
 }
 
 /// Sanitize session ID to prevent shell injection — only allow alnum, hyphens, underscores
@@ -65,7 +72,17 @@ const SHELL_META: &[char] = &[
 ];
 
 #[tauri::command]
-pub fn open_in_terminal(
+pub async fn open_in_terminal(
+    command: String,
+    cwd: Option<String>,
+    terminal_app: String,
+) -> CommandResult<()> {
+    tokio::task::spawn_blocking(move || open_in_terminal_sync(command, cwd, terminal_app))
+        .await
+        .context("task join error")?
+}
+
+fn open_in_terminal_sync(
     command: String,
     cwd: Option<String>,
     terminal_app: String,
@@ -101,19 +118,30 @@ fn is_known_cc_mirror_variant(name: &str) -> bool {
 
 /// Resume a session: looks up cwd from DB, builds command, launches terminal
 #[tauri::command]
-pub fn resume_session(
+pub async fn resume_session(
     session_id: String,
     terminal_app: String,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<()> {
-    let target = resolve_resume_target(&state.db, &session_id)?;
-    terminal::launch_terminal(&terminal_app, &target.command, target.cwd.as_deref())
-        .map_err(CommandError::from)?;
-    Ok(())
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || -> CommandResult<()> {
+        let target = resolve_resume_target(&state.db, &session_id)?;
+        terminal::launch_terminal(&terminal_app, &target.command, target.cwd.as_deref())
+            .map_err(CommandError::from)?;
+        Ok(())
+    })
+    .await
+    .context("task join error")?
 }
 
 #[tauri::command]
-pub fn detect_terminal() -> String {
+pub async fn detect_terminal() -> String {
+    tokio::task::spawn_blocking(detect_terminal_sync)
+        .await
+        .unwrap_or_else(|_| "terminal".to_string())
+}
+
+fn detect_terminal_sync() -> String {
     // Check $TERM_PROGRAM (set by macOS terminals and some Linux terminals)
     if let Ok(term) = std::env::var("TERM_PROGRAM") {
         match term.to_lowercase().as_str() {

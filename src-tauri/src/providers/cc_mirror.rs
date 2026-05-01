@@ -348,17 +348,10 @@ impl SessionProvider for CcMirrorProvider {
             ))
         })?;
 
-        let messages = parsed
-            .messages
-            .into_iter()
-            .map(|mut msg| {
-                msg.content = parser::resolve_persisted_outputs(&msg.content);
-                msg
-            })
-            .collect();
-
+        // Mirror Claude provider: defer persisted-output resolution to the
+        // viewer (resolve_persisted_output command). See providers/claude/mod.rs.
         Ok(LoadedSession {
-            messages,
+            messages: parsed.messages,
             parse_warning_count: parsed.parse_warning_count,
         })
     }

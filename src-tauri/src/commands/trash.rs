@@ -7,34 +7,55 @@ use crate::models::{BatchResult, TrashMeta};
 use crate::services::SessionLifecycleService;
 
 #[tauri::command]
-pub fn trash_session(session_id: String, state: State<AppState>) -> CommandResult<()> {
-    SessionLifecycleService::new(&state.db)
-        .trash_session(&session_id)
+pub async fn trash_session(session_id: String, state: State<'_, AppState>) -> CommandResult<()> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        SessionLifecycleService::new(&state.db).trash_session(&session_id)
+    })
+    .await
+    .context("task join error")?
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn list_trash() -> CommandResult<Vec<TrashMeta>> {
+    tokio::task::spawn_blocking(SessionLifecycleService::list_trash)
+        .await
+        .context("task join error")?
         .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn list_trash() -> CommandResult<Vec<TrashMeta>> {
-    SessionLifecycleService::list_trash().map_err(CommandError::from)
+pub async fn restore_session(trash_id: String, state: State<'_, AppState>) -> CommandResult<()> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        SessionLifecycleService::new(&state.db).restore_session(&trash_id)
+    })
+    .await
+    .context("task join error")?
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn restore_session(trash_id: String, state: State<AppState>) -> CommandResult<()> {
-    SessionLifecycleService::new(&state.db)
-        .restore_session(&trash_id)
+pub async fn empty_trash() -> CommandResult<()> {
+    tokio::task::spawn_blocking(SessionLifecycleService::empty_trash)
+        .await
+        .context("task join error")?
         .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn empty_trash() -> CommandResult<()> {
-    SessionLifecycleService::empty_trash().map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub fn permanent_delete_trash(trash_id: String, state: State<AppState>) -> CommandResult<()> {
-    SessionLifecycleService::new(&state.db)
-        .permanent_delete_trash(&trash_id)
-        .map_err(CommandError::from)
+pub async fn permanent_delete_trash(
+    trash_id: String,
+    state: State<'_, AppState>,
+) -> CommandResult<()> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        SessionLifecycleService::new(&state.db).permanent_delete_trash(&trash_id)
+    })
+    .await
+    .context("task join error")?
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]

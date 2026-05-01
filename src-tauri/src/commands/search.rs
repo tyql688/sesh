@@ -7,13 +7,18 @@ use crate::models::{SearchFilters, SearchResult};
 use super::AppState;
 
 #[tauri::command]
-pub fn search_sessions(
+pub async fn search_sessions(
     filters: SearchFilters,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<Vec<SearchResult>> {
-    let results = state
-        .db
-        .search_filtered(&filters)
-        .context("failed to search")?;
-    Ok(results)
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        state
+            .db
+            .search_filtered(&filters)
+            .context("failed to search")
+    })
+    .await
+    .context("task join error")?
+    .map_err(crate::error::CommandError::from)
 }

@@ -149,8 +149,22 @@ pub fn parse_session_file(path: &PathBuf) -> Option<ParsedSession> {
     let mut cc_version: Option<String> = None;
     let mut git_branch: Option<String> = None;
     let mut processed_hashes: HashSet<String> = HashSet::new();
+    let mut line_index: usize = 0;
 
     for line in reader.lines() {
+        // Cooperative cancellation: bail out fast when the user navigated
+        // away mid-load. Checked every 1024 lines so the polling cost is
+        // negligible for normal-size sessions.
+        line_index = line_index.wrapping_add(1);
+        if line_index.is_multiple_of(1024) && crate::services::load_cancel::is_canceled() {
+            log::debug!(
+                "Claude parse canceled at line {} of '{}'",
+                line_index,
+                path.display()
+            );
+            return None;
+        }
+
         let line = match line {
             Ok(l) => l,
             Err(error) => {
@@ -1207,6 +1221,10 @@ fn is_tool_result_message(message: &Value) -> bool {
 pub fn resolve_persisted_outputs(content: &str) -> String {
     const TAG_START: &str = "<persisted-output>";
     const TAG_END: &str = "</persisted-output>";
+    /// Defensive guard against pathological inputs (deeply nested or
+    /// malformed tags). Any real Claude session has at most a handful
+    /// per message; values above this likely indicate a corrupt file.
+    const MAX_TAGS_PER_MESSAGE: usize = 1024;
 
     if !content.contains(TAG_START) {
         return content.to_string();
@@ -1214,8 +1232,19 @@ pub fn resolve_persisted_outputs(content: &str) -> String {
 
     let mut result = String::new();
     let mut remaining = content;
+    let mut iterations = 0usize;
 
     while let Some(start_pos) = remaining.find(TAG_START) {
+        iterations += 1;
+        if iterations > MAX_TAGS_PER_MESSAGE {
+            log::warn!(
+                "resolve_persisted_outputs: bailing after {MAX_TAGS_PER_MESSAGE} tags; \
+                 returning remaining content unmodified"
+            );
+            result.push_str(remaining);
+            return result;
+        }
+
         // Add everything before the tag
         result.push_str(&remaining[..start_pos]);
 

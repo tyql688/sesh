@@ -13,7 +13,28 @@ import type {
   TrashMeta,
   SessionMeta,
   UsageStats,
+  Message,
 } from "./types";
+
+/// Sentinel returned by the backend when a load was cancelled mid-flight.
+/// Frontend treats this as silent — no toast, no error UI.
+export const LOAD_CANCELED_SENTINEL = "__cc_session_load_canceled__";
+
+export function isLoadCanceledError(err: unknown): boolean {
+  if (err == null) return false;
+  const msg =
+    typeof err === "string"
+      ? err
+      : ((err as { message?: string }).message ?? "");
+  return msg.includes(LOAD_CANCELED_SENTINEL);
+}
+
+export interface SessionMessagesWindow {
+  total: number;
+  start: number;
+  messages: Message[];
+  parse_warning_count: number;
+}
 
 /**
  * Wrap a Tauri invocation so failures surface to the user as a toast
@@ -96,6 +117,32 @@ export async function getSessionDetail(
   sessionId: string,
 ): Promise<SessionDetail> {
   return invoke<SessionDetail>("get_session_detail", { sessionId });
+}
+
+export async function getSessionMeta(sessionId: string): Promise<SessionMeta> {
+  return invoke<SessionMeta>("get_session_meta", { sessionId });
+}
+
+/// Fetch a window of messages from the cached parsed session.
+/// `offset < 0` indexes from the end (e.g., -1 selects "last `limit`").
+export async function getSessionMessagesWindow(
+  sessionId: string,
+  offset: number,
+  limit: number,
+): Promise<SessionMessagesWindow> {
+  return invoke<SessionMessagesWindow>("get_session_messages_window", {
+    sessionId,
+    offset,
+    limit,
+  });
+}
+
+export async function cancelSessionLoad(sessionId: string): Promise<void> {
+  return invoke<void>("cancel_session_load", { sessionId });
+}
+
+export async function resolvePersistedOutput(path: string): Promise<string> {
+  return invoke<string>("resolve_persisted_output", { path });
 }
 
 export async function searchSessions(

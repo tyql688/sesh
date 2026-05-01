@@ -159,18 +159,13 @@ impl SessionProvider for ClaudeProvider {
             ))
         })?;
 
-        // Resolve persisted outputs only at display time, not during indexing
-        let messages = parsed
-            .messages
-            .into_iter()
-            .map(|mut msg| {
-                msg.content = parser::resolve_persisted_outputs(&msg.content);
-                msg
-            })
-            .collect();
-
+        // <persisted-output> tags are kept as-is on the message stream.
+        // The frontend resolves the referenced file lazily via the
+        // `resolve_persisted_output` command when the user actually views
+        // the relevant tool result, avoiding O(N·M) string scans + N
+        // synchronous fs reads at session-open time on huge sessions.
         Ok(LoadedSession {
-            messages,
+            messages: parsed.messages,
             parse_warning_count: parsed.parse_warning_count,
         })
     }

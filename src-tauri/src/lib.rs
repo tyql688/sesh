@@ -8,7 +8,7 @@ pub mod pricing;
 pub mod provider;
 pub mod provider_utils;
 pub mod providers;
-mod services;
+pub mod services;
 mod terminal;
 pub mod tool_metadata;
 pub mod trash_state;
@@ -255,6 +255,15 @@ pub fn run() {
         db: Arc::clone(&db),
         indexer,
         maintenance_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        session_cache: Arc::new(crate::services::SessionCache::new(8)),
+        // 16 entries / 32 MiB cap — covers a typical viewing burst without
+        // blowing memory on multi-MB persisted outputs.
+        persisted_output_cache: Arc::new(crate::services::PersistedOutputCache::new(
+            16,
+            32 * 1024 * 1024,
+        )),
+        load_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        loading_paths: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
     };
 
     tauri::Builder::default()
@@ -270,6 +279,9 @@ pub fn run() {
             commands::sync_sources,
             commands::get_tree,
             commands::get_session_detail,
+            commands::get_session_meta,
+            commands::get_session_messages_window,
+            commands::cancel_session_load,
             commands::get_child_sessions,
             commands::get_child_session_counts,
             commands::search_sessions,
@@ -304,6 +316,7 @@ pub fn run() {
             commands::is_favorite,
             commands::read_image_base64,
             commands::read_tool_result_text,
+            commands::resolve_persisted_output,
             commands::open_in_folder,
             commands::open_external,
             commands::get_usage_stats,

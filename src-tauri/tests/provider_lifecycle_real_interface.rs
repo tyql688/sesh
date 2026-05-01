@@ -75,6 +75,13 @@ fn build_app() -> (TempDir, App<MockRuntime>, tauri::WebviewWindow<MockRuntime>)
         db,
         indexer,
         maintenance_running: Arc::new(AtomicBool::new(false)),
+        session_cache: Arc::new(cc_session_lib::services::SessionCache::new(4)),
+        persisted_output_cache: Arc::new(cc_session_lib::services::PersistedOutputCache::new(
+            4,
+            1024 * 1024,
+        )),
+        load_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        loading_paths: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
     };
 
     let app = mock_builder()

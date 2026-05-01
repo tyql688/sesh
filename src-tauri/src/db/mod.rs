@@ -3,13 +3,21 @@ mod row_mapper;
 pub(crate) mod sync;
 
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use rusqlite::Connection;
 
+/// Number of read-only connections in the pool. SQLite WAL allows
+/// concurrent readers across distinct connections, so each connection in
+/// the pool can serve a query in parallel; we serialize within a single
+/// connection via its Mutex.
+const READ_POOL_SIZE: usize = 4;
+
 pub struct Database {
     write_conn: Mutex<Connection>,
-    read_conn: Mutex<Connection>,
+    read_pool: Vec<Mutex<Connection>>,
+    read_cursor: AtomicUsize,
     db_path: std::path::PathBuf,
 }
 
@@ -24,9 +32,23 @@ impl Database {
         })
     }
 
-    /// Acquire the read connection lock, recovering from mutex poisoning.
+    /// Acquire a read connection from the pool. Try each slot once with
+    /// try_lock starting at a rotating cursor; fall back to a blocking lock
+    /// on the cursor slot if every connection is busy.
     fn lock_read(&self) -> Result<std::sync::MutexGuard<'_, Connection>, rusqlite::Error> {
-        self.read_conn.lock().map_err(|_| {
+        let n = self.read_pool.len();
+        let start = self.read_cursor.fetch_add(1, Ordering::Relaxed) % n;
+
+        for offset in 0..n {
+            let idx = (start + offset) % n;
+            if let Ok(guard) = self.read_pool[idx].try_lock() {
+                return Ok(guard);
+            }
+        }
+
+        // All busy — block on the rotating slot. Poisoning is recovered as
+        // SQLITE_LOCKED so callers fall through their existing error paths.
+        self.read_pool[start].lock().map_err(|_| {
             rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_LOCKED),
                 Some("read mutex poisoned".to_string()),
@@ -302,13 +324,18 @@ impl Database {
             )?;
         }
 
-        let read_conn = Connection::open(&db_path)?;
-        read_conn.pragma_update(None, "journal_mode", "WAL")?;
-        read_conn.pragma_update(None, "query_only", "ON")?;
+        let mut read_pool = Vec::with_capacity(READ_POOL_SIZE);
+        for _ in 0..READ_POOL_SIZE {
+            let conn = Connection::open(&db_path)?;
+            conn.pragma_update(None, "journal_mode", "WAL")?;
+            conn.pragma_update(None, "query_only", "ON")?;
+            read_pool.push(Mutex::new(conn));
+        }
 
         Ok(Self {
             write_conn: Mutex::new(write_conn),
-            read_conn: Mutex::new(read_conn),
+            read_pool,
+            read_cursor: AtomicUsize::new(0),
             db_path,
         })
     }

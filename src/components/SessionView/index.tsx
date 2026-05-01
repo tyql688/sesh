@@ -14,7 +14,14 @@ import type {
   Message,
   MessageRole,
 } from "../../lib/types";
-import { getSessionDetail, trashSession, resumeSession } from "../../lib/tauri";
+import {
+  getSessionMeta,
+  getSessionMessagesWindow,
+  cancelSessionLoad,
+  trashSession,
+  resumeSession,
+  isLoadCanceledError,
+} from "../../lib/tauri";
 import { useI18n } from "../../i18n/index";
 import { MessageBubble } from "../MessageBubble";
 import { MergedToolRow } from "../MergedToolRow";
@@ -107,7 +114,20 @@ export function SessionView(props: {
     const start = count >= all.length ? 0 : all.length - count;
     return all.slice(start).reverse();
   });
-  const hasMore = createMemo(() => visibleCount() < filteredEntries().length);
+  // Streaming pagination state — declared before `hasMore` since it's
+  // read inside that memo.
+  const INITIAL_TAIL = 300;
+  const TAIL_BATCH = 600;
+  const [totalMessages, setTotalMessages] = createSignal(0);
+  const [windowStart, setWindowStart] = createSignal(0);
+
+  // We have more to render if either the in-memory window has unrendered
+  // entries OR the backend still holds older messages we haven't fetched.
+  const hasMore = createMemo(
+    () =>
+      visibleCount() < filteredEntries().length ||
+      (windowStart() > 0 && messages().length < totalMessages()),
+  );
   const searchMatchCount = createMemo(() =>
     countMatchingEntries(filteredEntries(), activeSessionSearch()),
   );
@@ -128,26 +148,49 @@ export function SessionView(props: {
   let loadOlderDebounce: ReturnType<typeof setTimeout> | undefined;
   let sessionSearchDebounce: ReturnType<typeof setTimeout> | undefined;
   let suppressNextSearchEffect = false;
+  let prevSessionId: string | null = null;
 
   createEffect(
     on(
       () => props.session.id,
       async (sessionId) => {
         const version = ++loadVersion;
+        // Best-effort cancel of the previously in-flight load so the
+        // backend parser can bail out instead of running to completion.
+        if (prevSessionId && prevSessionId !== sessionId) {
+          void cancelSessionLoad(prevSessionId).catch(() => {});
+        }
+        prevSessionId = sessionId;
+
         setLoading(true);
         setError(null);
         setMessages([]);
         setParseWarningCount(0);
         setVisibleCount(BATCH_SIZE);
+        setTotalMessages(0);
+        setWindowStart(0);
+
         try {
-          const detail = await getSessionDetail(sessionId);
-          // Discard result if a newer load was triggered
+          // Meta first — fast.
+          const metaData = await getSessionMeta(sessionId);
           if (version !== loadVersion) return;
-          setMeta(detail.meta);
-          setMessages(detail.messages);
-          setParseWarningCount(detail.parse_warning_count ?? 0);
+          setMeta(metaData);
+
+          // Newest tail next — backend caches the parsed messages so
+          // subsequent older-page reads are O(1) slicing.
+          const tail = await getSessionMessagesWindow(
+            sessionId,
+            -INITIAL_TAIL,
+            INITIAL_TAIL,
+          );
+          if (version !== loadVersion) return;
+          setMessages(tail.messages);
+          setParseWarningCount(tail.parse_warning_count ?? 0);
+          setTotalMessages(tail.total);
+          setWindowStart(tail.start);
         } catch (e) {
           if (version !== loadVersion) return;
+          if (isLoadCanceledError(e)) return; // user navigated away
           setError(errorMessage(e));
         } finally {
           if (version === loadVersion) setLoading(false);
@@ -155,6 +198,13 @@ export function SessionView(props: {
       },
     ),
   );
+
+  // Cancel server-side parse when this view goes away.
+  onCleanup(() => {
+    if (prevSessionId) {
+      void cancelSessionLoad(prevSessionId).catch(() => {});
+    }
+  });
 
   // Consume a pending session search set by the global SearchOverlay.
   // Runs after the session finishes loading; applies the query, opens the
@@ -229,11 +279,46 @@ export function SessionView(props: {
     }),
   );
 
+  let olderFetchInFlight = false;
+
+  async function loadOlderTail() {
+    if (olderFetchInFlight || windowStart() <= 0) return;
+    const sessionId = props.session.id;
+    olderFetchInFlight = true;
+    const newStart = Math.max(0, windowStart() - TAIL_BATCH);
+    const span = windowStart() - newStart;
+    try {
+      const older = await getSessionMessagesWindow(sessionId, newStart, span);
+      if (sessionId !== props.session.id) return;
+      // Prepend the newly fetched older messages and grow `visibleCount`
+      // by the same amount so the just-fetched entries actually become
+      // visible at the top of the viewport (column-reverse layout).
+      // Without the bump, `visibleEntries` slices from the newer end and
+      // the user sees no change after the round trip.
+      setMessages((prev) => [...older.messages, ...prev]);
+      setWindowStart(newStart);
+      setTotalMessages(older.total);
+      setVisibleCount((count) => count + older.messages.length);
+    } catch (e) {
+      if (isLoadCanceledError(e)) return;
+      console.warn("load older messages failed:", e);
+    } finally {
+      olderFetchInFlight = false;
+    }
+  }
+
   function loadOlderEntries() {
     if (!messagesRef || !hasMore()) return;
     // column-reverse: older entries append at the end of the DOM (visual top).
-    // The browser preserves scroll position automatically — no anchor restore needed.
-    setVisibleCount((count) => count + BATCH_SIZE);
+    // First exhaust the in-memory window via visibleCount, then page in
+    // older messages from the backend cache.
+    if (visibleCount() < filteredEntries().length) {
+      setVisibleCount((count) => count + BATCH_SIZE);
+      return;
+    }
+    if (windowStart() > 0) {
+      void loadOlderTail();
+    }
   }
 
   function handleMessagesScroll(e: Event) {
@@ -332,13 +417,22 @@ export function SessionView(props: {
 
   async function reloadSession() {
     try {
-      const detail = await getSessionDetail(props.session.id);
+      // Refresh meta + tail. Backend cache compares mtime so an actual
+      // file change forces a re-parse; otherwise this is O(1) slicing.
+      const sessionId = props.session.id;
       const oldCount = messages().length;
-      setMeta(detail.meta);
-      setMessages(detail.messages);
-      setParseWarningCount(detail.parse_warning_count ?? 0);
+      const [metaData, tail] = await Promise.all([
+        getSessionMeta(sessionId),
+        getSessionMessagesWindow(sessionId, -INITIAL_TAIL, INITIAL_TAIL),
+      ]);
+      if (sessionId !== props.session.id) return;
+      setMeta(metaData);
+      setMessages(tail.messages);
+      setParseWarningCount(tail.parse_warning_count ?? 0);
+      setTotalMessages(tail.total);
+      setWindowStart(tail.start);
       // Auto-scroll to newest if new messages arrived (column-reverse: bottom = scrollTop 0)
-      if (detail.messages.length > oldCount) {
+      if (tail.messages.length > oldCount) {
         requestAnimationFrame(() => {
           messagesRef?.scrollTo({ top: 0, behavior: "smooth" });
         });

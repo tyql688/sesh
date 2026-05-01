@@ -47,63 +47,77 @@ pub async fn open_external(app: AppHandle, url: String) -> CommandResult<()> {
 }
 
 #[tauri::command]
-pub fn get_index_stats(state: State<AppState>) -> CommandResult<IndexStats> {
-    let session_count = state
-        .db
-        .session_count()
-        .context("failed to get session count")?;
+pub async fn get_index_stats(state: State<'_, AppState>) -> CommandResult<IndexStats> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<IndexStats> {
+        let session_count = state
+            .db
+            .session_count()
+            .context("failed to get session count")?;
 
-    let db_size_bytes = state.db.db_size_bytes();
+        let db_size_bytes = state.db.db_size_bytes();
 
-    let last_index_time = state
-        .db
-        .get_meta("last_index_time")
-        .context("failed to read last_index_time")?
-        .unwrap_or_default();
-    let usage_last_refreshed_at = state
-        .db
-        .get_meta("usage_last_refreshed_at")
-        .context("failed to read usage_last_refreshed_at")?
-        .unwrap_or_default();
+        let last_index_time = state
+            .db
+            .get_meta("last_index_time")
+            .context("failed to read last_index_time")?
+            .unwrap_or_default();
+        let usage_last_refreshed_at = state
+            .db
+            .get_meta("usage_last_refreshed_at")
+            .context("failed to read usage_last_refreshed_at")?
+            .unwrap_or_default();
 
-    Ok(IndexStats {
-        session_count,
-        db_size_bytes,
-        last_index_time,
-        usage_last_refreshed_at,
+        Ok(IndexStats {
+            session_count,
+            db_size_bytes,
+            last_index_time,
+            usage_last_refreshed_at,
+        })
     })
+    .await
+    .context("task join error")?
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn get_pricing_catalog_status(state: State<AppState>) -> CommandResult<PricingCatalogStatus> {
-    let updated_at = state
-        .db
-        .get_meta(PRICING_CATALOG_UPDATED_AT_KEY)
-        .context("failed to read pricing updated_at")?;
-    let model_count = if let Some(raw_count) = state
-        .db
-        .get_meta(PRICING_CATALOG_MODEL_COUNT_KEY)
-        .context("failed to read pricing model count")?
-    {
-        raw_count
-            .parse::<u64>()
-            .with_context(|| format!("invalid stored pricing model count '{raw_count}'"))?
-    } else if let Some(json) = state
-        .db
-        .get_meta(PRICING_CATALOG_JSON_KEY)
-        .context("failed to read pricing catalog JSON")?
-    {
-        parse_catalog(&json)
-            .context("invalid stored pricing catalog JSON")?
-            .len() as u64
-    } else {
-        0
-    };
+pub async fn get_pricing_catalog_status(
+    state: State<'_, AppState>,
+) -> CommandResult<PricingCatalogStatus> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<PricingCatalogStatus> {
+        let updated_at = state
+            .db
+            .get_meta(PRICING_CATALOG_UPDATED_AT_KEY)
+            .context("failed to read pricing updated_at")?;
+        let model_count = if let Some(raw_count) = state
+            .db
+            .get_meta(PRICING_CATALOG_MODEL_COUNT_KEY)
+            .context("failed to read pricing model count")?
+        {
+            raw_count
+                .parse::<u64>()
+                .with_context(|| format!("invalid stored pricing model count '{raw_count}'"))?
+        } else if let Some(json) = state
+            .db
+            .get_meta(PRICING_CATALOG_JSON_KEY)
+            .context("failed to read pricing catalog JSON")?
+        {
+            parse_catalog(&json)
+                .context("invalid stored pricing catalog JSON")?
+                .len() as u64
+        } else {
+            0
+        };
 
-    Ok(PricingCatalogStatus {
-        updated_at,
-        model_count,
+        Ok(PricingCatalogStatus {
+            updated_at,
+            model_count,
+        })
     })
+    .await
+    .context("task join error")?
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -177,8 +191,12 @@ pub async fn start_rebuild_index(
 }
 
 #[tauri::command]
-pub fn clear_index(state: State<AppState>) -> CommandResult<()> {
-    state.db.clear_all().context("failed to clear index")?;
+pub async fn clear_index(state: State<'_, AppState>) -> CommandResult<()> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || state.db.clear_all().context("failed to clear index"))
+        .await
+        .context("task join error")?
+        .map_err(CommandError::from)?;
     Ok(())
 }
 
@@ -221,21 +239,32 @@ pub async fn start_refresh_usage(
 }
 
 #[tauri::command]
-pub fn get_provider_snapshots(state: State<AppState>) -> CommandResult<Vec<ProviderSnapshot>> {
-    ProviderSnapshotService::new(&state.db)
-        .list()
+pub async fn get_provider_snapshots(
+    state: State<'_, AppState>,
+) -> CommandResult<Vec<ProviderSnapshot>> {
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || ProviderSnapshotService::new(&state.db).list())
+        .await
+        .context("task join error")?
         .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn export_session(
+pub async fn export_session(
     session_id: String,
     format: String,
     output_path: String,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<()> {
-    let detail = load_detail(&session_id, &state.db)?;
-    exporter::export(&detail, &format, &output_path).map_err(CommandError::from)
+    let state = state.inner().clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        let detail = load_detail(&session_id, &state.db)?;
+        exporter::export(&detail, &format, &output_path).map_err(|e| anyhow!(e))?;
+        Ok(())
+    })
+    .await
+    .context("task join error")?
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]

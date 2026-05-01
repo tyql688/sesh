@@ -1,4 +1,11 @@
-import { createSignal, createMemo, Show, For } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  onCleanup,
+  Show,
+  For,
+} from "solid-js";
 import type { Message } from "../../lib/types";
 import { readToolResultText } from "../../lib/tauri";
 import { buildToolLineDiff, type ToolDiffLine } from "../../lib/diff";
@@ -10,6 +17,11 @@ import {
   toolIcon,
   toolSummary,
 } from "../../lib/tools";
+import {
+  extractPersistedOutputPaths,
+  loadPersistedOutput,
+  substitutePersistedOutputs,
+} from "../../lib/persisted-output";
 import { parseContent } from "./MarkdownRenderer";
 import {
   ImagePreview,
@@ -96,6 +108,54 @@ export function ToolMessage(props: { message: Message; provider?: string }) {
     !!props.message.tool_name && props.message.tool_name.trim().length > 0;
 
   if (!hasName()) return null;
+
+  // <persisted-output> tag blocks are no longer resolved at parse time
+  // (see src-tauri/src/providers/claude/mod.rs comment) so we resolve
+  // them here on first render. Cache hits are synchronous; first-time
+  // reads briefly show the raw tag block, then swap in the file
+  // content once `loadPersistedOutput` completes.
+  const [resolvedReplacements, setResolvedReplacements] = createSignal<
+    Map<string, string>
+  >(new Map());
+  createEffect(() => {
+    const content = props.message.content || "";
+    const paths = extractPersistedOutputPaths(content);
+    if (paths.length === 0) return;
+    let cancelled = false;
+    // Solid does not treat the return value of `createEffect` as a
+    // cleanup; we must register one via `onCleanup` so that re-runs
+    // (e.g., props.message.content change) and unmount drop the
+    // pending setSignal call.
+    onCleanup(() => {
+      cancelled = true;
+    });
+    void Promise.all(
+      paths.map((path) =>
+        loadPersistedOutput(path)
+          .then((value) => ({ path, value }))
+          .catch((error) => {
+            console.warn(`failed to resolve persisted output ${path}:`, error);
+            return null;
+          }),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      setResolvedReplacements((prev) => {
+        const next = new Map(prev);
+        for (const r of results) {
+          if (r) next.set(r.path, r.value);
+        }
+        return next;
+      });
+    });
+  });
+  const resolvedContent = createMemo(() => {
+    const raw = props.message.content || "";
+    const replacements = resolvedReplacements();
+    return replacements.size === 0
+      ? raw
+      : substitutePersistedOutputs(raw, replacements);
+  });
 
   const name = () => props.message.tool_name || "";
   const metadata = () => props.message.tool_metadata;
@@ -310,7 +370,7 @@ export function ToolMessage(props: { message: Message; provider?: string }) {
         </Show>
         <Show when={hasOutput() && !suppressRawOutput()}>
           <div class="msg-tool-output">
-            <For each={parseContent(props.message.content)}>
+            <For each={parseContent(resolvedContent())}>
               {(seg) => {
                 if (seg.type === "image") {
                   if (isLocalPath(seg.content)) {
