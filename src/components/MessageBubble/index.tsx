@@ -2,6 +2,7 @@ import { createSignal, createMemo, Show, createUniqueId } from "solid-js";
 import type { Message, Provider } from "../../lib/types";
 import { ProviderIcon, UserIcon } from "../../lib/icons";
 import { useI18n } from "../../i18n/index";
+import { parseTimestamp } from "../../lib/formatters";
 import {
   renderMarkdownContent,
   sanitizeMessageForClipboard,
@@ -102,6 +103,14 @@ export function MessageBubble(props: {
       onPreview: (src, source) => setPreviewImage({ src, source }),
     }),
   );
+  const msgTs = createMemo(() => {
+    const ts = props.message.timestamp;
+    if (!ts) return null;
+    const ms = parseTimestamp(ts);
+    if (!ms) return null;
+    const d = new Date(ms);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  });
 
   const isEmpty = (): boolean => {
     const msg = props.message;
@@ -176,6 +185,11 @@ export function MessageBubble(props: {
                 content={props.message.content}
                 copyText={copyText()}
               />
+              <Show when={msgTs()}>
+                <div class="msg-bubble-footer">
+                  <span class="msg-bubble-ts">{msgTs()}</span>
+                </div>
+              </Show>
             </div>
           </div>
           <Show

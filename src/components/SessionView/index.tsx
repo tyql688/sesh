@@ -370,19 +370,6 @@ export function SessionView(props: {
     ),
   );
 
-  const handleCopy = async () => {
-    const text = messages()
-      .map((m) => `[${m.role}] ${m.content}`)
-      .join("\n\n");
-    try {
-      await navigator.clipboard.writeText(text);
-      toast(t("toast.copied"));
-    } catch (error) {
-      console.error("Failed to copy session transcript:", error);
-      toastError(t("toast.copyFailed"));
-    }
-  };
-
   const handleDelete = async () => {
     try {
       await trashSession(props.session.id);
@@ -418,7 +405,6 @@ export function SessionView(props: {
         onToggleFavorite={handleToggleFavorite}
         onResume={handleResume}
         onExport={() => setShowExportDialog(true)}
-        onCopy={handleCopy}
         onDelete={() => setShowDeleteConfirm(true)}
       />
 

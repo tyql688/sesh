@@ -1312,7 +1312,7 @@
 /* Per-message copy button */
 .msg-copy-btn {
   position: absolute;
-  bottom: 8px;
+  top: 8px;
   right: 8px;
   opacity: 0;
   transition: opacity 0.15s;
@@ -1335,6 +1335,25 @@
 .msg-copy-btn:hover {
   color: var(--text-primary);
   background: var(--bg-sidebar);
+}
+
+.msg-bubble-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.msg-bubble-ts {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.msg-bubble-user .msg-bubble-ts {
+  color: var(--msg-user-muted);
 }
 
 .msg-bubble-user .msg-copy-btn {

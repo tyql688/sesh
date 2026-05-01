@@ -66,6 +66,46 @@ fn enrich_kimi_tool_metadata(message: &mut Message, payload: &Value) {
                 artifact_path: None,
             },
         );
+
+        // Promote Kimi display diff into structured fields so the frontend
+        // can render it with LineDiff (buildToolLineDiff) like Claude Edit.
+        let (old_text, new_text) = {
+            let display_diff = metadata.structured.as_ref().and_then(|s| {
+                s.get("display").and_then(|d| d.as_array()).and_then(|arr| {
+                    arr.iter().find(|item| {
+                        item.get("type").and_then(|v| v.as_str()) == Some("diff")
+                    })
+                })
+            });
+            let old_text = display_diff
+                .and_then(|d| d.get("old_text"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            let new_text = display_diff
+                .and_then(|d| d.get("new_text"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            (old_text, new_text)
+        };
+        if let Some(Value::Object(obj)) = metadata.structured.as_mut() {
+            // Bash tool: Kimi uses "output" for stdout. Promote it so the
+            // frontend formatToolResultMetadata can display it.
+            if !obj.contains_key("stdout") {
+                if let Some(output) = obj.get("output").and_then(|v| v.as_str()) {
+                    if !output.is_empty() {
+                        obj.insert("stdout".to_string(), Value::String(output.to_string()));
+                    }
+                }
+            }
+            if let Some(text) = old_text {
+                obj.insert("old_string".to_string(), Value::String(text));
+            }
+            if let Some(text) = new_text {
+                obj.insert("new_string".to_string(), Value::String(text));
+            }
+        }
     }
 }
 
@@ -174,6 +214,8 @@ impl KimiProvider {
         let mut content_parts: Vec<String> = Vec::new();
         // Map call_id -> message index for merging ToolResult into ToolCall
         let mut call_id_map: HashMap<String, usize> = HashMap::new();
+        // Track the most recent ToolCall for ToolCallPart append
+        let mut last_tool_call_idx: Option<usize> = None;
         let mut parse_warning_count: u32 = 0;
 
         for line in reader.lines() {
@@ -389,6 +431,7 @@ impl KimiProvider {
                     if let Some(cid) = call_id {
                         call_id_map.insert(cid.to_string(), idx);
                     }
+                    last_tool_call_idx = Some(idx);
                     messages.push(Message {
                         role: MessageRole::Tool,
                         content: String::new(),
@@ -401,15 +444,51 @@ impl KimiProvider {
                         tool_metadata: Some(metadata),
                     });
                 }
+                "ToolCallPart" => {
+                    if let Some(part) = payload.get("arguments_part").and_then(|v| v.as_str()) {
+                        if let Some(idx) = last_tool_call_idx {
+                            if idx < messages.len() && messages[idx].role == MessageRole::Tool {
+                                let current = messages[idx].tool_input.clone().unwrap_or_default();
+                                let merged = if current.is_empty() {
+                                    part.to_string()
+                                } else {
+                                    format!("{}{}", current, part)
+                                };
+                                messages[idx].tool_input = Some(merged.clone());
+                                // Re-parse and update metadata if JSON is now valid
+                                if let Ok(value) = serde_json::from_str::<Value>(&merged) {
+                                    if let Some(meta) = messages[idx].tool_metadata.as_mut() {
+                                        let old_ids = meta.ids.clone();
+                                        let old_mcp = meta.mcp.clone();
+                                        let new_meta = build_tool_metadata(ToolCallFacts {
+                                            provider: Provider::Kimi,
+                                            raw_name: &meta.raw_name,
+                                            input: Some(&value),
+                                            call_id: None,
+                                            assistant_id: None,
+                                        });
+                                        *meta = new_meta;
+                                        meta.ids = old_ids;
+                                        meta.mcp = old_mcp;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 "ToolResult" => {
-                    let output = extract_tool_output(payload);
+                    // Merge output into the matching ToolCall message
+                    let call_id = payload.get("tool_call_id").and_then(|v| v.as_str());
+                    let tool_name = call_id
+                        .and_then(|cid| call_id_map.get(cid))
+                        .copied()
+                        .and_then(|idx| messages.get(idx))
+                        .and_then(|msg| msg.tool_name.as_deref());
+                    let output = extract_tool_output(payload, tool_name);
 
                     if !output.is_empty() {
                         content_parts.push(output.clone());
                     }
-
-                    // Merge output into the matching ToolCall message
-                    let call_id = payload.get("tool_call_id").and_then(|v| v.as_str());
                     if let Some(idx) = call_id.and_then(|cid| call_id_map.get(cid)).copied() {
                         if idx < messages.len() {
                             messages[idx].content = output;
@@ -655,6 +734,7 @@ impl KimiProvider {
         let mut last_timestamp: Option<i64> = None;
         let mut content_parts: Vec<String> = Vec::new();
         let mut call_id_map: HashMap<String, usize> = HashMap::new();
+        let mut last_tool_call_idx: Option<usize> = None;
 
         for (ts, event) in events {
             let ts_epoch = *ts as i64;
@@ -823,6 +903,7 @@ impl KimiProvider {
                     if let Some(cid) = call_id {
                         call_id_map.insert(cid.to_string(), idx);
                     }
+                    last_tool_call_idx = Some(idx);
                     messages.push(Message {
                         role: MessageRole::Tool,
                         content: String::new(),
@@ -835,12 +916,48 @@ impl KimiProvider {
                         tool_metadata: Some(metadata),
                     });
                 }
+                "ToolCallPart" => {
+                    if let Some(part) = payload.get("arguments_part").and_then(|v| v.as_str()) {
+                        if let Some(idx) = last_tool_call_idx {
+                            if idx < messages.len() && messages[idx].role == MessageRole::Tool {
+                                let current = messages[idx].tool_input.clone().unwrap_or_default();
+                                let merged = if current.is_empty() {
+                                    part.to_string()
+                                } else {
+                                    format!("{}{}", current, part)
+                                };
+                                messages[idx].tool_input = Some(merged.clone());
+                                if let Ok(value) = serde_json::from_str::<Value>(&merged) {
+                                    if let Some(meta) = messages[idx].tool_metadata.as_mut() {
+                                        let old_ids = meta.ids.clone();
+                                        let old_mcp = meta.mcp.clone();
+                                        let new_meta = build_tool_metadata(ToolCallFacts {
+                                            provider: Provider::Kimi,
+                                            raw_name: &meta.raw_name,
+                                            input: Some(&value),
+                                            call_id: None,
+                                            assistant_id: None,
+                                        });
+                                        *meta = new_meta;
+                                        meta.ids = old_ids;
+                                        meta.mcp = old_mcp;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 "ToolResult" => {
-                    let output = extract_tool_output(payload);
+                    let call_id = payload.get("tool_call_id").and_then(|v| v.as_str());
+                    let tool_name = call_id
+                        .and_then(|cid| call_id_map.get(cid))
+                        .copied()
+                        .and_then(|idx| messages.get(idx))
+                        .and_then(|msg| msg.tool_name.as_deref());
+                    let output = extract_tool_output(payload, tool_name);
                     if !output.is_empty() {
                         content_parts.push(output.clone());
                     }
-                    let call_id = payload.get("tool_call_id").and_then(|v| v.as_str());
                     if let Some(idx) = call_id.and_then(|cid| call_id_map.get(cid)).copied() {
                         if idx < messages.len() {
                             messages[idx].content = output;

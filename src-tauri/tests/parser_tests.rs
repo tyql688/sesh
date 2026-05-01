@@ -872,6 +872,81 @@ fn kimi_subagent_messages_parsed() {
     assert_eq!(sub.messages[3].role, MessageRole::Assistant);
 }
 
+#[test]
+fn kimi_toolcallpart_appends_to_empty_arguments() {
+    let provider = KimiProvider::new().expect("home dir must be available");
+    let tmp = TempDir::new().unwrap();
+    let session_dir = tmp.path().join("session-001");
+    fs::create_dir(&session_dir).unwrap();
+    let wire = session_dir.join("wire.jsonl");
+
+    let lines = [
+        r#"{"timestamp":1735725600.0,"message":{"type":"TurnBegin","payload":{"user_input":[{"type":"text","text":"list files"}]}}}"#,
+        // ToolCall with empty arguments
+        r#"{"timestamp":1735725601.0,"message":{"type":"ToolCall","payload":{"id":"call_001","function":{"name":"Shell","arguments":""}}}}"#,
+        // ToolCallPart supplies the actual arguments
+        r#"{"timestamp":1735725602.0,"message":{"type":"ToolCallPart","payload":{"arguments_part":"{\"command\":\"ls -la\"}"}}}"#,
+        r#"{"timestamp":1735725603.0,"message":{"type":"ToolResult","payload":{"tool_call_id":"call_001","return_value":{"output":"total 16","message":"Command executed successfully."}}}}"#,
+        r#"{"timestamp":1735725604.0,"message":{"type":"ContentPart","payload":{"type":"text","text":"Here are the files"}}}"#,
+    ];
+    fs::write(&wire, lines.join("\n")).unwrap();
+
+    let session = provider
+        .parse_session_file(&wire, &HashMap::new())
+        .expect("must parse");
+
+    let tool_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+
+    assert_eq!(
+        tool_msg.tool_input.as_deref(),
+        Some(r#"{"command":"ls -la"}"#),
+        "ToolCallPart must append to empty arguments"
+    );
+
+    // Shell tool should show raw output, not generic success message
+    assert_eq!(tool_msg.content, "total 16");
+}
+
+#[test]
+fn kimi_toolcallpart_appends_to_truncated_arguments() {
+    let provider = KimiProvider::new().expect("home dir must be available");
+    let tmp = TempDir::new().unwrap();
+    let session_dir = tmp.path().join("session-002");
+    fs::create_dir(&session_dir).unwrap();
+    let wire = session_dir.join("wire.jsonl");
+
+    let lines = [
+        r#"{"timestamp":1735725600.0,"message":{"type":"TurnBegin","payload":{"user_input":[{"type":"text","text":"read file"}]}}}"#,
+        // ToolCall with truncated JSON (missing closing quote and brace)
+        r#"{"timestamp":1735725601.0,"message":{"type":"ToolCall","payload":{"id":"call_002","function":{"name":"ReadFile","arguments":"{\"path\":\"/tmp/test"}}}}"#,
+        // ToolCallPart supplies the missing suffix
+        r#"{"timestamp":1735725602.0,"message":{"type":"ToolCallPart","payload":{"arguments_part":".txt\"}"}}}"#,
+        r#"{"timestamp":1735725603.0,"message":{"type":"ToolResult","payload":{"tool_call_id":"call_002","return_value":{"output":"hello","message":"1 line read"}}}}"#,
+        r#"{"timestamp":1735725604.0,"message":{"type":"ContentPart","payload":{"type":"text","text":"Done"}}}"#,
+    ];
+    fs::write(&wire, lines.join("\n")).unwrap();
+
+    let session = provider
+        .parse_session_file(&wire, &HashMap::new())
+        .expect("must parse");
+
+    let tool_msg = session
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("expected a Tool message");
+
+    assert_eq!(
+        tool_msg.tool_input.as_deref(),
+        Some(r#"{"path":"/tmp/test.txt"}"#),
+        "ToolCallPart must append to truncated arguments"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Gemini chat parser tests
 // ---------------------------------------------------------------------------

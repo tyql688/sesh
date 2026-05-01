@@ -23,7 +23,6 @@ export function SessionToolbar(props: {
   onToggleFavorite: () => void;
   onResume: () => void;
   onExport: () => void;
-  onCopy: () => void;
   onDelete: () => void;
 }) {
   const { t, locale } = useI18n();
@@ -119,13 +118,6 @@ export function SessionToolbar(props: {
             title={t("session.export")}
           >
             {t("session.export")}
-          </button>
-          <button
-            class="session-action-btn"
-            onClick={props.onCopy}
-            title={t("session.copy")}
-          >
-            {t("session.copy")}
           </button>
           <button
             class="session-action-btn session-action-btn-danger"
