@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Codex desktop rollouts now retain nested command executions, file changes, MCP and dynamic tools, image previews/generation, web searches, agent activity, reasoning, and goal updates from current structured records. Code-mode `exec` is displayed separately from shell commands; mirrored assistant messages and tool outputs are deduplicated by their recorded ids, and command/MCP failures keep their error status.
+- Codex usage emitted after `task_started` but before `turn_context` is attributed to the new turn and explicitly applied model settings. Existing Codex indexes refresh once when the parser changes, so previously unchanged logs gain the corrected transcript, search text, tool counts, and usage without clearing favorites or existing data first.
+- Codex repeated cumulative token snapshots no longer inflate usage when re-emitted at a later timestamp. New response records, cache components, equal-sized requests with advancing totals, and usage after compaction remain counted; existing Codex statistics are rebuilt automatically.
+- Fresh Codex subagents retain their first model response's usage. Parent replay is skipped only when an explicit fork or inherited session metadata identifies it, rather than assuming every spawned agent starts with replayed usage.
+- Codex paginated history now resolves `history_base` using its thread identity, byte boundary, and ordinal boundary, retaining the referenced prefix before reading the continuation. Physical segments no longer overwrite each other's session and token statistics during full and incremental scans; missing or ambiguous history fails explicitly, and loading or renaming a continued session uses its logical thread identity.
+
 ## [0.8.0] - 2026-09-02
 
 ### Added

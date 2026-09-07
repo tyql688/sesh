@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, Read};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
@@ -9,6 +9,10 @@ use memchr::memrchr;
 use memmap2::Mmap;
 use serde::Deserialize;
 use serde_json::Value;
+
+mod completed_item;
+#[cfg(test)]
+mod completed_item_tests;
 
 use crate::models::{Message, MessageRole, Provider, SessionMeta};
 use crate::provider::util::{
@@ -69,7 +73,12 @@ pub(super) struct CodexScanAccum {
     /// before the file's first turn_context when the answer is unambiguous.
     pub(super) models_seen: std::collections::BTreeSet<String>,
     /// token_count events with real totals but no resolvable model yet.
-    pub(super) pending_unresolved_usage: Vec<(String, Option<String>, CodexRawUsageCounts)>,
+    pub(super) pending_unresolved_usage: Vec<(
+        String,
+        Option<String>,
+        CodexRawUsageCounts,
+        Option<CodexRawUsageCounts>,
+    )>,
     /// Fork/replay files re-dump the parent lineage's token_count events in
     /// a single-second burst at file creation. Usage inside that second is
     /// the parent's, already counted in its own file — skip it while
@@ -80,8 +89,16 @@ pub(super) struct CodexScanAccum {
     pub(super) replay_second: Option<String>,
     pub(super) previous_token_totals: Option<CodexRawUsageCounts>,
     /// Codex re-emits some token_count events verbatim. Events identical in
-    /// timestamp, model, and every token component are counted once.
-    pub(super) seen_token_events: std::collections::HashSet<(String, String, CodexRawUsageCounts)>,
+    /// timestamp, model, per-response usage, and cumulative snapshot are counted
+    /// once. Advancing totals distinguish equal-sized responses at the same time.
+    pub(super) seen_token_events: std::collections::HashSet<(
+        String,
+        String,
+        CodexRawUsageCounts,
+        Option<CodexRawUsageCounts>,
+    )>,
+    seen_completed_items: std::collections::HashSet<String>,
+    seen_assistant_items: std::collections::HashSet<String>,
     /// Active turn identity from `turn_context`, used to pair the new
     /// token_usage_record channel with its legacy token_count duplicate.
     pub(super) current_turn_id: Option<String>,
@@ -129,6 +146,8 @@ impl CodexScanAccum {
             replay_second: None,
             previous_token_totals: None,
             seen_token_events: std::collections::HashSet::new(),
+            seen_completed_items: std::collections::HashSet::new(),
+            seen_assistant_items: std::collections::HashSet::new(),
             current_turn_id: None,
             unmatched_token_count_usage: std::collections::HashMap::new(),
             unmatched_token_usage_records: std::collections::HashMap::new(),
@@ -214,8 +233,8 @@ impl CodexScanAccum {
         if !pending.is_empty() {
             if self.models_seen.len() == 1 {
                 let model = self.models_seen.iter().next().cloned().unwrap_or_default();
-                for (timestamp, turn_id, counts) in pending {
-                    let key = (timestamp.clone(), model.clone(), counts);
+                for (timestamp, turn_id, counts, total_counts) in pending {
+                    let key = (timestamp.clone(), model.clone(), counts, total_counts);
                     if !self.seen_token_events.insert(key) {
                         continue;
                     }
@@ -299,6 +318,8 @@ impl CodexScanAccum {
                 ) && started_at >= sub_sec
                 {
                     self.skipping_fork_context = false;
+                    self.replay_usage_skip = false;
+                    self.handle_event_msg(entry, payload, path);
                     return;
                 }
             } else if entry.line_type == "response_item"
@@ -307,6 +328,7 @@ impl CodexScanAccum {
                 let output = payload.get("output").and_then(|v| v.as_str()).unwrap_or("");
                 if output.contains("newly spawned agent") {
                     self.skipping_fork_context = false;
+                    self.replay_usage_skip = false;
                 }
             }
             return;
@@ -338,10 +360,19 @@ impl CodexScanAccum {
         // Only process the first session_meta; subagent JSONL files
         // contain a second session_meta for the parent context which
         // would overwrite the subagent's own id/self.cwd/source fields.
-        if self.session_id.is_some() {
+        if self.session_id.is_some()
+            && payload.get("history_base").is_some()
+            && payload.get("id").and_then(Value::as_str) == self.session_id.as_deref()
+        {
+            // Same-thread pagination starts a fresh usage counter. Its retained
+            // prefix has already been parsed by the history reader.
+            self.previous_token_totals = None;
+            self.begin_usage_turn(None);
+        } else if self.session_id.is_some() {
             // 2nd session_meta = start of forked parent context
             if self.is_sidechain {
                 self.skipping_fork_context = true;
+                self.replay_usage_skip = true;
             }
             return;
         }
@@ -370,8 +401,12 @@ impl CodexScanAccum {
         {
             self.git_branch = Some(b.to_string());
         }
-        if payload.get("forked_from_id").is_some()
-            || payload.pointer("/source/subagent/thread_spawn").is_some()
+        // A fresh spawned agent has no inherited usage. Only an explicit fork
+        // or the second session_meta above proves that a parent replay exists.
+        if payload
+            .get("forked_from_id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty())
         {
             self.replay_usage_skip = true;
         }
@@ -487,7 +522,16 @@ impl CodexProvider {
         };
         let file_size = metadata.len();
 
-        let reader = BufReader::new(file);
+        let reader = match super::history::open_reader(self, path, file, file_size) {
+            Ok(reader) => reader,
+            Err(error) => {
+                log::warn!(
+                    "cannot resolve Codex history '{}': {error:#}",
+                    path.display()
+                );
+                return None;
+            }
+        };
         // Two Codex subagent JSONL layouts the parser has to handle.
         // `skipping_fork_context` drops the parent's forked history so
         // it doesn't leak into the subagent view:
@@ -526,6 +570,8 @@ impl CodexProvider {
             replay_second: _,
             previous_token_totals: _,
             seen_token_events: _,
+            seen_completed_items: _,
+            seen_assistant_items: _,
             current_turn_id: _,
             unmatched_token_count_usage: _,
             unmatched_token_usage_records: _,
@@ -727,6 +773,19 @@ pub(crate) fn parse_session_tail(path: &Path, target_messages: usize) -> Option<
     let safety_buffer = target_messages / 2 + 100;
     let scan_lines = target_messages.saturating_add(safety_buffer);
     let (reader, window) = open_tail_reader(path, scan_lines, "Codex")?;
+    if window.covers_whole_file {
+        match super::history::read_header(path) {
+            Ok(Some(header)) if header.is_continuation() => return None,
+            Err(error) => {
+                log::warn!(
+                    "cannot read Codex history header '{}': {error:#}",
+                    path.display()
+                );
+                return None;
+            }
+            _ => {}
+        }
+    }
 
     let mut accum = CodexScanAccum::new();
     if !window.covers_whole_file && !prime_tail_turn_context(path, window.start_offset, &mut accum)

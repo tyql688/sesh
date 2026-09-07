@@ -192,22 +192,19 @@ fn parse_session_prefers_last_token_usage_when_both_last_and_total_are_present()
     };
     let parsed = provider.parse_session_file(&file).expect("parsed session");
     let events = &parsed.usage_events;
-    // E1, E2, E3 have distinct timestamps, so none are exact duplicates;
-    // each contributes its last_token_usage.
-    assert_eq!(events.len(), 3);
+    // E2 repeats E1's cumulative snapshot at a new timestamp. Only E1 and
+    // E3 are new responses; E3 contributes its last usage, not its total.
+    assert_eq!(events.len(), 2);
     assert_eq!(events[0].input_tokens, 400);
     assert_eq!(events[0].cache_read_input_tokens, 600);
     assert_eq!(events[0].output_tokens, 50);
-    assert_eq!(events[1].input_tokens, 400);
-    assert_eq!(events[1].cache_read_input_tokens, 600);
-    assert_eq!(events[1].output_tokens, 50);
-    assert_eq!(events[2].input_tokens, 300);
-    assert_eq!(events[2].cache_read_input_tokens, 400);
-    assert_eq!(events[2].output_tokens, 20);
+    assert_eq!(events[1].input_tokens, 300);
+    assert_eq!(events[1].cache_read_input_tokens, 400);
+    assert_eq!(events[1].output_tokens, 20);
 }
 
 #[test]
-fn parse_session_file_accumulates_repeated_last_token_usage() {
+fn parse_session_file_deduplicates_repeated_snapshot_in_message_usage() {
     let dir = TempDir::new().unwrap();
     let file = dir.path().join("codex.jsonl");
     fs::write(
@@ -233,11 +230,10 @@ fn parse_session_file_accumulates_repeated_last_token_usage() {
     let usage = assistant.token_usage.as_ref().expect("token usage");
 
     assert_eq!(assistant.model.as_deref(), Some("gpt-5.4"));
-    // E1 and E2 have distinct timestamps (not exact duplicates), so both
-    // fold onto the assistant message.
-    assert_eq!(usage.input_tokens, 800);
-    assert_eq!(usage.cache_read_input_tokens, 1200);
-    assert_eq!(usage.output_tokens, 100);
+    // Re-emitting the snapshot must not inflate the visible message either.
+    assert_eq!(usage.input_tokens, 400);
+    assert_eq!(usage.cache_read_input_tokens, 600);
+    assert_eq!(usage.output_tokens, 50);
 }
 
 #[test]
@@ -370,7 +366,7 @@ fn parse_session_file_handles_custom_tool_call_exec_with_part_array_output() {
         .find(|message| message.role == crate::models::MessageRole::Tool)
         .expect("exec must produce a tool message");
     let metadata = tool.tool_metadata.as_ref().expect("metadata");
-    assert_eq!(metadata.canonical_name, "Bash");
+    assert_eq!(metadata.canonical_name, "CodeExecution");
     let input_detail = metadata
         .presentation
         .as_ref()

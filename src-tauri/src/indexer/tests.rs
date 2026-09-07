@@ -12,6 +12,85 @@ use tempfile::TempDir;
 
 struct DefaultStatsProvider;
 
+struct IncrementalCodexProvider;
+
+impl SessionProvider for IncrementalCodexProvider {
+    fn provider(&self) -> Provider {
+        Provider::Codex
+    }
+    fn source_roots(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+    fn scan_all(&self) -> Result<Vec<ParsedSession>, ProviderError> {
+        let mut message = Message::assistant("updated transcript");
+        message.model = Some("gpt-5.4".into());
+        message.timestamp = Some("2026-04-09T12:00:00Z".into());
+        message.token_usage = token_usage(100, 50);
+        let mut parsed = make_session(Some("gpt-5.4"), vec![message]);
+        parsed.meta.provider = Provider::Codex;
+        parsed.content_text = "updated transcript".into();
+        Ok(vec![parsed])
+    }
+    fn scan_incremental(
+        &self,
+        known: &std::collections::HashMap<String, crate::provider::SourceState>,
+    ) -> Result<crate::provider::ScanOutcome, ProviderError> {
+        if known.contains_key("/tmp/source.jsonl") {
+            Ok(crate::provider::ScanOutcome {
+                parsed: Vec::new(),
+                unchanged_source_paths: vec!["/tmp/source.jsonl".into()],
+            })
+        } else {
+            Ok(crate::provider::ScanOutcome {
+                parsed: self.scan_all()?,
+                unchanged_source_paths: Vec::new(),
+            })
+        }
+    }
+    fn load_messages(
+        &self,
+        _session_id: &str,
+        _source_path: &str,
+    ) -> Result<LoadedSession, ProviderError> {
+        Ok(LoadedSession::new(Vec::new()))
+    }
+}
+
+#[test]
+fn codex_parser_revision_refreshes_unchanged_sources_once() {
+    let dir = TempDir::new().unwrap();
+    let db = Arc::new(Database::open(dir.path()).unwrap());
+    let mut old = make_session(Some("gpt-5.4"), Vec::new());
+    old.meta.provider = Provider::Codex;
+    db.sync_provider_snapshot(&Provider::Codex, &[old], false, &[])
+        .unwrap();
+    db.set_meta(super::CODEX_PARSER_REVISION_KEY, "1").unwrap();
+    let indexer = super::Indexer::new(
+        db.clone(),
+        vec![Box::new(IncrementalCodexProvider)],
+        dir.path().to_path_buf(),
+    );
+    assert_eq!(
+        indexer
+            .reindex_providers(Some(&[Provider::Codex]), false)
+            .unwrap(),
+        1
+    );
+    assert_eq!(db.list_sessions().unwrap()[0].message_count, 1);
+    assert_eq!(
+        db.get_meta(super::CODEX_PARSER_REVISION_KEY)
+            .unwrap()
+            .as_deref(),
+        Some(super::CODEX_PARSER_REVISION)
+    );
+    assert_eq!(
+        indexer
+            .reindex_providers(Some(&[Provider::Codex]), false)
+            .unwrap(),
+        0
+    );
+}
+
 impl SessionProvider for DefaultStatsProvider {
     fn provider(&self) -> Provider {
         Provider::Claude

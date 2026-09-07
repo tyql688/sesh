@@ -5,7 +5,9 @@
 //! channels are parsed, then paired within the active turn by model and all
 //! token components so the response is represented once. Records present in
 //! only one channel still contribute usage. The older channel's cumulative
-//! `total_token_usage` remains a delta fallback for legacy logs.
+//! `total_token_usage` remains a delta fallback for legacy logs. An unchanged
+//! cumulative snapshot is a re-emit, even when its timestamp changes: its
+//! nonzero `last_token_usage` must not be counted again.
 
 use std::path::Path;
 
@@ -133,9 +135,16 @@ pub(super) fn codex_usage_from_info(
         .get("total_token_usage")
         .and_then(normalize_codex_raw_usage);
 
+    if let Some((_, total_counts)) = &total_usage
+        && previous_totals.as_ref() == Some(total_counts)
+    {
+        return None;
+    }
+
     match (last_usage, total_usage) {
-        // Per-turn `last_token_usage` is authoritative; keep the running total in
-        // sync for the delta fallback below.
+        // Per-response `last_token_usage` is authoritative when the cumulative
+        // snapshot changes (including after compaction resets it). Keep the
+        // running total in sync for the delta fallback below.
         (Some(last), total) => {
             if let Some((_, total_counts)) = total {
                 *previous_totals = Some(total_counts);
@@ -447,5 +456,194 @@ impl CodexScanAccum {
             path.display()
         );
         self.parse_warning_count = self.parse_warning_count.saturating_add(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn usage(multiplier: u64) -> Value {
+        json!({
+            "input_tokens": 100 * multiplier,
+            "cached_input_tokens": 40 * multiplier,
+            "cache_write_input_tokens": 10 * multiplier,
+            "output_tokens": 10 * multiplier,
+            "reasoning_output_tokens": 2 * multiplier,
+            "total_tokens": 110 * multiplier,
+        })
+    }
+
+    fn snapshot(second: u8, last: Value, total: Value) -> CodexLine {
+        CodexLine {
+            timestamp: Some(format!("2026-09-01T00:00:{second:02}Z")),
+            line_type: "event_msg".to_string(),
+            payload: Some(json!({
+                "type": "token_count",
+                "info": {"last_token_usage": last, "total_token_usage": total},
+            })),
+        }
+    }
+
+    fn response(id: &str) -> CodexLine {
+        CodexLine {
+            timestamp: Some("2026-09-01T00:00:01Z".to_string()),
+            line_type: "token_usage_record".to_string(),
+            payload: Some(json!({
+                "response_id": id, "turn_id": "turn-test", "usage": usage(1),
+            })),
+        }
+    }
+
+    fn scan(lines: Vec<CodexLine>) -> CodexScanAccum {
+        let mut accum = CodexScanAccum::new();
+        accum.current_model = Some("model-test".to_string());
+        accum.begin_usage_turn(Some("turn-test"));
+        for line in lines {
+            accum.scan_line(&line, Path::new("fixture.jsonl"));
+        }
+        assert_eq!(accum.parse_warning_count, 0);
+        accum
+    }
+
+    #[test]
+    fn repeated_snapshots_and_response_record_count_once_in_either_order() {
+        for record_position in 0..=2 {
+            let mut lines = vec![
+                snapshot(2, usage(1), usage(1)),
+                snapshot(3, usage(1), usage(1)),
+            ];
+            lines.insert(record_position, response("response-test"));
+            lines.push(response("response-test"));
+            let accum = scan(lines);
+            assert_eq!(accum.usage_events.len(), 1);
+            let event = &accum.usage_events[0];
+            assert_eq!(
+                event.usage_hash.as_deref(),
+                Some("codex-response:response-test")
+            );
+            assert_eq!(event.input_tokens, 50);
+            assert_eq!(event.cache_read_input_tokens, 40);
+            assert_eq!(event.cache_creation_input_tokens, 10);
+            assert_eq!(event.output_tokens, 10); // Reasoning is a subset of output.
+        }
+    }
+
+    #[test]
+    fn equal_usage_at_same_timestamp_counts_twice_when_totals_advance() {
+        let accum = scan(vec![
+            snapshot(2, usage(1), usage(1)),
+            snapshot(2, usage(1), usage(2)),
+        ]);
+        assert_eq!(accum.usage_events.len(), 2);
+    }
+
+    #[test]
+    fn legacy_without_totals_keeps_distinct_timestamp_responses() {
+        let accum = scan(vec![
+            snapshot(2, usage(1), Value::Null),
+            snapshot(3, usage(1), Value::Null),
+        ]);
+        assert_eq!(accum.usage_events.len(), 2);
+    }
+
+    #[test]
+    fn changed_snapshot_after_reset_uses_last_response_usage() {
+        let accum = scan(vec![
+            snapshot(2, usage(1), usage(9)),
+            snapshot(3, usage(1), usage(1)),
+            snapshot(4, usage(1), usage(1)),
+            snapshot(5, usage(1), usage(2)),
+        ]);
+        assert_eq!(accum.usage_events.len(), 3);
+        assert!(
+            accum
+                .usage_events
+                .iter()
+                .all(|event| event.input_tokens == 50)
+        );
+    }
+
+    #[test]
+    fn response_records_still_count_when_legacy_snapshot_does_not_advance() {
+        let accum = scan(vec![
+            response("response-first"),
+            snapshot(2, usage(1), usage(1)),
+            response("response-second"),
+            snapshot(3, usage(1), usage(1)),
+        ]);
+        assert_eq!(accum.usage_events.len(), 2);
+        assert!(
+            accum
+                .usage_events
+                .iter()
+                .all(|event| event.usage_hash.is_some())
+        );
+    }
+
+    fn child_meta() -> CodexLine {
+        serde_json::from_value(json!({
+            "timestamp": "2026-09-01T00:00:00Z", "type": "session_meta",
+            "payload": {
+                "id": "child-test",
+                "source": {"subagent": {"thread_spawn": {"parent_thread_id": "parent-test"}}},
+            },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn fresh_subagent_keeps_first_response_usage() {
+        let accum = scan(vec![
+            child_meta(),
+            snapshot(2, usage(1), usage(1)),
+            snapshot(3, usage(1), usage(2)),
+        ]);
+        assert!(accum.is_sidechain);
+        assert_eq!(accum.usage_events.len(), 2);
+    }
+
+    #[test]
+    fn subagent_with_parent_metadata_still_skips_inherited_usage() {
+        let parent_meta = serde_json::from_value(json!({
+            "timestamp": "2026-09-01T00:00:00Z", "type": "session_meta",
+            "payload": {"id": "parent-test"},
+        }))
+        .unwrap();
+        let accum = scan(vec![
+            child_meta(),
+            parent_meta,
+            snapshot(2, usage(9), usage(9)),
+            snapshot(3, usage(1), usage(10)),
+        ]);
+        assert_eq!(accum.usage_events.len(), 1);
+        assert_eq!(accum.usage_events[0].input_tokens, 50);
+    }
+
+    #[test]
+    fn own_task_start_ends_parent_replay_even_without_parent_usage() {
+        let parent_meta = serde_json::from_value(json!({
+            "timestamp": "2026-09-01T00:00:00Z", "type": "session_meta",
+            "payload": {"id": "parent-test"},
+        }))
+        .unwrap();
+        let started_at = chrono::DateTime::parse_from_rfc3339("2026-09-01T00:00:01Z")
+            .unwrap()
+            .timestamp();
+        let task_start = serde_json::from_value(json!({
+            "timestamp": "2026-09-01T00:00:01Z", "type": "event_msg",
+            "payload": {"type": "task_started", "turn_id": "child-turn", "started_at": started_at},
+        }))
+        .unwrap();
+        let accum = scan(vec![
+            child_meta(),
+            parent_meta,
+            task_start,
+            snapshot(2, usage(1), usage(1)),
+        ]);
+        assert_eq!(accum.usage_events.len(), 1);
+        assert_eq!(accum.current_turn_id.as_deref(), Some("child-turn"));
     }
 }

@@ -12,6 +12,12 @@ use crate::provider::{ParsedSession, SessionProvider, TokenStatRow};
 use crate::services::error::{ServiceError, ServiceResult};
 use crate::services::image_cache::ImageCacheService;
 
+// Completed items change the transcript, search text and tool counts even
+// when a Codex source file has not changed. Advance only after its snapshot
+// commits successfully, so the first scan with this parser refreshes old data.
+const CODEX_PARSER_REVISION_KEY: &str = "codex_parser_revision";
+const CODEX_PARSER_REVISION: &str = "5";
+
 #[derive(Clone)]
 pub struct Indexer {
     db: Arc<Database>,
@@ -236,7 +242,19 @@ impl Indexer {
         // already indexed". A forced parse hands the provider an empty
         // snapshot instead: every file reads as changed and gets re-parsed,
         // without the destructive mtime-zeroing the old refresh path used.
-        let known = if force_parse {
+        let codex_parser_changed = provider_kind == Provider::Codex
+            && self
+                .db
+                .get_meta(CODEX_PARSER_REVISION_KEY)
+                .map_err(|e| {
+                    ServiceError::LoadProviderSourceSnapshot(
+                        provider_kind.key().to_string(),
+                        e.to_string(),
+                    )
+                })?
+                .as_deref()
+                != Some(CODEX_PARSER_REVISION);
+        let known = if force_parse || codex_parser_changed {
             HashMap::new()
         } else {
             self.db
@@ -285,6 +303,14 @@ impl Indexer {
             .map_err(|e| {
                 ServiceError::SyncProvider(work.provider_kind.key().to_string(), e.to_string())
             })?;
+
+        if work.provider_kind == Provider::Codex && !work.sessions.is_empty() {
+            self.db
+                .set_meta(CODEX_PARSER_REVISION_KEY, CODEX_PARSER_REVISION)
+                .map_err(|e| {
+                    ServiceError::SyncProvider(work.provider_kind.key().to_string(), e.to_string())
+                })?;
+        }
 
         for parsed in &work.sessions {
             image_service.cache_images(&parsed.messages);
