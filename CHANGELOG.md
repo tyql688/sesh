@@ -1,12 +1,13 @@
 # Changelog
 
-## Unreleased
+## [0.8.1] - Unreleased
 
 ### Fixed
 
+- Current Kimi usage records are paired per model step without double-counting their fallback records; interruptions, retries, and profile metadata are retained. DSH agent presets and Grok hook/plugin bookkeeping are recognized, and session toolbars show the provider's agent or profile when available.
+- Pi messages containing unpaired UTF-16 surrogate escapes retain their readable content with replacement characters instead of dropping the entire record; other malformed JSON still raises a parse warning.
 - Refreshing model prices now recalculates historical usage before reporting success, with per-provider pricing revisions so unchanged files and interrupted refreshes are retried safely. Catalog writes are atomic and existing statistics survive refresh failures.
 - Pi client-calculated zero costs no longer override available model rates. Cost coverage distinguishes estimates, service-reported amounts (including zero), and fully or partially unpriced usage; explicit free model rates are retained, and cached model aliases resolve deterministically without borrowing prices from a different model version or paid tier.
-
 - Codex desktop rollouts now retain nested command executions, file changes, MCP and dynamic tools, image previews/generation, web searches, agent activity, reasoning, and goal updates from current structured records. Code-mode `exec` is displayed separately from shell commands; mirrored assistant messages and tool outputs are deduplicated by their recorded ids, and command/MCP failures keep their error status.
 - Codex usage emitted after `task_started` but before `turn_context` is attributed to the new turn and explicitly applied model settings. Existing Codex indexes refresh once when the parser changes, so previously unchanged logs gain the corrected transcript, search text, tool counts, and usage without clearing favorites or existing data first.
 - Codex repeated cumulative token snapshots no longer inflate usage when re-emitted at a later timestamp. New response records, cache components, equal-sized requests with advancing totals, and usage after compaction remain counted; existing Codex statistics are rebuilt automatically.
