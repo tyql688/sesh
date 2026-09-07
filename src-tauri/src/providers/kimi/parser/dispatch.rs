@@ -404,6 +404,7 @@ impl ScanAccum {
             cache_read_input_tokens: u64::from(usage.cache_read_input_tokens),
             cache_creation_input_tokens: u64::from(usage.cache_creation_input_tokens),
             usage_hash: None,
+            cost_is_estimate: false,
             cost_usd: None,
         };
         if let Some(index) = self.current_step_usage_event_idx.take() {

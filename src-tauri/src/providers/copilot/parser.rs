@@ -541,6 +541,7 @@ fn handle_shutdown(data: &Value, timestamp: Option<String>, state: &mut ParseSta
             cache_read_input_tokens: u64::from(normalized.cache_read_input_tokens),
             cache_creation_input_tokens: u64::from(normalized.cache_creation_input_tokens),
             usage_hash: None,
+            cost_is_estimate: false,
             cost_usd: None,
         });
     }
@@ -615,6 +616,7 @@ fn attach_store_usage(state: &mut ParseState, rows: &[UsageRow]) {
             cache_read_input_tokens: u64::from(normalized.cache_read_input_tokens),
             cache_creation_input_tokens: u64::from(normalized.cache_creation_input_tokens),
             usage_hash: Some(format!("copilot-store:{}", row.row_id)),
+            cost_is_estimate: false,
             cost_usd: None,
         });
     }

@@ -7,7 +7,9 @@ use rayon::prelude::*;
 
 use crate::db::Database;
 use crate::models::{Provider, SessionMeta, TreeNode, TreeNodeType};
-use crate::pricing::{self, PRICING_CATALOG_JSON_KEY, PricingCatalog};
+use crate::pricing::{
+    self, PRICING_CATALOG_JSON_KEY, PRICING_CATALOG_UPDATED_AT_KEY, PricingCatalog,
+};
 use crate::provider::{ParsedSession, SessionProvider, TokenStatRow};
 use crate::services::error::{ServiceError, ServiceResult};
 use crate::services::image_cache::ImageCacheService;
@@ -30,6 +32,7 @@ struct ProviderWork {
     sessions: Vec<ParsedSession>,
     unchanged_source_paths: Vec<String>,
     stats_batch: Vec<(String, Vec<TokenStatRow>)>,
+    pricing_revision: String,
 }
 
 fn epoch_millis(time: SystemTime) -> ServiceResult<i64> {
@@ -133,12 +136,25 @@ impl Indexer {
     ) -> ServiceResult<usize> {
         let start = Instant::now();
         let mut total = 0usize;
-        let pricing_catalog = self.cached_pricing_catalog();
+        let pricing_catalog = self.cached_pricing_catalog()?;
+        let pricing_revision = format!(
+            "1:{}",
+            self.db
+                .get_meta(PRICING_CATALOG_UPDATED_AT_KEY)
+                .map_err(|e| ServiceError::Message(format!(
+                    "failed to read pricing revision: {e}"
+                )))?
+                .unwrap_or_else(|| "no-catalog".to_string())
+        );
         let now_millis = epoch_millis(SystemTime::now())?;
 
         let provider_refs = self.selected_providers(filter);
-        let works =
-            self.collect_provider_work(&provider_refs, pricing_catalog.as_ref(), force_parse)?;
+        let works = self.collect_provider_work(
+            &provider_refs,
+            pricing_catalog.as_ref(),
+            &pricing_revision,
+            force_parse,
+        )?;
 
         // Phase 2 (sequential, DB writer): commit each provider's snapshot.
         // SQLite has a single writer mutex; serializing here avoids contention
@@ -182,21 +198,15 @@ impl Indexer {
         Ok(total)
     }
 
-    fn cached_pricing_catalog(&self) -> Option<PricingCatalog> {
-        match self.db.get_meta(PRICING_CATALOG_JSON_KEY) {
-            Ok(Some(json)) => match pricing::parse_catalog(&json) {
-                Ok(catalog) => Some(catalog),
-                Err(error) => {
-                    log::warn!("failed to parse cached pricing catalog: {error}");
-                    None
-                }
-            },
-            Ok(None) => None,
-            Err(error) => {
-                log::warn!("failed to read cached pricing catalog: {error}");
-                None
-            }
-        }
+    fn cached_pricing_catalog(&self) -> ServiceResult<Option<PricingCatalog>> {
+        self.db
+            .get_meta(PRICING_CATALOG_JSON_KEY)
+            .map_err(|error| {
+                ServiceError::Message(format!("failed to read pricing catalog: {error}"))
+            })?
+            .map(|json| pricing::parse_catalog(&json))
+            .transpose()
+            .map_err(|error| ServiceError::Message(format!("invalid pricing catalog: {error}")))
     }
 
     fn selected_providers<'a>(
@@ -217,6 +227,7 @@ impl Indexer {
         &self,
         providers: &[&dyn SessionProvider],
         pricing_catalog: Option<&PricingCatalog>,
+        pricing_revision: &str,
         force_parse: bool,
     ) -> ServiceResult<Vec<ProviderWork>> {
         // Phase 1 (parallel, CPU/IO): scan each provider's files and compute
@@ -225,7 +236,9 @@ impl Indexer {
         // scan), so providers don't share state and can run in parallel.
         providers
             .par_iter()
-            .map(|provider| self.scan_provider_work(*provider, pricing_catalog, force_parse))
+            .map(|provider| {
+                self.scan_provider_work(*provider, pricing_catalog, pricing_revision, force_parse)
+            })
             .collect()
     }
 
@@ -233,6 +246,7 @@ impl Indexer {
         &self,
         provider: &dyn SessionProvider,
         pricing_catalog: Option<&PricingCatalog>,
+        pricing_revision: &str,
         force_parse: bool,
     ) -> ServiceResult<ProviderWork> {
         let provider_kind = provider.provider();
@@ -254,7 +268,18 @@ impl Indexer {
                 })?
                 .as_deref()
                 != Some(CODEX_PARSER_REVISION);
-        let known = if force_parse || codex_parser_changed {
+        let pricing_changed = self
+            .db
+            .get_meta(&format!("usage_pricing_revision:{}", provider_kind.key()))
+            .map_err(|e| {
+                ServiceError::LoadProviderSourceSnapshot(
+                    provider_kind.key().to_string(),
+                    e.to_string(),
+                )
+            })?
+            .as_deref()
+            != Some(pricing_revision);
+        let known = if force_parse || codex_parser_changed || pricing_changed {
             HashMap::new()
         } else {
             self.db
@@ -278,6 +303,7 @@ impl Indexer {
             sessions,
             unchanged_source_paths,
             stats_batch,
+            pricing_revision: pricing_revision.to_string(),
         })
     }
 
@@ -299,6 +325,15 @@ impl Indexer {
                 aggressive,
                 &work.unchanged_source_paths,
                 &token_stats,
+            )
+            .map_err(|e| {
+                ServiceError::SyncProvider(work.provider_kind.key().to_string(), e.to_string())
+            })?;
+
+        self.db
+            .set_meta(
+                &format!("usage_pricing_revision:{}", work.provider_kind.key()),
+                &work.pricing_revision,
             )
             .map_err(|e| {
                 ServiceError::SyncProvider(work.provider_kind.key().to_string(), e.to_string())

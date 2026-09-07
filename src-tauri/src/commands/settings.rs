@@ -101,6 +101,41 @@ pub async fn get_pricing_catalog_status(state: AppState) -> CommandResult<Pricin
 }
 
 pub async fn refresh_pricing_catalog(state: AppState) -> CommandResult<PricingCatalogStatus> {
+    use std::sync::atomic::Ordering;
+
+    if state.maintenance_running.swap(true, Ordering::SeqCst) {
+        return Err(anyhow::anyhow!("maintenance task already running").into());
+    }
+    // The owned task finishes even if the HTTP caller disconnects. Keep the
+    // lock through both catalog storage and repricing; no scan may observe a
+    // new catalog while writing stats computed from the previous one.
+    struct MaintenanceGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for MaintenanceGuard {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    let guard = MaintenanceGuard(state.maintenance_running.clone());
+    tokio::spawn(async move {
+        let _guard = guard;
+        emit_maintenance(&*state.events, "refresh_usage", "started", None);
+        let result = refresh_pricing_and_usage(state.clone()).await;
+        match &result {
+            Ok(_) => emit_maintenance(&*state.events, "refresh_usage", "finished", None),
+            Err(error) => emit_maintenance(
+                &*state.events,
+                "refresh_usage",
+                "failed",
+                Some(error.to_string()),
+            ),
+        }
+        result
+    })
+    .await
+    .context("pricing refresh task failed")?
+}
+
+async fn refresh_pricing_and_usage(state: AppState) -> CommandResult<PricingCatalogStatus> {
     // Bounded timeout: the first-use bootstrap awaits this before the initial
     // reindex, so a hung connection must not block indexing forever.
     // reqwest's rustls-no-provider feature requires an explicit process-wide
@@ -124,6 +159,9 @@ pub async fn refresh_pricing_catalog(state: AppState) -> CommandResult<PricingCa
         .context("failed to read pricing catalog body")?;
     let model_count = count_models_dev_models(&body).context("invalid models.dev JSON")?;
     let catalog = parse_models_dev(&body).context("invalid models.dev JSON")?;
+    if catalog.is_empty() {
+        return Err(anyhow::anyhow!("pricing catalog contains no usable model rates").into());
+    }
     let body = serde_json::to_string(&catalog).context("failed to serialize pricing catalog")?;
     let updated_at = chrono::Utc::now().to_rfc3339();
 
@@ -131,18 +169,17 @@ pub async fn refresh_pricing_catalog(state: AppState) -> CommandResult<PricingCa
     // write lock — keep them off the async runtime like every other command.
     let stored_updated_at = updated_at.clone();
     super::blocking(move || -> anyhow::Result<()> {
-        state
-            .db
-            .set_meta(PRICING_CATALOG_JSON_KEY, &body)
-            .context("failed to store pricing catalog")?;
-        state
-            .db
-            .set_meta(PRICING_CATALOG_UPDATED_AT_KEY, &stored_updated_at)
-            .context("failed to store pricing timestamp")?;
-        state
-            .db
-            .set_meta(PRICING_CATALOG_MODEL_COUNT_KEY, &model_count.to_string())
-            .context("failed to store pricing model count")?;
+        state.db.with_transaction(|conn| {
+            for (key, value) in [
+                (PRICING_CATALOG_JSON_KEY, body),
+                (PRICING_CATALOG_UPDATED_AT_KEY, stored_updated_at),
+                (PRICING_CATALOG_MODEL_COUNT_KEY, model_count.to_string()),
+            ] {
+                conn.execute("INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [&key, &value.as_str()])?;
+            }
+            Ok(())
+        }).context("failed to store pricing catalog")?;
+        state.indexer.reindex().context("prices updated but usage recalculation failed")?;
         Ok(())
     })
     .await?;

@@ -3,6 +3,43 @@ use crate::models::Provider;
 use crate::provider::ParsedSession;
 use tempfile::TempDir;
 
+#[test]
+fn cost_coverage_migration_preserves_existing_usage_and_favorites() {
+    let dir = TempDir::new().unwrap();
+    {
+        let db = Database::open(dir.path()).unwrap();
+        db.with_transaction(|conn| {
+            conn.execute_batch("ALTER TABLE session_token_stats DROP COLUMN estimated_turns;
+                ALTER TABLE session_token_stats DROP COLUMN reported_turns;
+                INSERT INTO sessions (id, provider, title, input_tokens) VALUES ('example', 'claude', 'Custom title', 100);
+                INSERT INTO favorites (session_id, added_at) VALUES ('example', 1);
+                INSERT INTO session_token_stats (session_id, bucket, model, turn_count, input_tokens, cost_usd) VALUES ('example', 0, 'example-model', 1, 100, 0.42);")
+        }).unwrap();
+    }
+    let db = Database::open(dir.path()).unwrap();
+    let row = db
+        .usage_by_model(
+            &["claude".into()],
+            crate::db::queries::UsageBucketBounds::default(),
+        )
+        .unwrap()
+        .remove(0);
+    assert_eq!(row.cost_usd, 0.42);
+    assert_eq!(row.input_tokens, 100);
+    assert_eq!(row.estimated_turns + row.reported_turns, 0);
+    db.with_transaction(|conn| {
+        let title: String =
+            conn.query_row("SELECT title FROM sessions WHERE id='example'", [], |r| {
+                r.get(0)
+            })?;
+        let favorites: i64 = conn.query_row("SELECT COUNT(*) FROM favorites", [], |r| r.get(0))?;
+        assert_eq!(title, "Custom title");
+        assert_eq!(favorites, 1);
+        Ok(())
+    })
+    .unwrap();
+}
+
 fn sample_meta(session_id: &str) -> SessionMeta {
     SessionMeta {
         id: session_id.to_string(),
@@ -100,6 +137,7 @@ fn replace_token_stats_clears_existing_rows_when_empty() {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             cost_usd: 0.01,
+            ..Default::default()
         }],
     )
     .unwrap();
@@ -151,6 +189,7 @@ fn provider_snapshot_rolls_back_when_token_stats_fail() {
         cache_read_tokens: 0,
         cache_write_tokens: 0,
         cost_usd: 0.01,
+        ..Default::default()
     }];
     let batch = [(meta.id.as_str(), &stats[..])];
 
@@ -223,6 +262,7 @@ fn clear_usage_stats_preserves_sessions() {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             cost_usd: 0.001,
+            ..Default::default()
         }],
     )
     .unwrap();
@@ -859,6 +899,7 @@ fn token_totals_update_leaves_fts_index_intact() {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             cost_usd: 0.01,
+            ..Default::default()
         }],
     )
     .unwrap();

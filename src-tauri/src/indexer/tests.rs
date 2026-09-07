@@ -57,6 +57,67 @@ impl SessionProvider for IncrementalCodexProvider {
 }
 
 #[test]
+fn pricing_revision_reprices_unchanged_sources_and_survives_failed_refresh() {
+    use crate::db::queries::UsageBucketBounds;
+    use crate::pricing::{PRICING_CATALOG_JSON_KEY, PRICING_CATALOG_UPDATED_AT_KEY};
+    let dir = TempDir::new().unwrap();
+    let db = Arc::new(Database::open(dir.path()).unwrap());
+    let indexer = super::Indexer::new(
+        db.clone(),
+        vec![Box::new(IncrementalCodexProvider)],
+        dir.path().to_path_buf(),
+    );
+    assert_eq!(indexer.reindex().unwrap(), 1);
+    assert_eq!(indexer.reindex().unwrap(), 0);
+    let rows = || {
+        db.usage_by_model(&["codex".into()], UsageBucketBounds::default())
+            .unwrap()
+    };
+    assert_eq!(rows()[0].cost_usd, 0.0);
+    assert_eq!(rows()[0].estimated_turns, 0);
+    db.set_meta(
+        PRICING_CATALOG_JSON_KEY,
+        r#"{"gpt-5.4":{"input_cost_per_token":0.01,"output_cost_per_token":0.02}}"#,
+    )
+    .unwrap();
+    db.set_meta(PRICING_CATALOG_UPDATED_AT_KEY, "revision-1")
+        .unwrap();
+    // A scoped scan cannot claim that other providers have been repriced.
+    assert_eq!(
+        indexer
+            .reindex_providers(Some(&[Provider::Pi]), false)
+            .unwrap(),
+        0
+    );
+    assert_eq!(indexer.reindex().unwrap(), 1);
+    assert_eq!(rows()[0].cost_usd, 2.0);
+    assert_eq!(rows()[0].estimated_turns, 1);
+    assert_eq!(rows()[0].reported_turns, 0);
+    assert_eq!(indexer.reindex().unwrap(), 0);
+    db.set_meta(PRICING_CATALOG_UPDATED_AT_KEY, "revision-2")
+        .unwrap();
+    db.set_meta(PRICING_CATALOG_JSON_KEY, "invalid JSON")
+        .unwrap();
+    assert!(indexer.reindex().is_err());
+    assert_eq!(rows()[0].cost_usd, 2.0);
+    assert_eq!(
+        db.get_meta("usage_pricing_revision:codex")
+            .unwrap()
+            .as_deref(),
+        Some("1:revision-1")
+    );
+    db.set_meta(
+        PRICING_CATALOG_JSON_KEY,
+        r#"{"gpt-5.4":{"input_cost_per_token":0.02,"output_cost_per_token":0.04}}"#,
+    )
+    .unwrap();
+    assert_eq!(indexer.reindex().unwrap(), 1);
+    assert_eq!(rows()[0].cost_usd, 4.0);
+    assert_eq!(rows()[0].input_tokens, 100);
+    assert_eq!(rows()[0].output_tokens, 50);
+}
+
+#[test]
 fn codex_parser_revision_refreshes_unchanged_sources_once() {
     let dir = TempDir::new().unwrap();
     let db = Arc::new(Database::open(dir.path()).unwrap());
@@ -426,6 +487,7 @@ fn usage_events_dedup_same_hash_across_sessions() {
             cache_read_input_tokens: 25,
             cache_creation_input_tokens: 0,
             usage_hash: Some("shared-call".into()),
+            cost_is_estimate: false,
             cost_usd: None,
         });
         parsed

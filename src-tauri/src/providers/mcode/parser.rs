@@ -587,6 +587,7 @@ fn record_usage_event(
         cache_creation_input_tokens: u64::from(usage.cache_write),
         usage_hash: Some(message_id.to_string()),
         cost_usd,
+        cost_is_estimate: false,
     });
 }
 

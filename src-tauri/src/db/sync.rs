@@ -368,8 +368,8 @@ fn replace_token_stats_on(
     )?;
     let mut insert = conn.prepare_cached(
         "INSERT INTO session_token_stats
-            (session_id, bucket, model, turn_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            (session_id, bucket, model, turn_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, estimated_turns, reported_turns)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
     )?;
     let mut totals = SessionTotals::default();
     for row in stats {
@@ -383,6 +383,8 @@ fn replace_token_stats_on(
             row.cache_read_tokens as i64,
             row.cache_write_tokens as i64,
             row.cost_usd,
+            row.estimated_turns,
+            row.reported_turns,
         ])?;
         totals.add_row(row);
     }

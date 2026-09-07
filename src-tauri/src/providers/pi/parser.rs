@@ -436,8 +436,10 @@ fn extract_usage_events(
                 cache_read_input_tokens: usage.cache_read,
                 cache_creation_input_tokens: usage.cache_write,
                 usage_hash: None,
-                // Pi attaches a provider-computed USD breakdown on usage.cost;
-                // prefer `total` when present (including explicit 0.0).
+                // Pi calculates this locally from model rates (including in the
+                // CommandCode extension). Missing rates also produce zero;
+                // it is an estimate, not a service-reported bill.
+                cost_is_estimate: true,
                 cost_usd: usage.cost.as_ref().map(|c| c.total),
             })
         })

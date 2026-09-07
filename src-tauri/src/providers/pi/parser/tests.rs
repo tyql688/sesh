@@ -2,6 +2,33 @@ use super::*;
 use crate::models::{MessageRole, ToolResultMode};
 
 #[test]
+fn commandcode_zero_local_estimate_is_repriced_without_changing_tokens() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("session.jsonl");
+    std::fs::write(&path, concat!(
+        "{\"type\":\"session\",\"version\":3,\"id\":\"session-example\",\"timestamp\":\"2026-06-10T07:00:00Z\",\"cwd\":\"/tmp/project\"}\n",
+        "{\"type\":\"message\",\"id\":\"assistant-example\",\"parentId\":null,\"timestamp\":\"2026-06-10T07:00:01Z\",\"message\":{\"role\":\"assistant\",\"content\":[],\"provider\":\"commandcode\",\"model\":\"meta/muse-spark-1.3\",\"usage\":{\"input\":1000000,\"output\":1000000,\"cacheRead\":1000000,\"cacheWrite\":0,\"totalTokens\":3000000,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"stop\",\"timestamp\":1781074801000}}\n"
+    )).unwrap();
+    let parsed = parse_session_file(&path).unwrap();
+    assert_eq!(parsed.parse_warning_count, 0);
+    assert!(parsed.usage_events[0].cost_is_estimate);
+    assert_eq!(parsed.usage_events[0].cost_usd, Some(0.0));
+    let catalog = crate::pricing::parse_catalog(r#"{"meta/muse-spark-1.3":{"input_cost_per_token":0.00000125,"output_cost_per_token":0.00000425,"cache_read_input_token_cost":0.00000015}}"#).unwrap();
+    let rows =
+        crate::provider::compute_token_stats_from_usage_events(&parsed, Some(&catalog), None);
+    assert_eq!(rows.len(), 1);
+    assert!((rows[0].cost_usd - 5.65).abs() < 1e-10);
+    assert_eq!(rows[0].estimated_turns, 1);
+    assert_eq!(rows[0].reported_turns, 0);
+    assert_eq!(
+        rows[0].input_tokens + rows[0].output_tokens + rows[0].cache_read_tokens,
+        3_000_000
+    );
+    let unknown = crate::provider::compute_token_stats_from_usage_events(&parsed, None, None);
+    assert_eq!(unknown[0].estimated_turns + unknown[0].reported_turns, 0);
+}
+
+#[test]
 fn parse_session_header() {
     let json = r#"{"type":"session","version":3,"id":"test-uuid","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/path/to/project"}"#;
     let entry: PiEntry = serde_json::from_str(json).unwrap();

@@ -515,6 +515,7 @@ fn extract_usage_events(
             cache_read_input_tokens: usage.cache_read,
             cache_creation_input_tokens: usage.cache_write,
             usage_hash: None,
+            cost_is_estimate: false,
             cost_usd: usage.cost_usd,
         });
     }

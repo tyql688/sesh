@@ -444,6 +444,7 @@ impl CodexScanAccum {
             cache_read_input_tokens: u64::from(usage.cache_read_input_tokens),
             cache_creation_input_tokens: u64::from(usage.cache_creation_input_tokens),
             usage_hash,
+            cost_is_estimate: false,
             cost_usd: None,
         });
         add_usage_to_last_assistant(&mut self.messages, usage, Some(model));

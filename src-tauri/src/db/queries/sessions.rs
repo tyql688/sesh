@@ -258,6 +258,7 @@ mod tests {
                     cache_read_tokens: 20,
                     cache_write_tokens: 10,
                     cost_usd: 0.01,
+                    ..Default::default()
                 },
                 TokenStatRow {
                     bucket: crate::provider::timestamp_to_bucket("2026-04-10").unwrap(),
@@ -268,6 +269,7 @@ mod tests {
                     cache_read_tokens: 2,
                     cache_write_tokens: 1,
                     cost_usd: 0.001,
+                    ..Default::default()
                 },
             ],
         )

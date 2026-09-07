@@ -244,6 +244,8 @@ impl Database {
                 cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
                 cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
                 cost_usd            REAL    NOT NULL DEFAULT 0,
+                estimated_turns     INTEGER NOT NULL DEFAULT 0,
+                reported_turns      INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (session_id, bucket, model)
             );
 
@@ -279,6 +281,27 @@ impl Database {
                 DELETE FROM session_tool_index WHERE session_id = OLD.id;
             END;",
         )?;
+
+        // Additive migration: retain old totals until each provider is repriced.
+        // Recheck under the write lock so simultaneous new-version opens agree.
+        for column in ["estimated_turns", "reported_turns"] {
+            let exists = |conn: &Connection| -> Result<bool, rusqlite::Error> {
+                conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM pragma_table_info('session_token_stats') WHERE name = ?1)",
+                    [column], |row| row.get(0),
+                )
+            };
+            if !exists(&write_conn)? {
+                let transaction = rusqlite::Transaction::new_unchecked(
+                    &write_conn,
+                    TransactionBehavior::Immediate,
+                )?;
+                if !exists(&transaction)? {
+                    transaction.execute_batch(&format!("ALTER TABLE session_token_stats ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"))?;
+                }
+                transaction.commit()?;
+            }
+        }
 
         let supported_provider_keys: Vec<&str> = crate::models::Provider::all()
             .iter()

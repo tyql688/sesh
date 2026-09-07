@@ -768,6 +768,7 @@ fn handle_assistant_message(
                 cache_read_input_tokens: u64::from(usage.cache_read_input_tokens),
                 cache_creation_input_tokens: u64::from(usage.cache_creation_input_tokens),
                 usage_hash: None,
+                cost_is_estimate: false,
                 cost_usd: None,
             }),
             _ => {
@@ -1084,6 +1085,7 @@ fn flush_step_chunks(state: &mut ParseState, turn: u32, step: u32, provenance: O
                 cache_read_input_tokens: u64::from(usage.cache_read_input_tokens),
                 cache_creation_input_tokens: u64::from(usage.cache_creation_input_tokens),
                 usage_hash: None,
+                cost_is_estimate: false,
                 cost_usd: None,
             }),
             _ => {
