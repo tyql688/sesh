@@ -58,7 +58,8 @@ fn pagination_preserves_prefix_and_continuation_once_across_scans_and_loads() {
     let sessions = provider.scan_all().unwrap();
     assert_eq!(sessions.len(), 1);
     let session = &sessions[0];
-    assert_eq!(session.meta.source_path, leaf.to_string_lossy());
+    // Directory walking can normalize mixed Windows path separators.
+    assert_eq!(Path::new(&session.meta.source_path), leaf.as_path());
     assert_eq!(
         session.meta.file_size_bytes,
         fs::metadata(&leaf).unwrap().len()
@@ -87,7 +88,8 @@ fn pagination_preserves_prefix_and_continuation_once_across_scans_and_loads() {
     for _ in 0..2 {
         let next = provider.scan_incremental(&known).unwrap();
         assert!(next.parsed.is_empty());
-        assert_eq!(next.unchanged_source_paths, vec![leaf.to_string_lossy()]);
+        assert_eq!(next.unchanged_source_paths.len(), 1);
+        assert_eq!(Path::new(&next.unchanged_source_paths[0]), leaf.as_path());
     }
     let loaded = provider
         .load_messages(&session.meta.id, &session.meta.source_path)
