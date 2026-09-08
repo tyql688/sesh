@@ -6,13 +6,17 @@ use tempfile::TempDir;
 use super::*;
 use crate::provider::{SessionProvider, SourceState};
 
-fn rows(start: u64, base: Option<(u64, u64)>, text: &str) -> String {
+const THREAD_ID: &str = "11111111-1111-4111-a111-111111111111";
+const SEGMENT_ID: &str = "22222222-2222-4222-a222-222222222222";
+const NEXT_SEGMENT_ID: &str = "33333333-3333-4333-a333-333333333333";
+
+fn rows(start: u64, base: Option<(&str, u64, u64)>, text: &str) -> String {
     let mut header = json!({
-        "id": "thread-test", "cwd": "/tmp/project", "cli_version": "fixture",
+        "id": THREAD_ID, "cwd": "/tmp/project", "cli_version": "fixture",
     });
-    if let Some((ordinal, bytes)) = base {
+    if let Some((rollout_id, ordinal, bytes)) = base {
         header["history_base"] = json!({
-            "thread_id": "thread-test", "end_ordinal_exclusive": ordinal, "end_byte_offset": bytes,
+            "thread_id": rollout_id, "end_ordinal_exclusive": ordinal, "end_byte_offset": bytes,
         });
     }
     let usage = json!({"input_tokens": 100, "cached_input_tokens": 40, "output_tokens": 10, "total_tokens": 110});
@@ -31,8 +35,10 @@ fn fixture() -> (TempDir, CodexProvider, PathBuf, PathBuf) {
     let home = TempDir::new().unwrap();
     let dir = home.path().join(".codex/sessions");
     fs::create_dir_all(&dir).unwrap();
-    let root = dir.join("root.jsonl");
-    let leaf = dir.join("continuation.jsonl");
+    let root = dir.join(format!("rollout-2026-09-01T00-00-00-{THREAD_ID}.jsonl"));
+    let leaf = dir.join(format!(
+        "rollout-2026-09-01T00-00-00-{THREAD_ID}_{SEGMENT_ID}.jsonl"
+    ));
     let prefix = rows(0, None, "retained history");
     // A discarded branch after the retained boundary must not leak into the
     // new timeline or token totals.
@@ -43,7 +49,7 @@ fn fixture() -> (TempDir, CodexProvider, PathBuf, PathBuf) {
     .unwrap();
     fs::write(
         &leaf,
-        rows(4, Some((4, prefix.len() as u64)), "new history"),
+        rows(4, Some((THREAD_ID, 4, prefix.len() as u64)), "new history"),
     )
     .unwrap();
     let provider = CodexProvider {
@@ -98,34 +104,61 @@ fn pagination_preserves_prefix_and_continuation_once_across_scans_and_loads() {
 }
 
 #[test]
-fn pagination_supports_multiple_retained_segments() {
+fn pagination_revert_resolves_physical_rollout_id_and_preserves_logical_thread() {
     let (home, provider, _root, leaf) = fixture();
-    let next = home.path().join(".codex/sessions/next.jsonl");
+    let next = home.path().join(format!(
+        ".codex/sessions/rollout-2026-09-01T00-00-00-{THREAD_ID}_{NEXT_SEGMENT_ID}.jsonl"
+    ));
     fs::write(
         &next,
         rows(
             8,
-            Some((8, fs::metadata(&leaf).unwrap().len())),
+            Some((SEGMENT_ID, 8, fs::metadata(&leaf).unwrap().len())),
             "third segment",
         ),
     )
     .unwrap();
     let sessions = provider.scan_all().unwrap();
     assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].meta.id, THREAD_ID);
+    assert_eq!(Path::new(&sessions[0].meta.source_path), next.as_path());
     assert_eq!(sessions[0].usage_events.len(), 3);
     assert!(sessions[0].content_text.contains("retained history"));
+    assert!(sessions[0].content_text.contains("new history"));
     assert!(sessions[0].content_text.contains("third segment"));
+    assert!(!sessions[0].content_text.contains("discarded branch"));
+    let loaded = provider
+        .load_messages(THREAD_ID, &sessions[0].meta.source_path)
+        .unwrap();
+    assert_eq!(loaded.messages.len(), sessions[0].messages.len());
 }
 
 #[test]
 fn pagination_rejects_missing_or_misaligned_base_instead_of_indexing_a_fragment() {
     let (_home, provider, root, leaf) = fixture();
     let original = fs::read(&leaf).unwrap();
-    fs::write(&leaf, rows(4, Some((4, 1)), "bad boundary")).unwrap();
+    fs::write(&leaf, rows(4, Some((THREAD_ID, 4, 1)), "bad boundary")).unwrap();
     assert!(provider.scan_all().is_err());
     assert!(provider.parse_session_file(&leaf).is_none());
     fs::write(&leaf, original).unwrap();
     fs::remove_file(root).unwrap();
+    assert!(provider.scan_all().is_err());
+    assert!(provider.parse_session_file(&leaf).is_none());
+}
+
+#[test]
+fn pagination_rejects_a_different_rollout_with_matching_thread_and_boundary() {
+    let (_home, provider, _root, leaf) = fixture();
+    let prefix = rows(0, None, "retained history");
+    fs::write(
+        &leaf,
+        rows(
+            4,
+            Some((NEXT_SEGMENT_ID, 4, prefix.len() as u64)),
+            "unresolved history",
+        ),
+    )
+    .unwrap();
     assert!(provider.scan_all().is_err());
     assert!(provider.parse_session_file(&leaf).is_none());
 }
@@ -144,7 +177,7 @@ fn pagination_rename_uses_header_identity_instead_of_segment_filename() {
     )]);
     fs::write(
         home.path().join(".codex/session_index.jsonl"),
-        "{\"id\":\"thread-test\",\"thread_name\":\"renamed\"}\n",
+        format!("{}\n", json!({"id": THREAD_ID, "thread_name": "renamed"})),
     )
     .unwrap();
     let next = provider.scan_incremental(&known).unwrap();

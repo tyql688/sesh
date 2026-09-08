@@ -14,11 +14,11 @@ use crate::provider::{ParsedSession, SessionProvider, TokenStatRow};
 use crate::services::error::{ServiceError, ServiceResult};
 use crate::services::image_cache::ImageCacheService;
 
-// Completed items change the transcript, search text and tool counts even
-// when a Codex source file has not changed. Advance only after its snapshot
-// commits successfully, so the first scan with this parser refreshes old data.
+// History resolution and completed items change the transcript, search text
+// and tool counts even when a Codex source file has not changed. Advance only
+// after its snapshot commits, so the first scan with this parser refreshes old data.
 const CODEX_PARSER_REVISION_KEY: &str = "codex_parser_revision";
-const CODEX_PARSER_REVISION: &str = "5";
+const CODEX_PARSER_REVISION: &str = "7";
 
 #[derive(Clone)]
 pub struct Indexer {

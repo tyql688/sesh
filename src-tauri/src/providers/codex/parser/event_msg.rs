@@ -297,6 +297,23 @@ impl CodexScanAccum {
                 let Some(call_id) = codex_call_id(payload) else {
                     return;
                 };
+                // Older rollouts can persist only the typed completion event.
+                // Its call id and revised prompt identify the image tool without
+                // an outer response_item; later mirrors enrich this same row.
+                if self
+                    .call_id_map
+                    .message_mut(Some(call_id), &mut self.messages)
+                    .is_none()
+                {
+                    self.push_event_only_tool_call(
+                        "image_generation_call",
+                        call_id,
+                        payload
+                            .get("revised_prompt")
+                            .map(|prompt| serde_json::json!({"revised_prompt": prompt})),
+                        entry.timestamp.clone(),
+                    );
+                }
                 let Some(message) = self
                     .call_id_map
                     .message_mut(Some(call_id), &mut self.messages)

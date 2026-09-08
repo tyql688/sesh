@@ -4,6 +4,9 @@
 //! history once, with its leaf path as the source, rather than letting physical
 //! files with the same session id overwrite one another on alternate scans.
 //! Prefixes are immutable: appends beyond a retained boundary are not inherited.
+//! Codex's wire field `history_base.thread_id` identifies the physical rollout
+//! (the filename's final UUID). After a revert it differs from `session_meta.id`,
+//! which remains the stable logical thread ID across every retained segment.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -20,6 +23,7 @@ use super::CodexProvider;
 
 #[derive(Clone, Deserialize)]
 struct HistoryBase {
+    /// Physical rollout ID, despite the protocol's historical field name.
     thread_id: String,
     end_ordinal_exclusive: u64,
     end_byte_offset: u64,
@@ -114,13 +118,15 @@ fn history_parts(
     if let Some(header) = catalog.get(path)
         && let Some(base) = &header.base
     {
-        if base.thread_id != header.id || base.end_ordinal_exclusive != header.ordinal {
-            bail!("Codex history_base does not identify a same-thread continuation");
+        if base.end_ordinal_exclusive != header.ordinal {
+            bail!("Codex history_base ordinal does not match its continuation");
         }
         let mut candidates = Vec::new();
         for (candidate, previous) in catalog {
-            if previous.id == base.thread_id
+            if previous.id == header.id
                 && previous.ordinal < header.ordinal
+                && super::session_uuid_from_filename(&candidate.to_string_lossy()).as_deref()
+                    == Some(base.thread_id.as_str())
                 && boundary_matches(candidate, base)?
             {
                 candidates.push(candidate);

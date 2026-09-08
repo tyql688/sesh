@@ -99,6 +99,21 @@ impl CodexScanAccum {
                 event["type"] = json!("dynamic_tool_call_response");
             }
             "Extension" => match item.get("kind").and_then(Value::as_str) {
+                Some("clock.sleep") => {
+                    let Some(duration) = item.get("durationMs").and_then(Value::as_u64) else {
+                        self.warn_completed_item(path, entry, "clock sleep missing valid duration");
+                        return;
+                    };
+                    self.upsert_completed_tool(
+                        entry,
+                        id,
+                        "clock.sleep",
+                        Some(json!({"duration_ms": duration})),
+                        String::new(),
+                        item.clone(),
+                    );
+                    return;
+                }
                 Some("web.search") => event["type"] = json!("web_search_end"),
                 Some("image_gen.generation") => {
                     if self

@@ -40,6 +40,66 @@ fn completed(item: Value) -> Value {
 }
 
 #[test]
+fn completed_clock_sleep_preserves_duration_and_deduplicates() {
+    let item = completed(
+        json!({"type":"Extension","kind":"clock.sleep","id":"sleep-one","durationMs":1250}),
+    );
+    let parsed = parse(&[item.clone(), item]);
+    assert_eq!(parsed.parse_warning_count, 0);
+    assert_eq!(parsed.messages.len(), 1);
+    let message = &parsed.messages[0];
+    assert_eq!(message.role, MessageRole::Tool);
+    assert_eq!(
+        serde_json::from_str::<Value>(message.tool_input.as_deref().unwrap()).unwrap(),
+        json!({"duration_ms":1250})
+    );
+    assert_eq!(
+        message
+            .tool_metadata
+            .as_ref()
+            .unwrap()
+            .structured
+            .as_ref()
+            .unwrap()["durationMs"],
+        1250
+    );
+}
+
+#[test]
+fn image_generation_end_without_call_preserves_media_and_merges_completed_mirror() {
+    let end = json!({"type":"event_msg","payload":{
+        "type":"image_generation_end","call_id":"image-event","status":"completed",
+        "revised_prompt":"a sample icon","saved_path":"/tmp/project/generated.png"
+    }});
+    let mirror = completed(json!({
+        "type":"Extension","kind":"image_gen.generation","id":"image-event",
+        "status":"completed","revisedPrompt":"a sample icon","savedPath":"/tmp/project/generated.png"
+    }));
+    for records in [
+        vec![end.clone(), end.clone()],
+        vec![end.clone(), mirror.clone()],
+        vec![mirror, end],
+    ] {
+        let parsed = parse(&records);
+        assert_eq!(parsed.parse_warning_count, 0);
+        assert_eq!(parsed.messages.len(), 1);
+        let message = &parsed.messages[0];
+        assert_eq!(
+            message.content,
+            "[Image: source: /tmp/project/generated.png]"
+        );
+        assert_eq!(
+            message.tool_metadata.as_ref().unwrap().status.as_deref(),
+            Some("completed")
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(message.tool_input.as_deref().unwrap()).unwrap(),
+            json!({"revised_prompt":"a sample icon"})
+        );
+    }
+}
+
+#[test]
 fn completed_nested_tools_preserve_input_output_failure_and_deduplicate() {
     let command = completed(
         json!({"type":"CommandExecution","id":"nested-command","command":["sh","-c","echo hello"],"cwd":"/tmp/project","status":"completed","stdout":"hello","stderr":"failed","exit_code":2,"duration":{"secs":1,"nanos":500000000}}),
