@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.2] - Unreleased
+
+### Fixed
+
+- Codex histories retained after a revert now resolve the referenced physical rollout file while preserving the logical session identity, byte and ordinal boundaries, and duplicate protection. Existing Codex indexes refresh automatically to recover previously unreadable history.
+- Codex image-generation completion events retain their prompt and saved image even when the log has no preceding call record. Repeated events and completed-item mirrors merge into one tool entry. Completed `clock.sleep` records retain their duration; malformed or unknown records still raise parse warnings.
+- Image caching skips directories, including placeholder paths such as `...` that Windows can resolve to the current directory, preventing failed image-copy warnings.
+
+### Changed
+
+- Provider icons use official static LobeHub SVGs, removing unrelated UI and emoji dependencies, React 19 peer conflicts, and deprecated packages. Dependency patches address known npm audit findings, and the reviewed Lefthook install script is explicitly allowed for newer npm versions.
+- SVG transforms are limited to SVG imports, and production React Compiler transforms skip unused source maps. The plugin timing advisory is disabled for these intentional transforms; runtime warning reporting remains enabled.
+
 ## [0.8.1] - 2026-09-07
 
 ### Fixed
