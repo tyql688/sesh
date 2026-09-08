@@ -1,11 +1,20 @@
-import { Antigravity, Claude, Codex, Copilot, Cursor, DeepSeek, Grok, Kimi, Minimax, OpenCode } from "@lobehub/icons";
+import Antigravity from "@lobehub/icons-static-svg/icons/antigravity-color.svg?react";
+import Claude from "@lobehub/icons-static-svg/icons/claude-color.svg?react";
+import Codex from "@lobehub/icons-static-svg/icons/codex-color.svg?react";
+import Copilot from "@lobehub/icons-static-svg/icons/copilot-color.svg?react";
+import Cursor from "@lobehub/icons-static-svg/icons/cursor.svg?react";
+import DeepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg?react";
+import Grok from "@lobehub/icons-static-svg/icons/grok.svg?react";
+import Kimi from "@lobehub/icons-static-svg/icons/kimi.svg?react";
+import Minimax from "@lobehub/icons-static-svg/icons/minimax-color.svg?react";
+import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg?react";
 import type { JSX } from "react";
 import type { Provider } from "@/lib/types";
 import { getProviderColor } from "@/stores/providerSnapshots";
 
 const DEFAULT_ICON_SIZE = 14;
 
-// Custom SVGs for providers not in @lobehub/icons:
+// Custom SVGs for providers not in LobeHub's icon collection:
 // - pi: no @lobehub brand icon exists.
 // - cc-mirror: a Claude mirror, not a real brand — the Claude glyph tinted pink.
 // - commandcode: official glyph shipped in Command Code's VS Code extension.
@@ -54,33 +63,35 @@ function CommandCodeIcon({ size }: { size: number }) {
   );
 }
 
-// Provider brand logos. Mainstream providers use official @lobehub/icons
-// colored variants (the app's provider colors match their brand colors); Pi and
-// cc-mirror keep custom SVGs above. Kimi's and Grok's brand marks are
+// Provider brand logos. Import official LobeHub SVGs directly so static marks
+// do not bring in the React icon package's unrelated UI and emoji dependencies.
+// Mainstream providers use colored variants (the app's provider colors match
+// their brand colors); Pi and cc-mirror keep custom SVGs above.
+// Kimi's and Grok's brand marks are
 // black-on-light / white-on-dark, so they use the monochrome variant tinted
 // by text-primary.
 const PROVIDER_ICONS: Record<Provider, (size: number) => JSX.Element> = {
-  claude: (size) => <Claude.Color size={size} />,
-  codex: (size) => <Codex.Color size={size} />,
-  antigravity: (size) => <Antigravity.Color size={size} />,
-  // OpenCode + Cursor have no .Color variant in @lobehub/icons — use base.
-  opencode: (size) => <OpenCode size={size} />,
+  claude: (size) => <Claude width={size} height={size} />,
+  codex: (size) => <Codex width={size} height={size} />,
+  antigravity: (size) => <Antigravity width={size} height={size} />,
+  // OpenCode and Cursor use their monochrome marks.
+  opencode: (size) => <OpenCode width={size} height={size} />,
   kimi: (size) => (
     <span style={{ color: "var(--text-primary)", display: "inline-flex" }}>
-      <Kimi size={size} />
+      <Kimi width={size} height={size} />
     </span>
   ),
-  cursor: (size) => <Cursor size={size} />,
+  cursor: (size) => <Cursor width={size} height={size} />,
   "cc-mirror": (size) => <CcMirrorIcon size={size} />,
   pi: (size) => <PiIcon size={size} />,
   grok: (size) => (
     <span style={{ color: "var(--text-primary)", display: "inline-flex" }}>
-      <Grok size={size} />
+      <Grok width={size} height={size} />
     </span>
   ),
-  dsh: (size) => <DeepSeek.Color size={size} />,
-  mcode: (size) => <Minimax.Color size={size} />,
-  copilot: (size) => <Copilot.Color size={size} />,
+  dsh: (size) => <DeepSeek width={size} height={size} />,
+  mcode: (size) => <Minimax width={size} height={size} />,
+  copilot: (size) => <Copilot width={size} height={size} />,
   commandcode: (size) => <CommandCodeIcon size={size} />,
 };
 
